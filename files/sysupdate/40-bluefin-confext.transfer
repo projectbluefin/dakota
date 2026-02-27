@@ -1,0 +1,16 @@
+[Transfer]
+ProtectVersion=%A
+Features=bluefin
+
+[Source]
+Type=url-file
+Path=https://dl.projectbluefin.io/sysupdate/
+MatchPattern=bluefin-confext-%a_@v.raw \
+             bluefin-confext-%a_@v.raw.xz \
+             bluefin-confext-%a_@v.raw.zst
+
+[Target]
+Type=regular-file
+Path=/var/lib/confexts/
+MatchPattern=bluefin-confext_@v.raw
+InstancesMax=2
