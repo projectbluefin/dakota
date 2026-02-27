@@ -111,12 +111,37 @@ export:
     # Step: Chunkify (reorganize layers)
     just chunkify "{{image_name}}:{{image_tag}}"
 
+# ── Sysext ───────────────────────────────────────────────────────────
+# Build the Bluefin system extension (sysext + confext DDIs).
+[group('build')]
+build-sysext:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "==> Building Bluefin sysext with BuildStream..."
+    just bst build sysext/layer.bst
+    echo "==> Sysext build complete."
+
+# Export sysext artifacts from the BuildStream cache.
+# Assumes `just build-sysext` has already completed.
+[group('build')]
+export-sysext:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "==> Exporting sysext artifacts..."
+    rm -rf .sysext-out
+    just bst artifact checkout sysext/layer.bst --directory /src/.sysext-out
+
+    echo "==> Sysext artifacts:"
+    ls -lh .sysext-out/*.raw
+
 # ── Clean ─────────────────────────────────────────────────────────────
 # Remove generated artifacts (disk image, OVMF vars, build output).
 [group('build')]
 clean:
     rm -f bootable.raw .ovmf-vars.fd
-    rm -rf .build-out
+    rm -rf .build-out .sysext-out
 
 # ── Containerfile build (alternative) ────────────────────────────────
 [group('build')]

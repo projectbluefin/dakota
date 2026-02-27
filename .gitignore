@@ -11,6 +11,10 @@
 *.tar
 .ovmf-vars.fd
 .build-out
+.sysext-out
+
+# Snakeoil signing keys (generate locally, not committed)
+files/sysext-keys/
 
 # Local AI agent state (opencode sessions, drafts)
 # Skills are committed; everything else is ignored
