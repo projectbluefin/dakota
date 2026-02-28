@@ -1,0 +1,4 @@
+# l for local — replaced by CI
+variables:
+  image-version: 'l.1'
+  filesystem-time: 1321009871

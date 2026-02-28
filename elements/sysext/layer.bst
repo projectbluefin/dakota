@@ -20,10 +20,6 @@ build-depends:
     location: '/keys'
 
 variables:
-  # Mirrored from gnome-build-meta include/image-version.yml since
-  # these are scoped to the junction and not inherited by our project.
-  image-version: 'l.1'
-  filesystem-time: 1321009871
   sysroot-seed: a1c3e5f7-2b4d-6f80-9a1c-3e5f72b4d6f8
   repart-seed: d8f6b4a2-0c1e-3d5f-7a9b-2c4e6d8f0a1b
   confext-repart-seed: e9a7c5b3-1d0f-4e6a-8b2c-5d7f9a1b3c4e
