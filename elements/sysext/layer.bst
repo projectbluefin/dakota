@@ -96,7 +96,7 @@ config:
         ;;
     esac
 
-    cat <<EOF >"%{work}/sysroot-bluefin/usr/lib/extension-release.d/extension-release.bluefin_%{image-version}"
+    cat <<EOF >"%{work}/sysroot-bluefin/usr/lib/extension-release.d/extension-release.bluefin-%{systemd-arch}_%{image-version}"
     ID="org.gnome.os"
     VERSION_ID="${version_id}"
     SYSEXT_LEVEL="%{image-version}"
@@ -210,7 +210,7 @@ config:
         ;;
     esac
 
-    cat <<EOF >"%{work}/confext-output/etc/extension-release.d/extension-release.bluefin-confext_%{image-version}"
+    cat <<EOF >"%{work}/confext-output/etc/extension-release.d/extension-release.bluefin-confext-%{systemd-arch}_%{image-version}"
     ID="org.gnome.os"
     VERSION_ID="${version_id}"
     CONFEXT_LEVEL="%{image-version}"
