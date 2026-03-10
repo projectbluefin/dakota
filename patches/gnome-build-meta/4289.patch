@@ -1,4 +1,4 @@
-From 103b4e68d1c80c2a276530571100b9218b65462d Mon Sep 17 00:00:00 2001
+From 855131a75657c140132be6cb5373f68447b1e6c6 Mon Sep 17 00:00:00 2001
 From: Valentin David <me@valentindavid.com>
 Date: Sun, 16 Nov 2025 10:24:28 +0100
 Subject: [PATCH] Automatically generate keys
@@ -137,13 +137,13 @@ index 6090ce1339..bc4f817592 100644
  
  build-depends:
 diff --git a/elements/gnomeos-deps/shim.bst b/elements/gnomeos-deps/shim.bst
-index 597a355cf8..16cffcf102 100644
+index 96b13cfe36..51564d3c6b 100644
 --- a/elements/gnomeos-deps/shim.bst
 +++ b/elements/gnomeos-deps/shim.bst
-@@ -13,8 +13,8 @@ sources:
+@@ -12,8 +12,8 @@ sources:
    path: gnu-efi
    url: github:rhboot/gnu-efi.git
-   ref: 328951d3dcb5ff97f5a7c7a362b006626fada000
+   ref: dc7fd96f23d6b582416f672844362d776d175cf4
 -- kind: local
 -  path: files/boot-keys/VENDOR.crt
 +- kind: generated
