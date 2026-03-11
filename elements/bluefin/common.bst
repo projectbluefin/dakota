@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/common.git
   track: main
-  ref: v2026.02-14-gd2e92326052731c1baf6de517fafa5e67eb0987b
+  ref: v2026.03-11-gf9a61d8cc50b2e7627d7e14774b1a7f815d041f7
 - kind: git_module
   url: github:projectbluefin/branding/
   path: bluefin-branding
