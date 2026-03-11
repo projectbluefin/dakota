@@ -5,4 +5,4 @@ kind: manual
 sources:
   - kind: remote
     url: github_files:ublue-os/packages/releases/download/homebrew-2026-02-17-01-32-11/homebrew-aarch64.tar.zst
-    ref: e02c1ede160f201756bf85efd4ba9441501953c40a73d2619fb53cae9a39fe44
+    ref: c1407069204ed952afa38fb8f4dabd73969001e7f26d18ac46d9b4a9b4a76639
