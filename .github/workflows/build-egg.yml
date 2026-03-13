@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Mount BuildStream cache (sticky disk)
-        uses: useblacksmith/stickydisk@18dec295a653142036063064b24678d434710e56 # v1
+        uses: useblacksmith/stickydisk@53fa0c2f644d5d6ce16c601f25e3e9f8f267ee38 # v1
         with:
           key: ${{ github.repository }}-bst-cache
           path: /home/runner/.cache/buildstream
