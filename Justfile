@@ -85,11 +85,12 @@ export:
     fi
 
     echo "==> Exporting OCI image..."
-    rm -rf .build-out
     just bst artifact checkout oci/bluefin.bst --directory /src/.build-out
-
-    echo "==> Loading and squashing OCI image..."
+    echo "==> Loading OCI image..."
     IMAGE_ID=$($SUDO_CMD podman pull -q oci:.build-out)
+    rm -rf .build-out
+
+    $SUDO_CMD podman tag "$IMAGE_ID" "{{image_name}}:{{image_tag}}"
 
     echo "==> Export complete. Image loaded as {{image_name}}:{{image_tag}}"
     $SUDO_CMD podman images | grep -E "{{image_name}}|REPOSITORY" || true
@@ -458,6 +459,7 @@ chunkify image_ref:
     # Note: We need --privileged for some podman-in-podman/mount scenarios or just standard access
     LOADED=$($SUDO_CMD podman run --rm \
         --security-opt label=type:unconfined_t \
+        --privileged \
         --mount=type=image,src="{{image_ref}}",dest=/chunkah \
         -e "CHUNKAH_CONFIG_STR=$CONFIG" \
         quay.io/jlebon/chunkah:latest build | $SUDO_CMD podman load)
@@ -523,7 +525,7 @@ boot-fast: _ensure-bcvk
     $SUDO_CMD bcvk ephemeral run-ssh \
         --memory "{{vm_ram}}M" \
         --vcpus "{{vm_cpus}}" \
-        "localhost/{{image_name}}:{{image_tag}}"
+        "{{image_name}}:{{image_tag}}"
 
 # Inspect the built bootc image.
 [group('info')]

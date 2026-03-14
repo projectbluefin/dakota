@@ -179,13 +179,13 @@ jobs:
         id: export
         env:
           BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
-          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          BUILD_IMAGE_NAME: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}
           OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}
           OCI_IMAGE_REVISION: ${{ github.sha }}
           OCI_IMAGE_VERSION: latest
         run: |
           just export
-          echo "image_ref=${{ env.IMAGE_NAME }}:latest" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${{ env.BUILD_IMAGE_NAME }}:latest" >> "$GITHUB_OUTPUT"
 
       - name: Verify image loaded
         run: sudo podman images
@@ -223,9 +223,9 @@ jobs:
 
       - name: Tag image for GHCR
         run: |
-          sudo podman tag "localhost/${{ steps.export.outputs.image_ref }}" \
+          sudo podman tag "${{ steps.export.outputs.image_ref }}" \
             "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          sudo podman tag "localhost/${{ steps.export.outputs.image_ref }}" \
+          sudo podman tag "${{ steps.export.outputs.image_ref }}" \
             "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
 
       - name: Push to GHCR
