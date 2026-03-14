@@ -4,7 +4,7 @@ default:
     @just --list
 
 # ── Configuration ─────────────────────────────────────────────────────
-export image_name := env("BUILD_IMAGE_NAME", "egg")
+export image_name := env("BUILD_IMAGE_NAME", ""ghcr.io/projectbluefin/egg")
 export image_tag := env("BUILD_IMAGE_TAG", "latest")
 export base_dir := env("BUILD_BASE_DIR", ".")
 export filesystem := env("BUILD_FILESYSTEM", "btrfs")
@@ -52,6 +52,15 @@ build:
     #!/usr/bin/env bash
     set -euo pipefail
 
+    # Set OCI metadata
+    rm -f include/version.yml
+    echo "oci-image-revision: '${OCI_IMAGE_REVISION}'" > include/revisions.yml
+    echo "oci-image-created: '${OCI_IMAGE_CREATED}'" >> include/revisions.yml
+    echo "oci-image-version: '${OCI_IMAGE_VERSION}'" >> include/revisions.yml
+
+    echo "oci-image-name: '{{image_name}}'" >> include/revisions.yml
+    echo "oci-image-tag: '{{image_tag}}'" >> include/revisions.yml
+
     echo "==> Building OCI image with BuildStream (inside bst2 container)..."
     just bst build oci/bluefin.bst
 
@@ -79,37 +88,14 @@ export:
     rm -rf .build-out
     just bst artifact checkout oci/bluefin.bst --directory /src/.build-out
 
-    # Load the multi-layer OCI image and squash into a single layer.
-    # BuildStream produces separate layers (platform + gnomeos + bluefin);
-    # bootc and registry distribution work better with one squashed layer.
-    # Using podman (not skopeo) ensures the squashed view is preserved on push.
     echo "==> Loading and squashing OCI image..."
     IMAGE_ID=$($SUDO_CMD podman pull -q oci:.build-out)
-    rm -rf .build-out
-    
-    # Build label arguments for dynamic OCI metadata
-    LABEL_ARGS=""
-    if [ -n "${OCI_IMAGE_CREATED}" ]; then
-        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.created=${OCI_IMAGE_CREATED}"
-    fi
-    if [ -n "${OCI_IMAGE_REVISION}" ]; then
-        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.revision=${OCI_IMAGE_REVISION}"
-    fi
-    if [ -n "${OCI_IMAGE_VERSION}" ]; then
-        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.version=${OCI_IMAGE_VERSION}"
-    fi
-    
-    # Squash and apply dynamic labels
-    # shellcheck disable=SC2086
-    printf 'FROM %s\n' "$IMAGE_ID" \
-        | $SUDO_CMD podman build --pull=never --security-opt label=type:unconfined_t --squash-all ${LABEL_ARGS} -t "{{image_name}}:{{image_tag}}" -f - .
-    $SUDO_CMD podman rmi "$IMAGE_ID" || true
 
     echo "==> Export complete. Image loaded as {{image_name}}:{{image_tag}}"
     $SUDO_CMD podman images | grep -E "{{image_name}}|REPOSITORY" || true
 
     # Step: Chunkify (reorganize layers)
-    # just chunkify "{{image_name}}:{{image_tag}}"
+    just chunkify "{{image_name}}:{{image_tag}}"
 
 # ── Clean ─────────────────────────────────────────────────────────────
 # Remove generated artifacts (disk image, OVMF vars, build output).
