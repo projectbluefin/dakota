@@ -1,4 +1,4 @@
-From 855131a75657c140132be6cb5373f68447b1e6c6 Mon Sep 17 00:00:00 2001
+From ca1a7ee5469ca8deeea250406d347b376e64ff1a Mon Sep 17 00:00:00 2001
 From: Valentin David <me@valentindavid.com>
 Date: Sun, 16 Nov 2025 10:24:28 +0100
 Subject: [PATCH] Automatically generate keys
@@ -6,7 +6,7 @@ Subject: [PATCH] Automatically generate keys
 ---
  .gitlab-ci/scripts/global-before-script.sh    |   7 +-
  .gitlab-ci/scripts/publish-sysupdate-to-s3.sh |   1 +
- elements/gnomeos-deps/efitools.bst            |  56 +++++-----
+ elements/gnomeos-deps/efitools.bst            |  44 ++++----
  elements/gnomeos-deps/shim.bst                |   4 +-
  elements/gnomeos/debug/layer.bst              |   8 +-
  elements/gnomeos/devel/layer.bst              |   8 +-
@@ -27,7 +27,7 @@ Subject: [PATCH] Automatically generate keys
  utils/enable-local-repo.sh                    |   2 +
  utils/run-secure-vm.sh                        |   2 +-
  utils/run-sysupdate-repo.sh                   |   1 +
- 23 files changed, 234 insertions(+), 93 deletions(-)
+ 23 files changed, 228 insertions(+), 87 deletions(-)
  create mode 100644 source-plugins/generated.py
 
 diff --git a/.gitlab-ci/scripts/global-before-script.sh b/.gitlab-ci/scripts/global-before-script.sh
@@ -67,13 +67,13 @@ index a7496db29e..78f026dab1 100755
          --output "update-images/SHA256SUMS.gpg" \
          --detach-sig "update-images/SHA256SUMS"
 diff --git a/elements/gnomeos-deps/efitools.bst b/elements/gnomeos-deps/efitools.bst
-index 6090ce1339..bc4f817592 100644
+index 9aba05690a..10bf4d6548 100644
 --- a/elements/gnomeos-deps/efitools.bst
 +++ b/elements/gnomeos-deps/efitools.bst
-@@ -7,37 +7,37 @@ sources:
-   ref: v1.9.2-0-g392836a46ce3c92b55dc88a1aebbcfdfc5dcddce
- - kind: patch
+@@ -9,29 +9,29 @@ sources:
    path: patches/efitools/aarch64-on-newer-gnu-efi.patch
+ - kind: patch
+   path: patches/efitools/binutils_2_46.patch
 -- kind: local
 -  path: files/boot-keys/PK.key
 -- kind: local
@@ -90,8 +90,6 @@ index 6090ce1339..bc4f817592 100644
 -  path: files/boot-keys/KEK_MIC.key
 -- kind: local
 -  path: files/boot-keys/KEK_MIC.crt
--- kind: local
--  path: files/boot-keys/DB.key
 -- kind: local
 -  path: files/boot-keys/DB.crt
 -- kind: local
@@ -113,8 +111,6 @@ index 6090ce1339..bc4f817592 100644
 +- kind: generated
 +  path: KEK_MIC.crt
 +- kind: generated
-+  path: DB.key
-+- kind: generated
 +  path: DB.crt
 +- kind: generated
 +  path: extra-kek
@@ -124,26 +120,16 @@ index 6090ce1339..bc4f817592 100644
 +- kind: generated
 +  path: extra-db
    directory: extra-db
--- kind: local
--  path: files/boot-keys/extra-kek-mic
-+- kind: generated
-+  path: extra-kek-mic
-   directory: extra-kek-mic
--- kind: local
--  path: files/boot-keys/extra-db-mic
-+- kind: generated
-+  path: extra-db-mic
-   directory: extra-db-mic
- 
- build-depends:
+ - kind: git_repo
+   url: github:microsoft/secureboot_objects.git
 diff --git a/elements/gnomeos-deps/shim.bst b/elements/gnomeos-deps/shim.bst
-index 96b13cfe36..51564d3c6b 100644
+index 487eb1b705..61a044dbaa 100644
 --- a/elements/gnomeos-deps/shim.bst
 +++ b/elements/gnomeos-deps/shim.bst
-@@ -12,8 +12,8 @@ sources:
-   path: gnu-efi
-   url: github:rhboot/gnu-efi.git
+@@ -14,8 +14,8 @@ sources:
    ref: dc7fd96f23d6b582416f672844362d776d175cf4
+ - kind: patch
+   path: patches/shim/binutils_2_46.patch
 -- kind: local
 -  path: files/boot-keys/VENDOR.crt
 +- kind: generated
