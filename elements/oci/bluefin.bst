@@ -65,7 +65,7 @@ config:
             'org.opencontainers.image.vendor': 'Project Bluefin'
             'org.opencontainers.image.licenses': 'Apache-2.0'
             'org.opencontainers.image.url': 'https://projectbluefin.io'
-            'org.opencontainers.image.source': 'https://github.com/projectbluefin/egg'
+            'org.opencontainers.image.source': 'https://github.com/projectbluefin/dakota'
             'org.opencontainers.image.created': '%{oci-image-created}'
             'org.opencontainers.image.revision': '%{oci-image-revision}'
             'org.opencontainers.image.version': '%{oci-image-version}'

@@ -1,3 +1,3 @@
-FROM ghcr.io/projectbluefin/egg:latest
+FROM ghcr.io/projectbluefin/dakota:latest
 
 RUN bootc container lint || true

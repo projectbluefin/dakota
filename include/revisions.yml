@@ -4,5 +4,5 @@
 oci-image-revision: "local-build"
 oci-image-created: "local-build"
 oci-image-version: "local-build"
-oci-image-name: "egg"
+oci-image-name: "dakota"
 oci-image-tag: "latest"

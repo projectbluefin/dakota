@@ -14,7 +14,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/\\.github/workflows/build-egg\\.yml$/",
+        "/\\.github/workflows/build-dakota\\.yml$/",
         "/\\.github/workflows/track-bst-sources\\.yml$/",
         "/^Justfile$/"
       ],

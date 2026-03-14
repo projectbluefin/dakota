@@ -1,4 +1,4 @@
-name: Build Bluefin Egg
+name: Build Bluefin dakota
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: egg
+  IMAGE_NAME: dakota
   IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
 
 # Only one build at a time. If a manual dispatch arrives while a scheduled
@@ -169,7 +169,7 @@ jobs:
       # Uses the Justfile's `export` recipe: checks out the OCI image
       # layout from BuildStream, loads it into podman via skopeo, and
       # applies the /usr/etc bootc fixup. Same logic as local builds.
-      # Creates image with local name (egg:latest) to avoid registry
+      # Creates image with local name (dakota:latest) to avoid registry
       # lookups during validation.
 
       - name: Export OCI image from BuildStream
