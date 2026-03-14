@@ -62,16 +62,6 @@ jobs:
         run: |
           mkdir -p logs
 
-          if [[ -z "$CASD_CLIENT_CERT" ]]; then
-            echo "Variables empty"
-            exit 1
-          fi
-
-          if [[ -z "$CASD_CLIENT_ΚΕΥ" ]]; then
-            echo "KEY is empty"
-            exit 1
-          fi
-
           # Setup certificate for pushing to the cache
           echo "$CASD_CLIENT_CERT" > client.crt
           echo "$CASD_CLIENT_KEY" > client.key
@@ -91,67 +81,71 @@ jobs:
 
           build:
             retry-failed: True
-
-          artifacts:
-            servers:
-            - url: https://cache.projectbluefin.io:11002
-              push: true
-              connection-config:
-                keepalive-time: 60
-                retry-limit: 5
-                retry-delay: 1000
-                request-timeout: 180
-              auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
-
-          source-caches:
-            servers:
-            - url: https://cache.projectbluefin.io:11002
-              push: true
-              connection-config:
-                keepalive-time: 60
-                retry-limit: 5
-                retry-delay: 1000
-                request-timeout: 180
-              auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
-
-          cache:
-            storage-service:
-              url: https://cache.projectbluefin.io:11002
-              connection-config:
-                keepalive-time: 60
-                retry-limit: 5
-                retry-delay: 1000
-                request-timeout: 180
-              auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
-
-          remote-execution:
-            execution-service:
-              url: https://cache.projectbluefin.io:11002
-              connection-config:
-                keepalive-time: 60
-                retry-limit: 5
-                retry-delay: 1000
-                request-timeout: 180
-              auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
-            action-cache-service:
-              url: https://cache.projectbluefin.io:11002
-              connection-config:
-                keepalive-time: 60
-                retry-limit: 5
-                retry-delay: 1000
-                request-timeout: 180
-              auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
           BSTCONF
+
+          if [[ -n "$CASD_CLIENT_CERT" ]] && [[ -n "$CASD_CLIENT_ΚΕΥ" ]]; then
+            cat >> buildstream-ci.conf <<'BSTCONFPUSH'
+            artifacts:
+              servers:
+              - url: https://cache.projectbluefin.io:11002
+                push: true
+                connection-config:
+                  keepalive-time: 60
+                  retry-limit: 5
+                  retry-delay: 1000
+                  request-timeout: 180
+                auth:
+                  client-key: /src/client.key
+                  client-cert: /src/client.crt
+
+            source-caches:
+              servers:
+              - url: https://cache.projectbluefin.io:11002
+                push: true
+                connection-config:
+                  keepalive-time: 60
+                  retry-limit: 5
+                  retry-delay: 1000
+                  request-timeout: 180
+                auth:
+                  client-key: /src/client.key
+                  client-cert: /src/client.crt
+
+            cache:
+              storage-service:
+                url: https://cache.projectbluefin.io:11002
+                connection-config:
+                  keepalive-time: 60
+                  retry-limit: 5
+                  retry-delay: 1000
+                  request-timeout: 180
+                auth:
+                  client-key: /src/client.key
+                  client-cert: /src/client.crt
+
+            remote-execution:
+              execution-service:
+                url: https://cache.projectbluefin.io:11002
+                connection-config:
+                  keepalive-time: 60
+                  retry-limit: 5
+                  retry-delay: 1000
+                  request-timeout: 180
+                auth:
+                  client-key: /src/client.key
+                  client-cert: /src/client.crt
+              action-cache-service:
+                url: https://cache.projectbluefin.io:11002
+                connection-config:
+                  keepalive-time: 60
+                  retry-limit: 5
+                  retry-delay: 1000
+                  request-timeout: 180
+                auth:
+                  client-key: /src/client.key
+                  client-cert: /src/client.crt
+          BSTCONFPUSH
+          fi
 
           echo "=== BuildStream CI config ==="
           cat buildstream-ci.conf
