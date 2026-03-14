@@ -109,7 +109,7 @@ export:
     $SUDO_CMD podman images | grep -E "{{image_name}}|REPOSITORY" || true
 
     # Step: Chunkify (reorganize layers)
-    just chunkify "{{image_name}}:{{image_tag}}"
+    # just chunkify "{{image_name}}:{{image_tag}}"
 
 # ── Clean ─────────────────────────────────────────────────────────────
 # Remove generated artifacts (disk image, OVMF vars, build output).
