@@ -52,15 +52,6 @@ build:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Set OCI metadata
-    rm -f include/version.yml
-    echo "oci-image-revision: '${OCI_IMAGE_REVISION}'" > include/revisions.yml
-    echo "oci-image-created: '${OCI_IMAGE_CREATED}'" >> include/revisions.yml
-    echo "oci-image-version: '${OCI_IMAGE_VERSION}'" >> include/revisions.yml
-
-    echo "oci-image-name: '{{image_name}}'" >> include/revisions.yml
-    echo "oci-image-tag: '{{image_tag}}'" >> include/revisions.yml
-
     echo "==> Building OCI image with BuildStream (inside bst2 container)..."
     just bst build oci/bluefin.bst
 
@@ -85,12 +76,34 @@ export:
     fi
 
     echo "==> Exporting OCI image..."
+    rm -rf .build-out
     just bst artifact checkout oci/bluefin.bst --directory /src/.build-out
-    echo "==> Loading OCI image..."
+
+    # Load the multi-layer OCI image and squash into a single layer.
+    # BuildStream produces separate layers (platform + gnomeos + bluefin);
+    # bootc and registry distribution work better with one squashed layer.
+    # Using podman (not skopeo) ensures the squashed view is preserved on push.
+    echo "==> Loading and squashing OCI image..."
     IMAGE_ID=$($SUDO_CMD podman pull -q oci:.build-out)
     rm -rf .build-out
-
-    $SUDO_CMD podman tag "$IMAGE_ID" "{{image_name}}:{{image_tag}}"
+    
+    # Build label arguments for dynamic OCI metadata
+    LABEL_ARGS=""
+    if [ -n "${OCI_IMAGE_CREATED}" ]; then
+        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.created=${OCI_IMAGE_CREATED}"
+    fi
+    if [ -n "${OCI_IMAGE_REVISION}" ]; then
+        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.revision=${OCI_IMAGE_REVISION}"
+    fi
+    if [ -n "${OCI_IMAGE_VERSION}" ]; then
+        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.version=${OCI_IMAGE_VERSION}"
+    fi
+    
+    # Squash and apply dynamic labels
+    # shellcheck disable=SC2086
+    printf 'FROM %s\n' "$IMAGE_ID" \
+        | $SUDO_CMD podman build --pull=never --security-opt label=type:unconfined_t --squash-all ${LABEL_ARGS} -t "{{image_name}}:{{image_tag}}" -f - .
+    $SUDO_CMD podman rmi "$IMAGE_ID" || true
 
     echo "==> Export complete. Image loaded as {{image_name}}:{{image_tag}}"
     $SUDO_CMD podman images | grep -E "{{image_name}}|REPOSITORY" || true
@@ -459,7 +472,6 @@ chunkify image_ref:
     # Note: We need --privileged for some podman-in-podman/mount scenarios or just standard access
     LOADED=$($SUDO_CMD podman run --rm \
         --security-opt label=type:unconfined_t \
-        --privileged \
         --mount=type=image,src="{{image_ref}}",dest=/chunkah \
         -e "CHUNKAH_CONFIG_STR=$CONFIG" \
         quay.io/jlebon/chunkah:latest build | $SUDO_CMD podman load)
@@ -525,7 +537,7 @@ boot-fast: _ensure-bcvk
     $SUDO_CMD bcvk ephemeral run-ssh \
         --memory "{{vm_ram}}M" \
         --vcpus "{{vm_cpus}}" \
-        "{{image_name}}:{{image_tag}}"
+        "localhost/{{image_name}}:{{image_tag}}"
 
 # Inspect the built bootc image.
 [group('info')]

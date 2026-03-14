@@ -19,5 +19,3 @@
 
 # Git worktrees
 .worktrees/
-
-include/revisions.yml

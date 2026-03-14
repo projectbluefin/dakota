@@ -1,8 +1,0 @@
-# These get replaced in CI.
-# We should also set them for local builds, but that's for later
-# git rev-parse --long HEAD
-oci-image-revision: "local-build"
-oci-image-created: "local-build"
-oci-image-version: "local-build"
-oci-image-name: "dakota"
-oci-image-tag: "latest"

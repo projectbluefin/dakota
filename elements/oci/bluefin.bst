@@ -7,6 +7,9 @@ build-depends:
   - gnome-build-meta.bst:core-deps/dconf.bst
   - gnome-build-meta.bst:freedesktop-sdk.bst:vm/prepare-image.bst
   - oci/layers/bluefin-init-scripts.bst
+  - filename: gnome-build-meta.bst:oci/gnomeos/image.bst
+    config:
+      location: /parent
   - filename: oci/layers/bluefin.bst
     config:
       location: /layer
@@ -55,6 +58,8 @@ config:
       images:
       - os: linux
         architecture: "%{go-arch}"
+        parent:
+          image: /parent
         layer: /layer
         comment: "Import Bluefin layer"
         config:
@@ -66,10 +71,7 @@ config:
             'org.opencontainers.image.licenses': 'Apache-2.0'
             'org.opencontainers.image.url': 'https://projectbluefin.io'
             'org.opencontainers.image.source': 'https://github.com/projectbluefin/dakota'
-            'org.opencontainers.image.created': '%{oci-image-created}'
-            'org.opencontainers.image.revision': '%{oci-image-revision}'
-            'org.opencontainers.image.version': '%{oci-image-version}'
             'containers.bootc': '1'
         index-annotations:
-          'org.opencontainers.image.ref.name': '%{oci-image-name}:%{oci-image-tag}'
+          'org.opencontainers.image.ref.name': 'ghcr.io/projectbluefin/dakota:latest'
       EOF
