@@ -3,6 +3,11 @@ name: Build Bluefin dakota
 on:
   schedule:
     - cron: '0 8 * * *'  # Daily at 08:00 UTC, after GNOME OS builds (~03:03) and source tracking (06:00)
+  push:
+    branches: [main]
+    paths-ignore: ["**/*.md"]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 env:
