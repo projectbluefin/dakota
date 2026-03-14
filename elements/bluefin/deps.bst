@@ -25,12 +25,23 @@ depends:
   - bluefin/jetbrains-mono.bst
   - bluefin/jetbrains-mono-nerd-font.bst
 
+  - bluefin/uutils-coreutils.bst
+  - bluefin/sudo-rs.bst
+
   # Include things missing from the gnomeos base image
+  - freedesktop-sdk.bst:components/buildstream2.bst
+  - freedesktop-sdk.bst:components/containers-common.bst
+  - freedesktop-sdk.bst:components/debuginfod.bst
   - freedesktop-sdk.bst:components/git-lfs.bst
   - freedesktop-sdk.bst:components/git.bst
   - freedesktop-sdk.bst:components/podman.bst
-  - freedesktop-sdk.bst:components/containers-common.bst
   - freedesktop-sdk.bst:components/skopeo.bst
+
+  - freedesktop-sdk.bst:components/bpf.bst
+  - freedesktop-sdk.bst:components/vmlinuxh.bst
+  - gnome-build-meta.bst:gnomeos-deps/bpftop.bst
+  - gnome-build-meta.bst:core/sysprof-app.bst
+
   - gnome-build-meta.bst:gnomeos-deps/distrobox.bst
   - gnome-build-meta.bst:gnomeos-deps/just.bst
   - gnome-build-meta.bst:gnomeos-deps/wl-clipboard.bst
