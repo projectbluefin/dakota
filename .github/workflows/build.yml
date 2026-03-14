@@ -190,6 +190,8 @@ jobs:
       # ── Validation ────────────────────────────────────────────────────
 
       - name: Validate with bootc container lint
+        env:
+          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
         run: |
            just lint
 
