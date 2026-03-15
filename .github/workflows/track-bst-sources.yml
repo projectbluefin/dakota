@@ -183,7 +183,7 @@ jobs:
             sed -i "s|download/${CURRENT_TAG}/|download/${BREW_RELEASE}/|" "$BST_FILE_ARM"
 
             just bst -o arch x86_64 source track bluefin/brew-tarball/brew-tarball-x86_64.bst
-            just bst -o arch x86_64 source track bluefin/brew-tarball/brew-tarball-aarch64.bst
+            just bst -o arch aarch64 source track bluefin/brew-tarball/brew-tarball-aarch64.bst
           fi
 
           # ── wallpapers: ublue-os/artwork bluefin releases ──
@@ -223,7 +223,7 @@ jobs:
             sed -i "s|v${CURRENT_CLI_VERSION}|v${CLI_VERSION}|g" elements/bluefin/1password-cli/1password-cli-aarch64.bst
 
             just bst -o arch x86_64 source track bluefin/1password-cli/1password-cli-x86_64.bst
-            just bst -o arch x86_64 source track bluefin/1password-cli/1password-cli-aarch64.bst
+            just bst -o arch aarch64 source track bluefin/1password-cli/1password-cli-aarch64.bst
 
           fi
 
@@ -243,7 +243,7 @@ jobs:
             sed -i "s|1password-${CURRENT_DESKTOP_VERSION}\.arm64|1password-${DESKTOP_VERSION}.arm64|g" elements/bluefin/1password/1password-aarch64.bst
 
             just bst -o arch x86_64 source track bluefin/1password/1password-x86_64.bst
-            just bst -o arch x86_64 source track bluefin/1password/1password-aarch64.bst
+            just bst -o arch aarch64 source track bluefin/1password/1password-aarch64.bst
           fi
 
           if git diff --quiet; then
