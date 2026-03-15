@@ -4,7 +4,7 @@ default:
     @just --list
 
 # ── Configuration ─────────────────────────────────────────────────────
-export image_name := env("BUILD_IMAGE_NAME", "ghcr.io/projectbluefin/dakota")
+export image_name := env("BUILD_IMAGE_NAME", "dakota")
 export image_tag := env("BUILD_IMAGE_TAG", "latest")
 export base_dir := env("BUILD_BASE_DIR", ".")
 export filesystem := env("BUILD_FILESYSTEM", "btrfs")
