@@ -35,26 +35,22 @@ jobs:
             title: "chore(deps): track Bluefin element sources"
             auto_merge: true
             elements: >-
-              elements/bluefin/brew.bst
-              elements/bluefin/common.bst
-              elements/bluefin/jetbrains-mono.bst
-              elements/bluefin/shell-extensions/app-indicators.bst
-              elements/bluefin/shell-extensions/blur-my-shell.bst
-              elements/bluefin/shell-extensions/dash-to-dock.bst
-              elements/bluefin/shell-extensions/gsconnect.bst
-              elements/bluefin/shell-extensions/search-light.bst
-              elements/bluefin/shell-extensions/logomenu.bst
-              elements/core/build-oci-rs.bst
+              bluefin/brew.bst
+              bluefin/common.bst
+              bluefin/jetbrains-mono.bst
+              bluefin/shell-extensions/app-indicators.bst
+              bluefin/shell-extensions/blur-my-shell.bst
+              bluefin/shell-extensions/dash-to-dock.bst
+              bluefin/shell-extensions/gsconnect.bst
+              bluefin/shell-extensions/search-light.bst
+              bluefin/shell-extensions/logomenu.bst
           - group: manual-merge
             branch: auto/track-core-sources
             title: "chore(deps): track core and junction sources"
             auto_merge: false
             elements: >-
-              elements/gnome-build-meta.bst
-              elements/freedesktop-sdk.bst
-              elements/core/grub.bst
-              elements/core/ptyxis.bst
-              elements/core/efibootmgr.bst
+              gnome-build-meta.bst
+              freedesktop-sdk.bst
 
     steps:
       - name: Should this group run?
@@ -67,6 +63,9 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Setup Just
+        uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
+
       - name: Checkout repository
         if: steps.gate.outputs.run == 'true'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -78,44 +77,11 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         run: podman pull "$BST2_IMAGE"
 
-      - name: Prepare BuildStream cache directory
-        if: steps.gate.outputs.run == 'true'
-        run: mkdir -p "$HOME/.cache/buildstream/sources"
-
       - name: Track sources with BuildStream
         if: steps.gate.outputs.run == 'true'
         run: |
-          podman run --rm \
-            --privileged \
-            --device /dev/fuse \
-            -v "${{ github.workspace }}:/src:rw" \
-            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
-            -w /src \
-            "$BST2_IMAGE" \
-            bash -c '
-              ulimit -n 1048576 || true
-
-              ELEMENTS="${{ matrix.elements }}"
-              echo "=== Tracking sources for: ==="
-              echo "$ELEMENTS" | tr " " "\n"
-              echo ""
-
-              FAILED=""
-              for el in $ELEMENTS; do
-                echo "--- Tracking: $el ---"
-                if bst --no-interactive source track "$el" 2>&1; then
-                  echo "OK: $el"
-                else
-                  echo "FAILED: $el"
-                  FAILED="$FAILED $el"
-                fi
-              done
-
-              if [ -n "$FAILED" ]; then
-                echo ""
-                echo "::warning::Some elements failed to track:$FAILED"
-              fi
-            '
+          ELEMENTS="${{ matrix.elements }}"
+          just bst --no-interactive source track "$ELEMENTS"
 
       - name: Check for changes
         if: steps.gate.outputs.run == 'true'
@@ -192,13 +158,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Setup Just
+        uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
+
       - name: Check for tarball updates
         id: tarballs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          CHANGED=false
-
           # ── brew-tarball: ublue-os/packages homebrew releases ──
           echo "=== Checking brew-tarball ==="
           BREW_RELEASE=$(gh api repos/ublue-os/packages/releases \
@@ -212,18 +179,11 @@ jobs:
 
           if [ "$BREW_RELEASE" != "$CURRENT_TAG" ]; then
             echo "Brew tarball needs update: $CURRENT_TAG -> $BREW_RELEASE"
-
-            NEW_SHA_X86=$(curl -fsSL "https://github.com/ublue-os/packages/releases/download/${BREW_RELEASE}/homebrew-x86_64.tar.zst" | sha256sum | cut -d' ' -f1)
-            echo "New x86_64 SHA256: $NEW_SHA_X86"
             sed -i "s|download/${CURRENT_TAG}/|download/${BREW_RELEASE}/|" "$BST_FILE_X86"
-            sed -i "s|ref: [a-f0-9]\{64\}|ref: ${NEW_SHA_X86}|" "$BST_FILE_X86"
-
-            NEW_SHA_ARM=$(curl -fsSL "https://github.com/ublue-os/packages/releases/download/${BREW_RELEASE}/homebrew-aarch64.tar.zst" | sha256sum | cut -d' ' -f1)
-            echo "New aarch64 SHA256: $NEW_SHA_ARM"
             sed -i "s|download/${CURRENT_TAG}/|download/${BREW_RELEASE}/|" "$BST_FILE_ARM"
-            sed -i "s|ref: [a-f0-9]\{64\}|ref: ${NEW_SHA_ARM}|" "$BST_FILE_ARM"
 
-            CHANGED=true
+            just bst -o arch x86_64 source track bluefin/brew-tarball/brew-tarball-x86_64.bst
+            just bst -o arch x86_64 source track bluefin/brew-tarball/brew-tarball-aarch64.bst
           fi
 
           # ── wallpapers: ublue-os/artwork bluefin releases ──
@@ -240,11 +200,9 @@ jobs:
           if [ "$WALL_RELEASE" != "$CURRENT_TAG" ]; then
             echo "Wallpapers need update: $CURRENT_TAG -> $WALL_RELEASE"
             NEW_URL="https://github.com/ublue-os/artwork/releases/download/${WALL_RELEASE}/bluefin-wallpapers-gnome.tar.zstd"
-            NEW_SHA=$(curl -fsSL "$NEW_URL" | sha256sum | cut -d' ' -f1)
-            echo "New SHA256: $NEW_SHA"
             sed -i "s|download/${CURRENT_TAG}/|download/${WALL_RELEASE}/|" "$BST_FILE"
-            sed -i "s|ref: [a-f0-9]\{64\}|ref: ${NEW_SHA}|" "$BST_FILE"
-            CHANGED=true
+
+            just bst -o arch x86_64 source track bluefin/wallpapers.bst
           fi
 
           # ── 1password-cli: 1Password CLI releases ──
@@ -255,27 +213,25 @@ jobs:
           CLI_VERSION=$(echo "$ONEPASSWORD_PACKAGES" | grep -A5 "^Package: 1password-cli$" | grep "^Version:" | head -1 | awk '{print $2}' | sed 's/-[0-9]*$//')
           echo "Latest CLI version: $CLI_VERSION"
 
+
           CURRENT_CLI_VERSION=$(grep -oP 'v\K[0-9.]+(?=/)' elements/bluefin/1password-cli/1password-cli-x86_64.bst | head -1)
           echo "Current CLI version: $CURRENT_CLI_VERSION"
 
           if [ -n "$CLI_VERSION" ] && [ "$CLI_VERSION" != "$CURRENT_CLI_VERSION" ]; then
             echo "CLI needs update: $CURRENT_CLI_VERSION -> $CLI_VERSION"
-
-            NEW_SHA_AMD64=$(curl -fsSL "https://cache.agilebits.com/dist/1P/op2/pkg/v${CLI_VERSION}/op_linux_amd64_v${CLI_VERSION}.zip" | sha256sum | cut -d' ' -f1)
             sed -i "s|v${CURRENT_CLI_VERSION}|v${CLI_VERSION}|g" elements/bluefin/1password-cli/1password-cli-x86_64.bst
-            sed -i "s|ref: [a-f0-9]\{64\}|ref: ${NEW_SHA_AMD64}|" elements/bluefin/1password-cli/1password-cli-x86_64.bst
-
-            NEW_SHA_ARM64=$(curl -fsSL "https://cache.agilebits.com/dist/1P/op2/pkg/v${CLI_VERSION}/op_linux_arm64_v${CLI_VERSION}.zip" | sha256sum | cut -d' ' -f1)
             sed -i "s|v${CURRENT_CLI_VERSION}|v${CLI_VERSION}|g" elements/bluefin/1password-cli/1password-cli-aarch64.bst
-            sed -i "s|ref: [a-f0-9]\{64\}|ref: ${NEW_SHA_ARM64}|" elements/bluefin/1password-cli/1password-cli-aarch64.bst
 
-            CHANGED=true
+            just bst -o arch x86_64 source track bluefin/1password-cli/1password-cli-x86_64.bst
+            just bst -o arch x86_64 source track bluefin/1password-cli/1password-cli-aarch64.bst
+
           fi
+
 
           # ── 1password: 1Password desktop releases ──
           echo ""
           echo "=== Checking 1password desktop ==="
-          DESKTOP_VERSION=$(echo "$ONEPASSWORD_PACKAGES" | grep -A5 "^Package: 1password$" | grep "^Version:" | head -1 | awk '{print $2}')
+          DESKTOP_VERSION=$(echo "$ONEPASSWORD_PACKAGES" | grep -A10 "^Package: 1password$" | grep "^Version:" | head -1 | awk '{print $2}')
           echo "Latest desktop version: $DESKTOP_VERSION"
 
           CURRENT_DESKTOP_VERSION=$(grep -oP '1password-\K[0-9.]+(?=\.x64)' elements/bluefin/1password/1password-x86_64.bst | head -1)
@@ -283,19 +239,21 @@ jobs:
 
           if [ -n "$DESKTOP_VERSION" ] && [ "$DESKTOP_VERSION" != "$CURRENT_DESKTOP_VERSION" ]; then
             echo "Desktop needs update: $CURRENT_DESKTOP_VERSION -> $DESKTOP_VERSION"
-
-            NEW_SHA_AMD64=$(curl -fsSL "https://downloads.1password.com/linux/tar/stable/x86_64/1password-${DESKTOP_VERSION}.x64.tar.gz" | sha256sum | cut -d' ' -f1)
             sed -i "s|1password-${CURRENT_DESKTOP_VERSION}\.x64|1password-${DESKTOP_VERSION}.x64|g" elements/bluefin/1password/1password-x86_64.bst
-            sed -i "s|ref: [a-f0-9]\{64\}|ref: ${NEW_SHA_AMD64}|" elements/bluefin/1password/1password-x86_64.bst
-
-            NEW_SHA_ARM64=$(curl -fsSL "https://downloads.1password.com/linux/tar/stable/aarch64/1password-${DESKTOP_VERSION}.arm64.tar.gz" | sha256sum | cut -d' ' -f1)
             sed -i "s|1password-${CURRENT_DESKTOP_VERSION}\.arm64|1password-${DESKTOP_VERSION}.arm64|g" elements/bluefin/1password/1password-aarch64.bst
-            sed -i "s|ref: [a-f0-9]\{64\}|ref: ${NEW_SHA_ARM64}|" elements/bluefin/1password/1password-aarch64.bst
 
-            CHANGED=true
+            just bst -o arch x86_64 source track bluefin/1password/1password-x86_64.bst
+            just bst -o arch x86_64 source track bluefin/1password/1password-aarch64.bst
           fi
 
-          echo "has_changes=$CHANGED" >> "$GITHUB_OUTPUT"
+          if git diff --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No changes detected"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "Changes detected:"
+            git diff --stat
+          fi
 
       - name: Create tarball update PR
         if: steps.tarballs.outputs.has_changes == 'true'
