@@ -30,6 +30,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     permissions:
+      id-token: write
       contents: read
       packages: write
     # Variant matrix: the default Bluefin image and the NVIDIA variant build
@@ -66,14 +67,13 @@ jobs:
           [[ "$just_sha" == "$track_sha" ]] || { echo "ERROR: bst2 pin drift — Justfile: $just_sha  track-bst-sources.yml: $track_sha"; exit 1; }
           echo "OK: bst2 pins consistent: $just_sha"
 
-      # FIXME: Make the build with JWT work
-      # - name: Get JWT token
-      #   uses: actions/github-script@v7
-      #   with:
-      #     script: |
-      #       const fs = require('fs');
-      #       const token = await core.getIDToken('cache.projectbluefin.io')
-      #       fs.writeFileSync('bluefin.token', token, { mode: 0o600 });
+      - name: Get JWT token
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const token = await core.getIDToken('cache.projectbluefin.io')
+            fs.writeFileSync('bluefin.token', token, { mode: 0o644 });
 
       - name: Mount BTRFS for podman storage
         id: container-storage
@@ -104,15 +104,10 @@ jobs:
       # - cache-buildtrees: never -> save disk (we only need final artifacts)
       #
       - name: Generate BuildStream CI config
-        env:
-          CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
-          CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
         run: |
           mkdir -p logs
 
           # Setup certificate for pushing to the cache
-          echo "$CASD_CLIENT_CERT" > client.crt
-          echo "$CASD_CLIENT_KEY" > client.key
           cat > buildstream-ci.conf <<'BSTCONF'
           scheduler:
             on-error: continue
@@ -146,7 +141,7 @@ jobs:
             cat >> buildstream-ci.conf <<'BSTCONFPUSH'
           artifacts:
             servers:
-            - url: https://cache.projectbluefin.io:11002
+            - url: https://cache.projectbluefin.io:11004
               push: true
               connection-config:
                 keepalive-time: 180
@@ -154,12 +149,11 @@ jobs:
                 retry-delay: 1000
                 request-timeout: 180
               auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
+                access-token: /src/bluefin.token
 
           source-caches:
             servers:
-            - url: https://cache.projectbluefin.io:11002
+            - url: https://cache.projectbluefin.io:11004
               push: true
               connection-config:
                 keepalive-time: 180
@@ -167,42 +161,38 @@ jobs:
                 retry-delay: 1000
                 request-timeout: 180
               auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
+                access-token: /src/bluefin.token
 
           cache:
             storage-service:
-              url: https://cache.projectbluefin.io:11002
+              url: https://cache.projectbluefin.io:11004
               connection-config:
                 keepalive-time: 180
                 retry-limit: 5
                 retry-delay: 1000
                 request-timeout: 180
               auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
+                access-token: /src/bluefin.token
 
           remote-execution:
             execution-service:
-              url: https://cache.projectbluefin.io:11002
+              url: https://cache.projectbluefin.io:11004
               connection-config:
                 keepalive-time: 180
                 retry-limit: 5
                 retry-delay: 1000
                 request-timeout: 180
               auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
+                access-token: /src/bluefin.token
             action-cache-service:
-              url: https://cache.projectbluefin.io:11002
+              url: https://cache.projectbluefin.io:11004
               connection-config:
                 keepalive-time: 180
                 retry-limit: 5
                 retry-delay: 1000
                 request-timeout: 180
               auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
+                access-token: /src/bluefin.token
           BSTCONFPUSH
           fi
 
@@ -252,10 +242,9 @@ jobs:
            just lint
 
       # Delete jwt token just in case
-      # FIXME: Make the build with JWT work
-      # - name: Delete token
-      #   if: always()
-      #   run: rm -f bluefin.token
+      - name: Delete token
+        if: always()
+        run: rm -f bluefin.token
 
       # ── Upload build logs ─────────────────────────────────────────────
       # Always upload, even on failure, so build failures can be diagnosed.
