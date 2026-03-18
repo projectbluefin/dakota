@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:icedman/search-light.git
   track: main
-  ref: e4ad180171c146f851da72ae13b7e5d1f1d056b1
+  ref: 4e93e0e3e2fba8512dfd588177b7a6a2a71c9f1e
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-make.bst
