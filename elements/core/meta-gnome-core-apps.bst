@@ -5,6 +5,7 @@ description: |
   Overridden to only keep some applications.
 
 depends:
+  - core/ptyxis.bst
   - gnome-build-meta.bst:core/baobab.bst
   - gnome-build-meta.bst:core/gnome-disk-utility.bst
   - gnome-build-meta.bst:core/gnome-system-monitor.bst
