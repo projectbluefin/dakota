@@ -18,6 +18,7 @@ depends:
   - bluefin/glow/glow.bst
   - bluefin/gum/gum.bst
   - bluefin/fzf/fzf.bst
+  - bluefin/tealdeer/tealdeer.bst
 
   - bluefin/common.bst
   - bluefin/wallpapers.bst
