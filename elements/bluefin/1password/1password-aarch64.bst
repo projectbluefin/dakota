@@ -4,5 +4,5 @@ kind: manual
 
 sources:
 - kind: tar
-  url: onepassword_files:linux/tar/stable/aarch64/1password-8.12.8.arm64.tar.gz
-  ref: 52ab78e28b5ce34fefeff7fdd2bd814b4c8ad53b9cb4e3b45547161a18efd292
+  url: onepassword_files:linux/tar/stable/aarch64/1password-8.12.10.arm64.tar.gz
+  ref: 6cd9af5e0feb44cd28b421c577968cfb8ac4b785c557637c420a9942a592aff9
