@@ -4,11 +4,11 @@ sources:
 - kind: tar
   (?):
   - arch == "x86_64":
-      url: onepassword_files:linux/tar/stable/x86_64/1password-8.12.8.x64.tar.gz
-      ref: 58c0296af6064784d7d7f831f328f3688d121dfd42102f80cbd9c0cb108e2ecd
+      url: onepassword_files:linux/tar/stable/x86_64/1password-8.12.10.x64.tar.gz
+      ref: 83d6adb7ed43439d1f5ab6ae6c991dc626b0d5ec207db66f435f2662d008aa23
   - arch == "aarch64":
-      url: onepassword_files:linux/tar/stable/aarch64/1password-8.12.8.arm64.tar.gz
-      ref: 52ab78e28b5ce34fefeff7fdd2bd814b4c8ad53b9cb4e3b45547161a18efd292
+      url: onepassword_files:linux/tar/stable/aarch64/1password-8.12.10.arm64.tar.gz
+      ref: 6cd9af5e0feb44cd28b421c577968cfb8ac4b785c557637c420a9942a592aff9
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
