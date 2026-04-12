@@ -29,6 +29,8 @@ depends:
   - bluefin/sudo-rs.bst
   - bluefin/efibootmgr.bst
 
+  - bluefin/docker.bst
+
   # Include things missing from the gnomeos base image
   - freedesktop-sdk.bst:components/buildstream2.bst
   - freedesktop-sdk.bst:components/containers-common.bst
