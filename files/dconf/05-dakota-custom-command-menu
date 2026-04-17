@@ -1,0 +1,21 @@
+# Custom Command Menu extension configuration
+# https://github.com/StorageB/custom-command-menu
+#
+# Fixes: https://github.com/projectbluefin/dakota/issues/228
+# The extension uses command1-99 keys of type (sssb): (label, command, icon, visible).
+# The upstream common distro db uses stale entryrow* keys not in the schema; this file
+# provides the correct keys so the menu survives dconf reset and fresh installs.
+
+[org/gnome/shell/extensions/custom-command-list]
+command-order=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+command1=('---$(hostname)', '', '', true)
+command2=('About', 'gnome-control-center system about', '', true)
+command3=('System Monitor', '/usr/bin/missioncenter-helper', '', true)
+command4=('System Settings', 'gnome-control-center', '', true)
+command5=('---Applications', '', '', true)
+command6=('Bazaar App Store', '/usr/bin/flatpak run io.github.kolunmi.Bazaar', '', true)
+command7=('Extensions', 'flatpak run com.mattjakeman.ExtensionManager', '', true)
+command8=('Terminal', 'xdg-terminal-exec', '', true)
+command9=('---Help', '', '', true)
+command10=('Documentation', 'xdg-open https://docs.projectbluefin.io/', '', true)
+command11=('Ask Bluefin', 'xdg-open https://ask.projectbluefin.io', '', true)
