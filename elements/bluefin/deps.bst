@@ -28,6 +28,7 @@ depends:
   - bluefin/sudo-rs.bst
   - bluefin/efibootmgr.bst
   - bluefin/xdg-terminal-exec.bst
+  - bluefin/luks-gpt-migration.bst
 
   # Include things missing from the gnomeos base image
   - freedesktop-sdk.bst:components/buildstream2.bst
