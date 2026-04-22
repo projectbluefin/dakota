@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000001 Mon Sep 17 00:00:00 2001
+From: James Reilly <hanthor@users.noreply.github.com>
+Date: Wed, 22 Apr 2026 16:30:00 +0530
+Subject: [PATCH 9/9] linux: Enable IPv6 policy routing (IPV6_MULTIPLE_TABLES)
+
+Without CONFIG_IPV6_MULTIPLE_TABLES, `ip -6 rule` fails entirely and
+tailscaled cannot install its IPv6 routing rules. This causes tailscaled
+to fall back to using fe80:: link-local IPv6 paths for LAN peers, which
+are sticky and do not recover cleanly after sleep/wake cycles. The result
+is silent WireGuard data loss: disco pings continue to work (different
+code path) while all WireGuard data packets time out.
+
+The Fedora kernel has had IPV6_MULTIPLE_TABLES enabled for years.
+IPV6_SUBTREES (source-address-based routing) is also enabled here as it
+is a natural companion and is likewise enabled by Fedora.
+
+Symptoms of missing IPV6_MULTIPLE_TABLES:
+  tailscaled log: "router: disabling tunneled IPv6 due to system IPv6
+  config: kernel doesn't support IPv6 policy routing"
+  `ip -6 rule`: RTNETLINK answers: Address family not supported by protocol
+---
+ files/linux/fdsdk-config.sh | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/files/linux/fdsdk-config.sh b/files/linux/fdsdk-config.sh
+index 1b9465fd9..c23f8b2a1 100644
+--- a/files/linux/fdsdk-config.sh
++++ b/files/linux/fdsdk-config.sh
+@@ -2811,3 +2811,10 @@
+ if has ACPI; then
+   module INPUT_SOC_BUTTON_ARRAY
+ fi
++
++# IPv6 policy routing - required by tailscaled and other tools that use
++# `ip -6 rule`. Without this, tailscaled cannot install its IPv6 routing
++# rules and falls back to link-local paths that break after sleep/wake.
++if has IPV6; then
++  enable IPV6_MULTIPLE_TABLES
++  enable IPV6_SUBTREES
++fi
