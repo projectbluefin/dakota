@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:ublue-os/brew.git
   track: main
-  ref: ed98bd8774ef7c05b64c90dfde582e5ce2f9260b
+  ref: 498094cec1c13bb1f376a753e66a47f15e4f3458
 
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
