@@ -1,0 +1,26 @@
+From c6c4d3a6d7a5f590800925085729baff9de0acb0 Mon Sep 17 00:00:00 2001
+From: freedesktop_sdk_updater <freedesktop_sdk_updater@libreml.com>
+Date: Tue, 12 May 2026 05:22:47 +0000
+Subject: [PATCH] Update elements/include/linux.yml to v7.0.6-0
+
+Updates elements/include/linux.yml to v7.0.6-0 (5d83f95)
+Previous version was v7.0.1-0 (3cb1fb7)
+---
+ elements/include/linux.yml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/elements/include/linux.yml b/elements/include/linux.yml
+index 0d70a2471d..8ae31219e2 100644
+--- a/elements/include/linux.yml
++++ b/elements/include/linux.yml
+@@ -4,6 +4,6 @@ sources:
+   track: v*
+   exclude:
+   - '*-rc*'
+-  ref: v7.0.1-0-g3cb1fb7a56d2fd8011f5282bc170c0d23dc1f4b5
++  ref: v7.0.6-0-g5d83f95062a860326fd9c69a9d7a1f01063270c1
+ - kind: patch_queue
+   path: patches/linux
+-- 
+GitLab
+

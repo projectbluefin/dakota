@@ -1,0 +1,58 @@
+From bccca68c136facee215dc1d4bb7d03402641110a Mon Sep 17 00:00:00 2001
+From: Ahmed Adan <ahmed.adan@gmail.com>
+Date: Wed, 13 May 2026 20:13:30 -0400
+Subject: [PATCH] linux: backport overlayfs fsverity loaded check fix
+
+Backport of [FROM-ML] fix for f77f281b6118 ('fsverity: use a hashtable
+to find the fsverity_info') which broke ovl_ensure_verity_loaded when
+the inode was not in core. This breaks bootc on the v7.0.1 kernel.
+
+Upstream-Status: Submitted
+Link: https://github.com/bootc-dev/bootc/issues/2174
+Link: https://github.com/OpenGamingCollective/linux/commit/a9abecad80c9f0ca0e6ab4243158a349f102e6a3
+---
+ ...-overlayfs-fix-fsverity-loaded-check.patch | 32 +++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+ create mode 100644 patches/linux/0002-overlayfs-fix-fsverity-loaded-check.patch
+
+diff --git a/patches/linux/0002-overlayfs-fix-fsverity-loaded-check.patch b/patches/linux/0002-overlayfs-fix-fsverity-loaded-check.patch
+new file mode 100644
+index 000000000..b94aa59c5
+--- /dev/null
++++ b/patches/linux/0002-overlayfs-fix-fsverity-loaded-check.patch
+@@ -0,0 +1,32 @@
++From a9abecad80c9f0ca0e6ab4243158a349f102e6a3 Mon Sep 17 00:00:00 2001
++From: Colin Walters <walters@verbum.org>
++Date: Thu, 7 May 2026 16:05:44 -0700
++Subject: [PATCH] [FROM-ML] Commit f77f281b6118 ("fsverity: use a hashtable to
++ find the fsverity_info") that broke `ovl_ensure_verity_loaded` in the case
++ when the inode was not in core.
++
++The APIs here are in my opinion now confusing, but this patch intentionally
++aims for a minimized fix by using `fsverity_get_info()` which ensures
++the hash table is loaded.
++
++Fixes: f77f281b6118 ("fsverity: use a hashtable to find the fsverity_info")
++Cc: stable@vger.kernel.org
++Link: https://github.com/bootc-dev/bootc/issues/2174
++Signed-off-by: Colin Walters <walters@verbum.org>
++---
++ fs/overlayfs/util.c | 2 +-
++ 1 file changed, 1 insertion(+), 1 deletion(-)
++
++diff --git a/fs/overlayfs/util.c b/fs/overlayfs/util.c
++index 2ea769f311c34..5a2a09c15036d 100644
++--- a/fs/overlayfs/util.c
+++++ b/fs/overlayfs/util.c
++@@ -1379,7 +1379,7 @@ int ovl_ensure_verity_loaded(const struct path *datapath)
++ 	struct inode *inode = d_inode(datapath->dentry);
++ 	struct file *filp;
++ 
++-	if (!fsverity_active(inode) && IS_VERITY(inode)) {
+++	if (IS_VERITY(inode) && !fsverity_get_info(inode)) {
++ 		/*
++ 		 * If this inode was not yet opened, the verity info hasn't been
++ 		 * loaded yet, so we need to do that here to force it into memory.
+-- 
+2.54.0
+

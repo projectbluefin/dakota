@@ -22,27 +22,81 @@ env:
   IMAGE_NAME: dakota
   IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
 
-# Concurrency: serialize builds to avoid saturating cache.projectbluefin.io.
-# - PR builds all share one global slot ("pr") so only one PR build runs at
-#   a time; additional PR builds queue and run in order. Running builds are
-#   never cancelled (cancel-in-progress: false), so every PR completes its
-#   checks. A pending-but-not-yet-started run is replaced if a new one arrives.
-# - Scheduled/merge_group/dispatch use per-ref isolation so concurrent runs
-#   for the same ref queue rather than stomp each other.
+# Concurrency: per-ref isolation for all events.
+# - PRs: each PR gets its own slot (validate job only — no AX102-U usage).
+#   cancel-in-progress: true on the validate job cancels stale runs on push.
+# - merge_group / schedule / dispatch: per-ref queuing, never cancelled, so
+#   every build that enters the merge queue completes its check.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && 'pr' || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build:
+  # ── Fast PR validation ───────────────────────────────────────────────────
+  # Fires only on pull_request. Runs bst show on the full element graph for
+  # both variants. Zero remote-execution — does not touch cache.projectbluefin.io.
+  # Expected runtime: <15 min (BST cache hit), <30 min (cold start).
+  validate:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
-    # Variant matrix: the default Bluefin image and the NVIDIA variant build
-    # in parallel for scheduled/merge_group/dispatch. On pull_request, run
-    # sequentially (max-parallel: 1) so only one BST session at a time uses
-    # the remote execution server.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-validate-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Check bst2 image pin consistency
+        run: |
+          just_sha="$(grep -oE 'bst2:[a-f0-9]{40}' Justfile | cut -d: -f2)"
+          track_sha="$(grep -oE 'bst2:[a-f0-9]{40}' .github/workflows/track-bst-sources.yml | cut -d: -f2)"
+          if [[ -z "$just_sha" || -z "$track_sha" ]]; then
+            echo "ERROR: could not find bst2 SHA (Justfile: '${just_sha:-missing}', track-bst-sources.yml: '${track_sha:-missing}')"; exit 1
+          fi
+          [[ "$just_sha" == "$track_sha" ]] || { echo "ERROR: bst2 pin drift — Justfile: $just_sha  track-bst-sources.yml: $track_sha"; exit 1; }
+          echo "OK: bst2 pins consistent: $just_sha"
+
+      - name: Setup Just
+        uses: taiki-e/install-action@e1c4cd42111751368541a7cb5db3522bd1f846a4 # v2
+        with:
+          tool: just
+
+      # Cache the BST workspace (junction git sources + bst2 container layers).
+      # Key includes junction element refs so junction bumps start fresh.
+      # Without this, bst show must clone gnome-build-meta + freedesktop-sdk
+      # from scratch on every PR run (~15-25 min extra).
+      - name: Restore BST cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/buildstream
+          key: bst-show-${{ hashFiles('elements/gnome-build-meta.bst', 'elements/freedesktop-sdk.bst', 'Justfile') }}
+          restore-keys: bst-show-
+
+      - name: Validate BST element graph (default)
+        env:
+          BST_FLAGS: -o x86_64_v3 true --no-interactive
+        run: just bst show --deps all oci/bluefin.bst
+
+      - name: Validate BST element graph (nvidia)
+        env:
+          BST_FLAGS: -o x86_64_v3 true --no-interactive
+        run: just bst show --deps all oci/bluefin-nvidia.bst
+
+  # ── Full OCI build ────────────────────────────────────────────────────────
+  # Fires on merge_group, schedule, and workflow_dispatch — NOT on pull_request.
+  # PRs are validated by the validate job above; the full build is the
+  # merge-queue gate. This keeps cache.projectbluefin.io free from PR traffic.
+  build:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    # Both variants build in parallel. NVIDIA is continue-on-error so its
+    # failure does not block the default image's merge or publication.
     strategy:
       fail-fast: false
-      max-parallel: ${{ github.event_name == 'pull_request' && 1 || 2 }}
+      max-parallel: 2
       matrix:
         include:
           - variant: default
@@ -82,7 +136,7 @@ jobs:
       #       fs.writeFileSync('bluefin.token', token, { mode: 0o600 });
 
       - name: Setup Just
-        uses: taiki-e/install-action@3235f8901fd37ffed0052b276cec25a362fb82e9 # v2
+        uses: taiki-e/install-action@e1c4cd42111751368541a7cb5db3522bd1f846a4 # v2
         with:
           tool: just
 
@@ -116,7 +170,6 @@ jobs:
       #
       - name: Generate BuildStream CI config
         env:
-          EVENT_NAME: ${{ github.event_name }}
           CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
           CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
         run: |
@@ -145,14 +198,8 @@ jobs:
             cat >> buildstream-ci.conf <<'BSTCONFPUSH'
           build:
             retry-failed: True
+            max-jobs: 32
           BSTCONFPUSH
-            # Limit remote-exec parallelism on PRs: one PR build at a time on
-            # the buildbox, so use 8 jobs instead of 32 to leave headroom.
-            if [[ "$EVENT_NAME" == "pull_request" ]]; then
-              echo "  max-jobs: 8" >> buildstream-ci.conf
-            else
-              echo "  max-jobs: 32" >> buildstream-ci.conf
-            fi
           else
             cat >> buildstream-ci.conf <<'BSTCONFNOPUSH'
           build:
@@ -293,7 +340,7 @@ jobs:
         uses: ublue-os/remove-unwanted-software@cc0becac701cf642c8f0a6613bbdaf5dc36b259e # v9
 
       - name: Setup Just
-        uses: taiki-e/install-action@3235f8901fd37ffed0052b276cec25a362fb82e9 # v2
+        uses: taiki-e/install-action@e1c4cd42111751368541a7cb5db3522bd1f846a4 # v2
         with:
           tool: just
 

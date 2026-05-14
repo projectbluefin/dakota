@@ -18,7 +18,8 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'schedule') && 'ubuntu-24.04' || 'blacksmith-4vcpu-ubuntu-2404' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     # Variant matrix: default and NVIDIA publish in parallel from the shared
     # BST artifact cache. NVIDIA is `continue-on-error: true` so its failure
     # does not block default publication.
@@ -68,7 +69,7 @@ jobs:
           ref: ${{ steps.context.outputs.sha }}
 
       - name: Setup Just
-        uses: taiki-e/install-action@3235f8901fd37ffed0052b276cec25a362fb82e9 # v2
+        uses: taiki-e/install-action@e1c4cd42111751368541a7cb5db3522bd1f846a4 # v2
         with:
           tool: just
 
