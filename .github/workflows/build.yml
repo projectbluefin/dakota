@@ -69,7 +69,7 @@ jobs:
       # Without this, bst show must clone gnome-build-meta + freedesktop-sdk
       # from scratch on every PR run (~15-25 min extra).
       - name: Restore BST cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: ~/.cache/buildstream
           key: bst-show-${{ hashFiles('elements/gnome-build-meta.bst', 'elements/freedesktop-sdk.bst', 'Justfile') }}
