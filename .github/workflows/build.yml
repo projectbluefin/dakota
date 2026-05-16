@@ -268,10 +268,9 @@ jobs:
   # ── aarch64 native build ──────────────────────────────────────────────────
   # Mirrors the x86_64 build job. ARM failures do not fail the workflow or
   # block x86_64 publication — this is an experimental parallel build.
-  # Disabled: webkit cold-builds OOM/timeout the ARM runner. Re-enable once
-  # the webkit artifacts are cached in cache.projectbluefin.io.
+  # WebKit aarch64 artifacts are available from gbm.gnome.org (gnome-build-meta
+  # builds aarch64 natively), so cold-build OOM/timeout should no longer occur.
   build-aarch64:
-    if: false
     runs-on: ubuntu-24.04-arm
     continue-on-error: true
     outputs:
