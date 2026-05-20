@@ -60,7 +60,7 @@ jobs:
           echo "OK: bst2 pins consistent: $just_sha"
 
       - name: Setup Just
-        uses: taiki-e/install-action@213ccc1a076163c093f914550b94feb90fab916d # v2
+        uses: taiki-e/install-action@65851e10cd6c377f11a60e600abc07cb08643468 # v2
         with:
           tool: just
 
@@ -137,7 +137,7 @@ jobs:
       #       fs.writeFileSync('bluefin.token', token, { mode: 0o600 });
 
       - name: Setup Just
-        uses: taiki-e/install-action@213ccc1a076163c093f914550b94feb90fab916d # v2
+        uses: taiki-e/install-action@65851e10cd6c377f11a60e600abc07cb08643468 # v2
         with:
           tool: just
 
@@ -340,7 +340,7 @@ jobs:
         uses: ublue-os/remove-unwanted-software@cc0becac701cf642c8f0a6613bbdaf5dc36b259e # v9
 
       - name: Setup Just
-        uses: taiki-e/install-action@213ccc1a076163c093f914550b94feb90fab916d # v2
+        uses: taiki-e/install-action@65851e10cd6c377f11a60e600abc07cb08643468 # v2
         with:
           tool: just
 
