@@ -267,3 +267,27 @@ jobs:
           subject-name: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
+      # Trigger the testsuite smoke run against the freshly published default image.
+      # Only fires for the default variant (not nvidia) and only when a token is
+      # configured. continue-on-error: true — testsuite unavailability must never
+      # block image publication.
+      - name: Notify testsuite
+        if: matrix.variant == 'default' && steps.push.outcome == 'success'
+        continue-on-error: true
+        env:
+          TESTSUITE_TOKEN: ${{ secrets.TESTSUITE_DISPATCH_TOKEN }}
+          BUILD_SHA: ${{ steps.context.outputs.sha }}
+        run: |
+          if [[ -z "${TESTSUITE_TOKEN}" ]]; then
+            echo "TESTSUITE_DISPATCH_TOKEN not configured — skipping testsuite notification"
+            exit 0
+          fi
+          gh api repos/projectbluefin/testsuite/dispatches \
+            --method POST \
+            -H "Authorization: Bearer ${TESTSUITE_TOKEN}" \
+            -f event_type=dakota-build \
+            -F "client_payload[image]=ghcr.io/projectbluefin/dakota:${BUILD_SHA}" \
+            -F "client_payload[image_tag]=${BUILD_SHA}" \
+            -F "client_payload[sha]=${BUILD_SHA}"
+          echo "Testsuite dispatch sent for dakota:${BUILD_SHA}"
