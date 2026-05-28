@@ -2,13 +2,14 @@
 
 Load when packaging a GNOME Shell extension for BuildStream in dakota.
 
-## Scaffold Command
+## Creating an Extension Element
+
+Create the element file manually under `elements/bluefin/shell-extensions/<name>.bst`. Copy an existing extension as a starting point:
 
 ```bash
-just scaffold-gnome-ext <name> <owner/repo>
+ls elements/bluefin/shell-extensions/   # see existing examples
+cp elements/bluefin/shell-extensions/caffeine.bst elements/bluefin/shell-extensions/<name>.bst
 ```
-
-Creates `elements/bluefin/shell-extensions/<name>.bst` and prints next steps.
 
 ## UUID Discovery
 
@@ -127,8 +128,8 @@ install-commands:
 - [ ] UUID discovered from `metadata.json` and set as variable
 - [ ] Extension files installed under correct UUID path
 - [ ] Element added to `elements/bluefin/gnome-shell-extensions.bst`
-- [ ] `just validate elements/bluefin/shell-extensions/<name>.bst` passes
-- [ ] `just bst build elements/bluefin/shell-extensions/<name>.bst` passes
+- [ ] `just validate` passes
+- [ ] `just bst build bluefin/shell-extensions/<name>.bst` passes
 
 ## Lessons Learned
 

@@ -17,14 +17,17 @@ Run a local zot registry → build dakota image → push to local registry → b
 ### Start Local Registry
 
 ```bash
-# Start the local zot registry (idempotent)
-just registry-start
+# Start a local zot registry (listening on port 5000)
+sudo podman run -d --name egg-registry --replace \
+  -p 5000:5000 \
+  -v egg-registry-data:/var/lib/registry \
+  ghcr.io/project-zot/zot-minimal-linux-amd64:latest
 
-# Check registry is running
+# Verify it's running
 sudo podman ps | grep egg-registry
 ```
 
-The registry stores data in the `egg-registry-data` volume and listens on `localhost:5000`.
+The registry stores data in the `egg-registry-data` volume and persists across reboots.
 
 ### Configure Insecure Registry (VM)
 
@@ -46,20 +49,25 @@ EOF
 # 1. Build the image
 just build
 
-# 2. Publish to local registry
-just publish
+# 2. Export OCI image to podman
+just export
 
-# 3. Boot a VM (choose one):
+# 3. Push to local registry
+sudo podman push localhost:5000/dakota:latest
+
+# 4. Boot a VM (choose one):
 just boot-fast     # ephemeral VM via virtiofs (requires virtiofsd)
 just boot-vm       # standard QEMU VM with display
 
-# 4. Inside the VM — switch to local registry (first time)
-sudo bootc switch 10.0.2.2:5000/dakota:latest
+# 5. Inside the VM — switch to local registry (first time)
+sudo bootc switch localhost:5000/dakota:latest
 
-# 5. Subsequent upgrades
+# 6. Subsequent upgrades
 sudo bootc upgrade
 sudo systemctl reboot
 ```
+
+Note: `boot-fast` / `boot-vm` boot the local exported image directly. For testing the registry pull path, `sudo bootc switch` inside the VM must point to the host registry at `10.0.2.2:5000` (QEMU gateway).
 
 ## After Reboot
 

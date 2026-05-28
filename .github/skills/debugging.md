@@ -12,12 +12,13 @@ Load when a BST element build fails, or when diagnosing element errors from CI l
 
 | Action | Command |
 |--------|---------|
-| Build one element | `just bst build elements/bluefin/<name>.bst` |
-| Enter build sandbox | `just bst shell --build elements/bluefin/<name>.bst` |
-| Inspect element sources | `just bst show elements/bluefin/<name>.bst` |
-| Find what depends on an element | `just reverse-deps elements/bluefin/<name>.bst` |
-| View last build log | `just bst artifact log elements/bluefin/<name>.bst` |
-| List files in built element | `just bst artifact list-contents elements/bluefin/<name>.bst` |
+| Build one element | `just bst build bluefin/<name>.bst` |
+| Enter build sandbox | `just bst shell --build bluefin/<name>.bst` |
+| Inspect element sources | `just bst show bluefin/<name>.bst` |
+| Find what depends on an element | `grep -r "<name>" elements/` |
+| View last build log | `just bst artifact log bluefin/<name>.bst` |
+| List files in built element | `just bst artifact list-contents bluefin/<name>.bst` |
+| Delete cached failure | `just bst artifact delete bluefin/<name>.bst` |
 | Full image build (after fixing) | `just build` |
 
 ## Debugging Workflow
@@ -26,19 +27,19 @@ Load when a BST element build fails, or when diagnosing element errors from CI l
 
 2. **Enter build sandbox** — Drop into the BST sandbox to reproduce manually:
    ```bash
-   just bst shell --build elements/bluefin/<name>.bst
+   just bst shell --build bluefin/<name>.bst
    ```
    Inside the sandbox: run the failing configure/build command step-by-step.
 
 3. **Check BST show output** — Verify all deps resolve and the element parses correctly:
    ```bash
-   just bst show elements/bluefin/<name>.bst
+   just bst show bluefin/<name>.bst
    ```
    A `Error loading project` here is a YAML/option error, not a build failure.
 
 4. **List element content** — Verify installed files after a successful build:
    ```bash
-   just bst artifact list-contents elements/bluefin/<name>.bst
+   just bst artifact list-contents bluefin/<name>.bst
    ```
 
 ## Common Failures
@@ -58,7 +59,7 @@ Symptom: `Error loading project` — element never starts building.
 
 | Cause | Fix |
 |-------|-----|
-| Wrong `ref:` hash | Run `just track-tarball <element> <version>` or `just track-one <element>` to update |
+| Wrong `ref:` hash | Run `just bst source track bluefin/<name>.bst` to update |
 | URL changed upstream | Update URL + alias in `include/aliases.yml` |
 | Tarball has no wrapping directory | Add `base-dir: ""` to `kind: tar` source |
 
@@ -92,7 +93,7 @@ Symptom: `Error loading project` — element never starts building.
 
 ```bash
 # Enter build sandbox for failing element
-just bst shell --build elements/bluefin/<name>.bst
+just bst shell --build bluefin/<name>.bst
 
 # Inside the sandbox, run the failing step manually:
 ./configure --prefix=/usr   # or whatever configure step is failing

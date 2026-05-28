@@ -12,13 +12,18 @@ Load when updating an existing package's version in `projectbluefin/dakota`.
 
 | Task | Command |
 |------|---------|
-| Update tarball to version X | `just track-tarball elements/bluefin/<name>.bst <version>` |
-| Update git-tracked element to latest | `just track-one elements/bluefin/<name>.bst` |
-| Update all git-tracked elements | `just track-all-git` |
-| Update all tarballs | `just track-all-tarballs` |
-| Regenerate cargo2 sources for a Rust element | `just track-one elements/bluefin/<name>.bst` |
+| Update tarball to version X | Edit `version:` variable in element, then `just bst source track bluefin/<name>.bst` |
+| Update git-tracked element to latest | `just bst source track bluefin/<name>.bst` |
+| Update all elements in a group | See `.github/workflows/track-bst-sources.yml` |
+| Regenerate cargo2 sources for a Rust element | `python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock` |
 
-`just track-one` on a Rust element automatically regenerates the `cargo2` source block. No need to call `generate_cargo_sources.py` manually for existing elements.
+The real tracking command is `just bst source track <element>` — it updates the `ref:` field in the element's source block to the latest matching version/commit.
+
+**Rust elements:** After bumping the git ref, regenerate the `cargo2` source block manually:
+```bash
+# Get Cargo.lock from the new source, then:
+python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock
+```
 
 ## Tracking Groups
 
@@ -40,9 +45,9 @@ sources:
   ref: sha256hex...
 ```
 
-After `just track-tarball`:
+After `just bst source track`:
 1. `ref:` is updated in the element
-2. Run `just bst build elements/bluefin/<name>.bst` to verify
+2. Run `just bst build bluefin/<name>.bst` to verify
 
 ### Git-Tracked Element
 
@@ -54,32 +59,29 @@ sources:
   ref: abc123def456...
 ```
 
-After `just track-one`:
+After `just bst source track`:
 1. `ref:` is updated to the latest commit on the tracked branch/tag
-2. For Rust elements: `cargo2` source block is regenerated automatically
-3. Run `just bst build elements/bluefin/<name>.bst` to verify
+2. For Rust elements: regenerate `cargo2` manually with `generate_cargo_sources.py`
+3. Run `just bst build bluefin/<name>.bst` to verify
 
 ## Rust Elements — Cargo Lock
 
-For Rust elements, `just track-one` automatically:
-1. Updates `ref:` in the git source
-2. Generates a fresh Cargo.lock from the new source
-3. Regenerates the `cargo2` source block
-
-**Manual fallback** (if `just track-one` fails):
-```bash
-# Generate cargo sources from an existing Cargo.lock
-python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock
-```
+For Rust elements, after tracking a new git ref:
+1. Update `ref:` in the git source via `just bst source track bluefin/<name>.bst`
+2. Get the new `Cargo.lock` from the source (enter build sandbox: `just bst shell --build bluefin/<name>.bst`)
+3. Regenerate the `cargo2` source block:
+   ```bash
+   python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock
+   ```
 
 The `cargo2` block is generated output — never hand-edit it.
 
 ## Post-Update Verification
 
 ```bash
-just validate elements/bluefin/<name>.bst   # graph check
-just bst build elements/bluefin/<name>.bst  # build only this element
-just build                                   # full image build (when unsure)
+just validate                            # full graph check
+just bst build bluefin/<name>.bst        # build only this element
+just build                               # full image build (when unsure)
 ```
 
 ## Junction Bumps

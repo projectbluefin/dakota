@@ -126,8 +126,8 @@ install-commands:
 - [ ] Binary installs to `%{bindir}` (not `/usr/sbin`)
 - [ ] `strip-binaries: ""` not needed (Go binaries are ELF and strip cleanly)
 - [ ] Element added to `elements/bluefin/deps.bst`
-- [ ] `just validate elements/bluefin/<name>.bst` passes
-- [ ] `just bst build elements/bluefin/<name>.bst` passes
+- [ ] `just validate` passes
+- [ ] `just bst build bluefin/<name>.bst` passes
 
 ## Lessons Learned
 

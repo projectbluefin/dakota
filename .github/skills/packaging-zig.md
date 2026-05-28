@@ -97,8 +97,8 @@ grep minimum_zig_version path/to/build.zig.zon
 - [ ] Zig version compatibility confirmed
 - [ ] `strip-binaries: ""` not needed (Zig produces ELF)
 - [ ] Element added to `elements/bluefin/deps.bst`
-- [ ] `just validate elements/bluefin/<name>.bst` passes
-- [ ] `just bst build elements/bluefin/<name>.bst` passes
+- [ ] `just validate` passes
+- [ ] `just bst build bluefin/<name>.bst` passes
 
 ## Lessons Learned
 

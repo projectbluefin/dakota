@@ -13,8 +13,8 @@ Load when running the live dakota validation loop: build → publish → bootc u
 ```
 Build host (your machine):
   1. just build               # build OCI image
-  2. just registry-start      # start local zot on port 5000
-  3. just publish             # push to local registry
+  2. just export              # export OCI image to podman
+  3. sudo podman push <build-host-ip>:5000/dakota:latest  # push to local zot
 
 Test machine (physical hardware running dakota):
   4. sudo bootc upgrade       # pull from build host's registry
@@ -33,8 +33,8 @@ Test machine (physical hardware running dakota):
 | Command | Where | What |
 |---------|-------|------|
 | `just build` | Build host | Build OCI image |
-| `just registry-start` | Build host | Start local zot registry on port 5000 |
-| `just publish` | Build host | Push image to local registry |
+| `just export` | Build host | Export OCI image to podman |
+| `sudo podman push <build-host-ip>:5000/dakota:latest` | Build host | Push image to local zot registry |
 | `sudo bootc upgrade` | Test machine | Pull latest from registry |
 | `bootc status` | Test machine | Verify booted image ref |
 | `systemctl --failed` | Test machine | Check for failed units |
@@ -127,8 +127,8 @@ immediately fail again with `[00:00:00]` elapsed — the dead giveaway.
 
 ```bash
 # Clear the cached failure and retry
-just bst artifact delete elements/bluefin/myelement.bst
-just bst build elements/bluefin/myelement.bst
+just bst artifact delete bluefin/myelement.bst
+just bst build bluefin/myelement.bst
 ```
 
 ---
@@ -141,7 +141,7 @@ fails on `upstream/main`:
 ```bash
 git stash
 git checkout upstream/main
-just bst build elements/bluefin/<failing-element>.bst
+just bst build bluefin/<failing-element>.bst
 git checkout -
 git stash pop
 ```
@@ -201,8 +201,8 @@ immediately fail again with `[00:00:00]` elapsed — the dead giveaway.
 
 ```bash
 # Clear the cached failure and retry
-just bst artifact delete elements/bluefin/myelement.bst
-just bst build elements/bluefin/myelement.bst
+just bst artifact delete bluefin/myelement.bst
+just bst build bluefin/myelement.bst
 ```
 
 ---
@@ -215,7 +215,7 @@ fails on `upstream/main`:
 ```bash
 git stash
 git checkout upstream/main
-just bst build elements/bluefin/<failing-element>.bst
+just bst build bluefin/<failing-element>.bst
 git checkout -
 git stash pop
 ```

@@ -98,8 +98,8 @@ url: releases:owner/project/releases/download/v%{version}/binary.tar.gz
 - [ ] `ref:` is a pinned SHA256 hash (for tarballs) or commit SHA (for git sources)
 - [ ] URL alias added to `include/aliases.yml` if domain is new
 - [ ] Element added to `elements/bluefin/deps.bst`
-- [ ] `just bst show elements/bluefin/<name>.bst` passes
-- [ ] `just bst build elements/bluefin/<name>.bst` passes
+- [ ] `just bst show bluefin/<name>.bst` passes
+- [ ] `just bst build bluefin/<name>.bst` passes
 
 ## Lessons Learned
 

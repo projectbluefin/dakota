@@ -12,18 +12,13 @@ Entry-point workflow for adding any software package to the Bluefin image.
 ## Agent Quick-Start
 
 ```bash
-# Binary (pre-built GitHub Release)
-just scaffold-binary <name> <owner/repo>
-# Rust/Cargo from source
-just scaffold-rust <name> <owner/repo>
-# GNOME Shell extension
-just scaffold-gnome-ext <name> <owner/repo>
-# Go: copy files/templates/git-tracked.bst manually
+# Create element file manually at elements/bluefin/<name>.bst
+# Use an existing element as a template, e.g.:
+cp elements/bluefin/glow.bst elements/bluefin/<name>.bst
+# Edit to match the new package's source and install paths
 ```
 
-Each scaffold command creates `elements/bluefin/<name>.bst` from `files/templates/` and prints the exact next steps.
-
-**Template files:** `files/templates/binary.bst`, `rust.bst`, `gnome-ext.bst`, `git-tracked.bst`
+There are no scaffold scripts. Copy an existing element of the appropriate kind as a starting point.
 
 ## Choose Element Kind
 
@@ -42,10 +37,10 @@ Each scaffold command creates `elements/bluefin/<name>.bst` from `files/template
 
 ## Workflow
 
-1. **Create element** at `elements/bluefin/<name>.bst`
+1. **Create element** at `elements/bluefin/<name>.bst` (copy a similar existing element as a base)
 2. **Add to deps** — add `bluefin/<name>.bst` to `depends:` in `elements/bluefin/deps.bst`
 3. **Add source alias** — if the download domain is new, add an alias to `include/aliases.yml`
-4. **Validate** — `just bst show bluefin/<name>.bst`
+4. **Validate graph** — `just validate` (full graph check)
 5. **Build element** — `just bst build bluefin/<name>.bst`
 6. **Full image test** — `just build` or `just show-me-the-future`
 

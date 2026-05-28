@@ -10,11 +10,7 @@ Load when removing a software package from the Bluefin image in `projectbluefin/
 
 ## Quick Start
 
-```bash
-just remove-package <name>
-```
-
-This command prints the full checklist of every file and reference to clean up. **Do not skip it — run it first.**
+There is no `just remove-package` recipe. Remove packages manually using the checklist below.
 
 ## What to Remove
 
@@ -29,14 +25,25 @@ This command prints the full checklist of every file and reference to clean up. 
 | Renovate entry | `.github/renovate.json5` — remove if tracked there |
 | Justfile recipes | Remove or update any recipes referencing the package |
 
-## Checklist (run after `just remove-package <name>`)
+## Checklist
 
 ```bash
-# Verify no dangling references
+# 1. Remove the element file
+rm elements/bluefin/<name>.bst  # or shell-extensions/<name>.bst
+
+# 2. Remove from dependency stack
+# Edit elements/bluefin/deps.bst or gnome-shell-extensions.bst
+
+# 3. Check for dangling references
 grep -r "<name>" elements/ .github/workflows/ files/ patches/ Justfile include/
-# Validate dependency graph
-just bst show oci/bluefin.bst
-# Build image to confirm clean
+
+# 4. Remove any remaining files (static assets, patches, aliases)
+# See table below
+
+# 5. Validate dependency graph
+just validate
+
+# 6. Build image to confirm clean
 just build
 ```
 

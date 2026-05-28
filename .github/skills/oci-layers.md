@@ -95,7 +95,7 @@ just bst --no-cache-buildtrees build oci/bluefin.bst
 
 After a successful build, confirm your package is in the layer:
 ```bash
-just bst artifact list-contents elements/oci/layers/bluefin.bst | grep <package-name>
+just bst artifact list-contents oci/layers/bluefin.bst | grep <package-name>
 ```
 
 If the package binary is missing:

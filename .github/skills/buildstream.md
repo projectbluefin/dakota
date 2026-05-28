@@ -13,15 +13,14 @@ Load when writing, editing, or reviewing BuildStream `.bst` element files.
 
 | Goal | Command |
 |------|---------|
-| Validate element (dep graph, no build) | `just validate elements/bluefin/<name>.bst` |
-| Build one element | `just bst build elements/bluefin/<name>.bst` |
-| Enter build sandbox | `just bst shell --build elements/bluefin/<name>.bst` |
-| Track a git ref | `just track-one elements/bluefin/<name>.bst` |
-| Update tarball to new version | `just track-tarball elements/bluefin/<name>.bst <version>` |
-| Scaffold binary element | `just scaffold-binary <name> <owner/repo>` |
-| Scaffold GNOME extension | `just scaffold-gnome-ext <name> <owner/repo>` |
-| Scaffold Rust element | `just scaffold-rust <name> <owner/repo>` |
-| List reverse deps | `just reverse-deps elements/bluefin/<name>.bst` |
+| Validate full element graph (no build) | `just validate` |
+| Inspect single element deps | `just bst show bluefin/<name>.bst` |
+| Build one element | `just bst build bluefin/<name>.bst` |
+| Enter build sandbox | `just bst shell --build bluefin/<name>.bst` |
+| Track a git/tarball ref | `just bst source track bluefin/<name>.bst` |
+| List built element contents | `just bst artifact list-contents bluefin/<name>.bst` |
+| View build log | `just bst artifact log bluefin/<name>.bst` |
+| Delete cached build | `just bst artifact delete bluefin/<name>.bst` |
 | Full image build | `just build` |
 | All available recipes | `just --list` |
 

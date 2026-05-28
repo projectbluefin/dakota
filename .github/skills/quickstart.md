@@ -5,9 +5,9 @@ Zero-context entry point for routine dakota maintenance — add package, remove 
 ## 5 Always Rules
 
 1. **Always run `just --list` first** — the Justfile is the ground truth for available recipes
-2. **Always run `just validate <element>` before `just bst build`** — catches errors without building
+2. **Always run `just validate` before `just build`** — catches graph errors without building
 3. **Always add new elements to `deps.bst`** (binary) or `gnome-shell-extensions.bst` (extensions)
-4. **Always run `just remove-package <name>` before touching any files** — it prints the full checklist
+4. **Always grep for all references before removing** — `grep -r <name> elements/ .github/workflows/ files/`
 5. **Always use `just bst` not bare `bst`** — BST must run inside the pinned container
 
 ## 5 Never Rules
@@ -22,13 +22,13 @@ Zero-context entry point for routine dakota maintenance — add package, remove 
 
 | Task | Command | Skill |
 |------|---------|-------|
-| Add binary package | `just scaffold-binary <name> <owner/repo>` | `add-package.md` |
-| Add Rust package | `just scaffold-rust <name> <owner/repo>` | `add-package.md` + `packaging-rust.md` |
-| Add GNOME extension | `just scaffold-gnome-ext <name> <owner/repo>` | `packaging-gnome-extensions.md` |
-| Remove package | `just remove-package <name>` | `remove-package.md` |
-| Update tarball | `just track-tarball <element.bst> <ver>` | `update-refs.md` |
-| Update git ref | `just track-one <element.bst>` | `update-refs.md` |
-| Build failure | `just bst shell --build <element.bst>` | `debugging.md` |
+| Add binary package | Create `elements/bluefin/<name>.bst` manually | `add-package.md` |
+| Add Rust package | Create element + run `generate_cargo_sources.py` | `add-package.md` + `packaging-rust.md` |
+| Add GNOME extension | Create `elements/bluefin/shell-extensions/<name>.bst` | `packaging-gnome-extensions.md` |
+| Remove package | `grep -r <name> elements/ .github/workflows/` then delete | `remove-package.md` |
+| Update tarball version | Edit version var, then `just bst source track bluefin/<name>.bst` | `update-refs.md` |
+| Update git ref | `just bst source track bluefin/<name>.bst` | `update-refs.md` |
+| Build failure | `just bst shell --build bluefin/<name>.bst` | `debugging.md` |
 | BST YAML reference | — | `buildstream.md` |
 | CI failure | — | `ci.md` |
 

@@ -14,22 +14,26 @@ Rust elements use `kind: make` with a `cargo2` source block that vendors all cra
 
 ## Scaffolding (Fastest Path)
 
+There is no scaffold command. Copy an existing Rust element as a starting point:
+
 ```bash
-just scaffold-rust <name> <owner/repo>
+cp elements/bluefin/tailscale.bst elements/bluefin/<name>.bst
+# Edit name, URL, version, binary name, and regenerate cargo2 sources
 ```
 
-This creates `elements/bluefin/<name>.bst` from `files/templates/rust.bst` and prints next steps.
+Then regenerate cargo2 sources (see below).
 
 ## cargo2 Sources Are Generated — Never Hand-Written
 
 ```bash
-# For a new element: generate from Cargo.lock
+# Generate cargo2 source block from Cargo.lock
 python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock
-
-# For an existing element after a ref bump:
-just track-one elements/bluefin/<name>.bst
-# ↑ This updates the git ref AND regenerates cargo2 automatically
 ```
+
+After bumping a git ref with `just bst source track bluefin/<name>.bst`:
+1. Enter the build sandbox to get the new Cargo.lock: `just bst shell --build bluefin/<name>.bst`
+2. Run `generate_cargo_sources.py` on the new Cargo.lock
+3. Replace the generated block in the element
 
 The `cargo2` source block (starting at the first `- kind: cargo2` line) is generated output. Do not edit it manually.
 
@@ -89,12 +93,7 @@ variables:
 
 ## Tracking Group
 
-Rust elements must use `manual-merge` tracking group (not `auto-merge`). Human review required because Cargo.lock regeneration touches many lines:
-
-```yaml
-# In .github/workflows/track-bst-sources.yml entry:
-tracking-group: manual-merge
-```
+Rust elements require human review when bumping refs because `cargo2` regeneration touches many lines. Add the element to the `manual-merge` matrix in `.github/workflows/track-bst-sources.yml` (not `auto-merge`).
 
 ## systemd Service (if needed)
 
@@ -127,8 +126,8 @@ install-commands:
 - [ ] `strip-binaries: ""` NOT needed (Rust produces ELF)
 - [ ] Tracking group set to `manual-merge` in tracking workflow
 - [ ] Element added to `elements/bluefin/deps.bst`
-- [ ] `just validate elements/bluefin/<name>.bst` passes
-- [ ] `just bst build elements/bluefin/<name>.bst` passes
+- [ ] `just validate` passes
+- [ ] `just bst build bluefin/<name>.bst` passes
 
 ## Lessons Learned
 
