@@ -1,11 +1,11 @@
-name: "🐝 Help this project"
+name: "Help this project"
 description: "Donate agent time — point at a repo, issue, or PR and get a high-signal report back."
 title: "[Help]: "
 body:
   - type: markdown
     attributes:
       value: |
-        Point your ghost at something and it comes back with a report. 🐝
+        Point your ghost at something and it comes back with a report.
 
         Paste a URL below — Hive routes the right agent to investigate and report back here.
 

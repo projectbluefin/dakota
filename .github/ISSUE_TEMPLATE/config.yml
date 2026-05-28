@@ -1,11 +1,11 @@
 blank_issues_enabled: true
 contact_links:
-  - name: "🦖 Project board"
+  - name: "Project board"
     url: https://github.com/orgs/projectbluefin/projects/2
     about: "See what the fleet is working on."
-  - name: "📖 Contribution guide"
+  - name: "Contribution guide"
     url: https://github.com/projectbluefin/dakota/blob/main/AGENTS.md
     about: "Build, validation, and workflow rules — read before opening a PR."
-  - name: "🔄 Feedback loop"
+  - name: "Feedback loop"
     url: https://github.com/projectbluefin/dakota/blob/main/docs/feedback-loop.md
     about: "How users, contributors, and the ghost lab close the loop together."

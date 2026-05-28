@@ -1,4 +1,4 @@
-name: "✨ Feature request"
+name: "Feature request"
 description: "Propose something new — shape what Dakota becomes."
 title: "[Feature]: "
 labels: ["kind/enhancement"]
@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        You're not filing a ticket — you're shaping the future. 🦖
+        You're not filing a ticket — you're shaping the future.
 
         Keep it short and practical. If you opt into **Raptor Current**, it enters the structured queue where agents and contributors can pick it up.
 
@@ -80,4 +80,4 @@ body:
     attributes:
       value: |
         ---
-        💡 After this ships, the community verifies it works with `ujust verify <issue-number>` — your feature, confirmed by the fleet.
+        After this ships, the community verifies it works with `ujust verify <issue-number>` — your feature, confirmed by the fleet.

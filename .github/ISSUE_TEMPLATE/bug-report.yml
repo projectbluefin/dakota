@@ -1,4 +1,4 @@
-name: "🐛 Bug report"
+name: "Bug report"
 description: "Something is broken — your ghost copy helps us fix it fast."
 title: "[Bug]: "
 labels: ["kind/bug"]
@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Found a bug? You're our eyes on the ground. 🦖
+        Found a bug? You're our eyes on the ground.
 
         Run this first — it's your primary instrument:
 
