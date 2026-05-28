@@ -21,6 +21,7 @@ depends:
 
   - bluefin/common.bst
   - bluefin/just-overrides.bst
+  - bluefin/motd.bst
   - bluefin/firstboot-date.bst
   - bluefin/bootc-install-config.bst
   - bluefin/composefs-loop-udisks-ignore.bst

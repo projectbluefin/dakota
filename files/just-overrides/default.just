@@ -336,6 +336,18 @@ report:
     if ! gum confirm " Donate this report to your GitHub gist?"; then
         echo ""
         gum style --foreground 245 --margin "0 2" "Cancelled. Files kept at: $REPORT_DIR/"
+        # Opt-in: stash for AI troubleshooting tools (linux-mcp-server, Goose, etc.)
+        echo ""
+        gum style --foreground 245 --margin "0 2" \
+            "Your AI agent (Goose, OpenCode, etc.) can use a local copy for diagnostics."
+        STASH_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bluefin/reports"
+        if gum confirm " Keep a local copy for AI troubleshooting tools? (e.g. Goose + linux-mcp-server)" --default=false; then
+            mkdir -p "$STASH_DIR"
+            cp "$REPORT_DIR/summary.md" "$STASH_DIR/last-report.md"
+            [[ -f "$REPORT_DIR/report.otlp.json" ]] && cp "$REPORT_DIR/report.otlp.json" "$STASH_DIR/last-report.otlp.json"
+            gum style --foreground 82 --margin "0 2" \
+                "✓ Stashed at $STASH_DIR/ — your MCP-connected agent can reference it."
+        fi
         trap - EXIT
         exit 0
     fi
@@ -361,6 +373,18 @@ report:
         gum style --foreground 245 --margin "0 4" "gh gist create --public --desc 'Bluefin diagnostic report' $REPORT_DIR/summary.md"
         echo ""
         gum style --foreground 245 --margin "0 2" "Your files are at: $REPORT_DIR/"
+        # Opt-in: stash for AI troubleshooting tools (linux-mcp-server, Goose, etc.)
+        echo ""
+        gum style --foreground 245 --margin "0 2" \
+            "Your AI agent (Goose, OpenCode, etc.) can use a local copy for diagnostics."
+        STASH_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bluefin/reports"
+        if gum confirm " Keep a local copy for AI troubleshooting tools? (e.g. Goose + linux-mcp-server)" --default=false; then
+            mkdir -p "$STASH_DIR"
+            cp "$REPORT_DIR/summary.md" "$STASH_DIR/last-report.md"
+            [[ -f "$REPORT_DIR/report.otlp.json" ]] && cp "$REPORT_DIR/report.otlp.json" "$STASH_DIR/last-report.otlp.json"
+            gum style --foreground 82 --margin "0 2" \
+                "✓ Stashed at $STASH_DIR/ — your MCP-connected agent can reference it."
+        fi
         trap - EXIT
         exit 0
     fi
@@ -399,6 +423,20 @@ report:
         "✓ Donated — thank you for contributing to the kettle."
     echo ""
     gum style --margin "0 2" "$GIST_URL"
+    echo ""
+
+    # Opt-in: stash for AI troubleshooting tools (linux-mcp-server, Goose, etc.)
+    gum style --foreground 245 --margin "0 2" \
+        "Your AI agent (Goose, OpenCode, etc.) can use a local copy for diagnostics."
+    STASH_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bluefin/reports"
+    if gum confirm " Keep a local copy for AI troubleshooting tools? (e.g. Goose + linux-mcp-server)" --default=false; then
+        mkdir -p "$STASH_DIR"
+        cp "$REPORT_DIR/summary.md" "$STASH_DIR/last-report.md"
+        [[ -f "$REPORT_DIR/report.otlp.json" ]] && cp "$REPORT_DIR/report.otlp.json" "$STASH_DIR/last-report.otlp.json"
+        printf '%s\n' "$GIST_URL" > "$STASH_DIR/last-report-gist-url"
+        gum style --foreground 82 --margin "0 2" \
+            "✓ Stashed at $STASH_DIR/ — your MCP-connected agent can reference it."
+    fi
     echo ""
 
     # Offer to open issue form with gist pre-filled
