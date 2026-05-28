@@ -7,6 +7,7 @@
 - [ ] `just boot-test` passes (or `just boot-fast` / `just boot-vm`)
 - [ ] Commit trailer: `Assisted-by:` or `Signed-off-by:` — **not** `Co-authored-by:`
 - [ ] `Closes #NNN` in the PR body
+- [ ] I am using an agent and I take responsibility for this PR
 
 ## Junction bumps (`gnome-build-meta.bst` or `freedesktop-sdk.bst`)
 

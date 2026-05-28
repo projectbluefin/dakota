@@ -54,7 +54,7 @@ Published image: `ghcr.io/projectbluefin/dakota:latest`
 
 ### Fundamental Difference
 
-Production Bluefin images are **Containerfile-based overlays** — they start with `FROM base_image` and run `dnf install`. Egg **builds the entire stack from source** using BuildStream. With good cache hits from upstream CAS, most is pre-built. But Bluefin-specific Rust packages (bootc, uutils-coreutils, sudo-rs) and GRUB are compiled from source.
+Production Bluefin images are **Containerfile-based overlays** — they start with `FROM base_image` and run `dnf install`. Dakota **builds the entire stack from source** using BuildStream. With good cache hits from upstream CAS, most is pre-built. But Bluefin-specific Rust packages (bootc, uutils-coreutils, sudo-rs) and GRUB are compiled from source.
 
 ## What Dakota Has That Others Don't
 

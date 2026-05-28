@@ -4,7 +4,7 @@ Patches apply in **alphabetical filename order**. Numbers in filenames control a
 
 ## Lifecycle
 
-```
+```text
 Add patch → Upstream-Status header → track upstream PR →
 upstream merges → junction bump includes fix → drop patch
 ```
@@ -32,7 +32,7 @@ Include upstream commit or PR link when backporting.
 
 Document the exit condition in the patch header:
 
-```
+```text
 # Exit: Drop when fdsdk bumps to X.Y
 # Exit: Drop after GBM gnome-50 reaches commit abc123
 ```

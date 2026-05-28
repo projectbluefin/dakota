@@ -11,7 +11,7 @@ Load when modifying upstream freedesktop-sdk or gnome-build-meta elements in dak
 
 Dakota applies patches to upstream junctions via `patch_queue` source blocks in the junction `.bst` files. Patches apply in **alphabetical filename order**.
 
-```
+```text
 patches/gnome-build-meta/   ← patches for gnome-build-meta junction
 patches/freedesktop-sdk/    ← patches for freedesktop-sdk junction
 patches/linux/              ← kernel patches (apply against kernel source)
@@ -19,7 +19,7 @@ patches/linux/              ← kernel patches (apply against kernel source)
 
 ## Patch Lifecycle
 
-```
+```text
 Add patch → Upstream-Status header → track upstream PR →
 upstream merges → junction bump includes fix → drop patch
 ```
@@ -61,7 +61,7 @@ Exit condition: Drop after gnome-build-meta gnome-50 merges MR !NNN
    # make your edit
    git add -A
    git commit -m "Fix: <description>"
-   git format-patch -1 HEAD -o ~/src/dakota/patches/<junction>/
+   git format-patch -1 HEAD -o <repo-root>/patches/<junction>/
    ```
 
 3. **Name the patch file** — filenames are applied alphabetically:
@@ -96,7 +96,7 @@ git -C ~/.cache/buildstream/sources/git_repo/<junction>.git \
 
 # Try applying with -C1 (tolerates offset drift)
 cd /tmp/<junction>-new
-git apply --ignore-whitespace -C1 ~/src/dakota/patches/<junction>/<patch>.patch
+git apply --ignore-whitespace -C1 <repo-root>/patches/<junction>/<patch>.patch
 
 # If -C1 fails, apply manually then extract:
 # Make the equivalent change manually
@@ -106,7 +106,7 @@ git checkout -- .
 git apply /tmp/<patch>-rebased.patch && echo "VERIFY OK"
 
 # Copy back
-cp /tmp/<patch>-rebased.patch ~/src/dakota/patches/<junction>/<patch>.patch
+cp /tmp/<patch>-rebased.patch <repo-root>/patches/<junction>/<patch>.patch
 ```
 
 **After rebasing all patches:**

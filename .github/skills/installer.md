@@ -12,7 +12,7 @@ A GTK4/Adwaita Flatpak installer for Project Bluefin Dakota — a soft fork of `
 
 ## Architecture
 
-```
+```text
 bootc-installer/
 ├── bootc_installer/         # Python GTK4/Adwaita GUI
 │   ├── defaults/            # Wizard step widgets (disk, encryption, user, welcome)

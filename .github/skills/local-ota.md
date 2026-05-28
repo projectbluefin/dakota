@@ -59,8 +59,8 @@ sudo podman push localhost:5000/dakota:latest
 just boot-fast     # ephemeral VM via virtiofs (requires virtiofsd)
 just boot-vm       # standard QEMU VM with display
 
-# 5. Inside the VM — switch to local registry (first time)
-sudo bootc switch localhost:5000/dakota:latest
+# 5. Inside the VM — switch to local registry (first time; use 10.0.2.2 = QEMU host gateway)
+sudo bootc switch 10.0.2.2:5000/dakota:latest
 
 # 6. Subsequent upgrades
 sudo bootc upgrade

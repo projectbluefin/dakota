@@ -10,7 +10,7 @@ Load when understanding how packages flow into the final OCI image, modifying la
 
 ## Assembly Architecture
 
-```
+```text
 elements/bluefin/deps.bst           ← kind: stack (dep aggregator, no filesystem output)
   └── lists all bluefin/*.bst elements
 

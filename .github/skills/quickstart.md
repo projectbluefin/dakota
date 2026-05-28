@@ -5,7 +5,7 @@ Zero-context entry point for routine dakota maintenance — add package, remove 
 ## 5 Always Rules
 
 1. **Always run `just --list` first** — the Justfile is the ground truth for available recipes
-2. **Always run `just validate` before `just build`** — catches graph errors without building
+2. **Always run `just validate`, `just lint`, and `just boot-test` before opening a PR** — graph check, image lint, and automated boot smoke test
 3. **Always add new elements to `deps.bst`** (binary) or `gnome-shell-extensions.bst` (extensions)
 4. **Always grep for all references before removing** — `grep -r <name> elements/ .github/workflows/ files/`
 5. **Always use `just bst` not bare `bst`** — BST must run inside the pinned container
@@ -41,7 +41,7 @@ Zero-context entry point for routine dakota maintenance — add package, remove 
 
 ## Commit Conventions
 
-```
+```text
 feat(bluefin): add <name>
 chore(deps): update <name>
 fix(bluefin): <description>
@@ -50,15 +50,14 @@ chore: remove <name>
 
 ## Key Paths
 
-```
-elements/bluefin/           All Bluefin-specific elements
-elements/bluefin/deps.bst   Central dependency manifest
-elements/bluefin/shell-extensions/         GNOME Shell extensions
-elements/bluefin/gnome-shell-extensions.bst  Extension stack
-files/templates/            Element scaffolds (binary, rust, gnome-ext, git-tracked)
-include/aliases.yml         URL aliases
+```text
+elements/bluefin/                           All Bluefin-specific elements
+elements/bluefin/deps.bst                   Central dependency manifest
+elements/bluefin/shell-extensions/          GNOME Shell extensions
+elements/bluefin/gnome-shell-extensions.bst Extension stack
+include/aliases.yml                         URL aliases
 .github/workflows/track-bst-sources.yml    Tracking matrix
-.github/renovate.json5      Renovate config
+.github/renovate.json5                      Renovate config
 ```
 
 ## Throughput Rule
