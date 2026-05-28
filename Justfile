@@ -527,7 +527,7 @@ chunkify image_ref:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if [ "${BUILD_SKIP_CHUNKIFY:-}" = "1" ]; then
+    if [ "$BUILD_SKIP_CHUNKIFY" = "1" ]; then
         echo "==> Skipping chunkify (BUILD_SKIP_CHUNKIFY=1)"
         exit 0
     fi
