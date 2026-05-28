@@ -1,5 +1,5 @@
-name: "Feature request"
-description: "Propose something new for Bluefin. Use the direct path or opt into the structured queue."
+name: "✨ Feature request"
+description: "Propose something new — shape what Dakota becomes."
 title: "[Feature]: "
 labels: ["kind/enhancement"]
 type: "Feature"
@@ -7,8 +7,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to propose something! 🐟
-        Keep it short and practical. If you opt into **Raptor Current**, `actionadon` will route it through the structured queue. Otherwise it stays a normal issue.
+        You're not filing a ticket — you're shaping the future. 🦖
+
+        Keep it short and practical. If you opt into **Raptor Current**, it enters the structured queue where agents and contributors can pick it up.
 
   - type: checkboxes
     id: checks
@@ -53,40 +54,16 @@ body:
       label: "Affected area"
       description: "Pick the closest match."
       options:
-        - "area/buildstream"
-        - "area/gnome"
-        - "area/brew"
-        - "area/just"
-        - "area/iso"
-        - "area/dx"
-        - "area/services"
-        - "area/flatpak"
-        - "area/nvidia"
-        - "area/hardware"
-        - "area/testing"
-        - "area/upstream"
-        - "area/policy"
+        - "buildstream"
+        - "gnome / desktop"
+        - "brew / CLI"
+        - "just recipes"
+        - "services / systemd"
+        - "nvidia"
+        - "hardware"
+        - "testing / QA"
+        - "upstream / junctions"
         - "other"
-    validations:
-      required: false
-
-  - type: markdown
-    attributes:
-      value: |
-        ---
-        ### Acceptance criteria
-        *Leave this blank unless you're preparing the issue for Raptor Current.*
-
-  - type: textarea
-    id: acceptance-criteria
-    attributes:
-      label: "Acceptance criteria"
-      description: "Optional. For Raptor Current only. Use markdown checklist items (`- [ ] ...`)."
-      placeholder: |
-        - [ ] `just push-local` recipe exists and is documented in `just --list`
-        - [ ] Recipe pushes to `localhost:5000` by default with `REGISTRY` override
-        - [ ] `just validate` passes after the change
-      render: markdown
     validations:
       required: false
 
@@ -94,7 +71,7 @@ body:
     id: affected-elements
     attributes:
       label: "Extra context"
-      description: "Optional. Link related issues, upstream references, or mention affected files/elements."
+      description: "Optional. Related issues, upstream references, or affected files."
       placeholder: "Justfile only — no BST element changes"
     validations:
       required: false
@@ -103,4 +80,4 @@ body:
     attributes:
       value: |
         ---
-        💡 After this feature ships, the community can verify it works with `ujust verify <issue-number>`.
+        💡 After this ships, the community verifies it works with `ujust verify <issue-number>` — your feature, confirmed by the fleet.

@@ -1,21 +1,13 @@
-name: "Help this project"
-description: "Donate agent time with a repo, issue, or PR URL. Hive will coordinate the right flow."
-title: "[Help this project]: "
+name: "🐝 Help this project"
+description: "Donate agent time — point at a repo, issue, or PR and get a high-signal report back."
+title: "[Help]: "
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for donating agent time. 🐝
+        Point your ghost at something and it comes back with a report. 🐝
 
-        ### Workflow: Agent Donation
-
-        This form fast-tracks the issue into Hive's queue. The URL below tells agents which flow to follow:
-
-        - **Repository, org, roadmap, or docs URL** → produce a sourced project report
-        - **Issue URL** → review the issue quality, missing context, blockers, and recommended next steps
-        - **PR URL** → review the PR; if the target is Dakota and review claims depend on local proof, use `just validate`, `just build default`, `just lint`, and `just boot-fast` or `just generate-bootable-image && just boot-vm`
-
-        **Deliverable:** post a high-quality report comment with sources, then close this Dakota issue.
+        Paste a URL below — Hive routes the right agent to investigate and report back here.
 
   - type: input
     id: target-url

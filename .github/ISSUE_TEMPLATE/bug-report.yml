@@ -1,5 +1,5 @@
-name: "Bug report"
-description: "Something is broken. Let's fix it together."
+name: "🐛 Bug report"
+description: "Something is broken — your ghost copy helps us fix it fast."
 title: "[Bug]: "
 labels: ["kind/bug"]
 type: "Bug"
@@ -7,17 +7,15 @@ body:
   - type: markdown
     attributes:
       value: |
-        Found a bug? Let's squash it. 🐛
+        Found a bug? You're our eyes on the ground. 🦖
 
-        **Before you type anything** — if you're on a running Dakota system, run:
+        Run this first — it's your primary instrument:
 
         ```bash
         ujust report
         ```
 
-        It collects your system state (kernel, image, extensions, failed units) in a privacy-respecting gist and offers to open this form with it pre-attached. You review everything before it uploads. The gist is yours to keep, share, or delete.
-
-        Already have a gist? Paste the URL in the field below and keep the rest short.
+        It collects your system state, you review everything, and it uploads a gist. Paste that URL below and you're done — the structured data does the talking.
 
   - type: checkboxes
     id: checks
@@ -31,7 +29,7 @@ body:
     id: report-link
     attributes:
       label: "ujust report gist URL"
-      description: "Paste the URL from `ujust report`. Gives maintainers your image digest, kernel, extensions, and failed units automatically — no need to describe your environment manually."
+      description: "This is all we need to see your exact image, kernel, extensions, and failed units. Paste and go."
       placeholder: "https://gist.github.com/..."
     validations:
       required: false
@@ -82,4 +80,4 @@ body:
     attributes:
       value: |
         ---
-        *Once a fix ships in nightly, a maintainer will add verify steps so the community can confirm it with `ujust verify <issue-number>`.*
+        *Once a fix ships, you can confirm it works on your machine with `ujust verify <issue-number>` — closing the loop.*
