@@ -23,7 +23,7 @@
 | `patches/gnome-build-meta/` | Patches applied to GBM via `patch_queue` |
 | `patches/linux/` | Kernel patches (via fdsdk linux element) |
 | `files/` | Static files installed by elements |
-| `.github/skills/` | Repo-local agent skills |
+| `docs/skills/` | Agent skills — task-focused, lazy-loaded |
 | `Justfile` | All local dev commands — run `just --list` first |
 
 ## Dev loop

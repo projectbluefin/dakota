@@ -1,4 +1,4 @@
-# .github/skills — In-Repo Knowledge Base
+# docs/skills — In-Repo Knowledge Base
 
 Accumulated lessons from real work on this repo. Every agent working here
 should read the relevant file before starting in that area.
@@ -30,7 +30,7 @@ every future agent and contributor — not just you, and not just on one machine
 | Hardware testlab one-time setup | [`testlab-setup.md`](testlab-setup.md) |
 | CI pipeline, remote cache, GHCR | [`ci.md`](ci.md) |
 | Project overview and what Bluefin is | [`overview.md`](overview.md) |
-| ujust recipes in `files/just-overrides/` | [`ujust-recipes.md`](ujust-recipes.md) |
+| ujust recipes in `files/just-overrides/` | [`.github/skills/ujust-recipes.md`](../../.github/skills/ujust-recipes.md) |
 | Installer (bootc-installer) | [`installer.md`](installer.md) |
 
 ## How to add a lesson
@@ -42,6 +42,6 @@ every future agent and contributor — not just you, and not just on one machine
 
 ## Related
 
-- Role policies for Hive agents: [`../files/hive/agent-policies/`](../files/hive/agent-policies/)
+- Role policies for Hive agents: [`../../files/hive/agent-policies/`](../../files/hive/agent-policies/)
 - Top-level agent rules: [`../../AGENTS.md`](../../AGENTS.md)
 

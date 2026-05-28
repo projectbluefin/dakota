@@ -1,15 +1,10 @@
-> Read `AGENTS.md` and `.github/skills/README.md` before any work.
+> Read `AGENTS.md` and `docs/skills/README.md` before any work.
 >
 > **In-repo skills (version-controlled, always current — load these first):**
 > - ujust recipes and gum patterns: `.github/skills/ujust-recipes.md`
-> - Testlab patterns (bootc switch, assertions): `.github/skills/testlab.md`
+> - Testlab patterns (bootc switch, assertions): `docs/skills/testlab.md`
 > - Agent role policies (Hive): `files/hive/agent-policies/`
->
-> **Extended domain skills (castrojo's machine only, if available):**
-> - CI/workflow: `cat ~/src/skills/dakota-ci/SKILL.md`
-> - BST authoring: `cat ~/src/skills/dakota-buildstream/SKILL.md`
-> - Package-specific: `cat ~/src/skills/dakota-package-<lang>/SKILL.md`
-> - OCI layers: `cat ~/src/skills/dakota-oci-layers/SKILL.md`
+> - Full skill index: `docs/skills/README.md`
 
 ## Build commands
 
