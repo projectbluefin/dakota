@@ -28,6 +28,43 @@ Test machine (physical hardware running dakota):
 - **Use exact digest for bootc switch** — tag-based switch silently skips if the tag already matches the booted digest (see Lessons Learned).
 - **BUILD FAILURES = FILE AN ISSUE.** Any element that fails during a lab build must be filed as a GitHub issue — even if it appears pre-existing.
 
+## PR Review — lab:fail Reset Policy
+
+When reviewing a PR with the `lab:fail` label, trigger a new lab run AND update the existing status comment. Never post a new comment — update in place.
+
+**Why:** Each retry cycle appending a new comment spams the PR thread (see PR #561 with 8 separate failure comments). One comment, kept current, is the policy.
+
+**How to find the existing status comment:**
+```bash
+PR=561
+COMMENT_ID=$(gh api repos/projectbluefin/dakota/issues/${PR}/comments \
+  --jq '.[] | select(.body | contains("<!-- lab-status -->")) | .id' | tail -1)
+```
+
+**How to update it (not post new):**
+```bash
+gh api --method PATCH \
+  repos/projectbluefin/dakota/issues/comments/${COMMENT_ID} \
+  --field body="❌ **lab:fail** — BST build failed (Argo workflow \`dakota-pr-${PR}-xxxxx\`). <!-- lab-status -->
+\`\`\`
+<error snippet>
+\`\`\`
+_Reset triggered $(date -u +%Y-%m-%dT%H:%M:%SZ) — see workflow for details._"
+```
+
+**If no `<!-- lab-status -->` comment exists yet**, post one with the sentinel so future resets can find it:
+```bash
+gh pr comment ${PR} --repo projectbluefin/dakota \
+  --body "❌ **lab:fail** — <details> <!-- lab-status -->"
+```
+
+**Workflow:**
+1. Spot `lab:fail` label during PR review
+2. Find or create the single `<!-- lab-status -->` comment
+3. Trigger a new lab run (Argo workflow or `just boot-test`)
+4. When the run completes, PATCH the comment with the new result
+5. On pass: update comment to `✅ lab:pass`, remove `lab:fail` label, add `lgtm` if code review is also clean
+
 ## Commands
 
 | Command | Where | What |
