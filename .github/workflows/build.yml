@@ -53,7 +53,7 @@ jobs:
         uses: ./.github/actions/check-bst2-pin
 
       - name: Setup Just
-        uses: taiki-e/install-action@6ed6112eb9893c58dd600eebccdf6e77ab7bfa9c # v2
+        uses: taiki-e/install-action@15413b256f995d819248ea62704771a959284285 # v2
         with:
           tool: just
 
@@ -123,7 +123,7 @@ jobs:
       #       fs.writeFileSync('bluefin.token', token, { mode: 0o600 });
 
       - name: Setup Just
-        uses: taiki-e/install-action@6ed6112eb9893c58dd600eebccdf6e77ab7bfa9c # v2
+        uses: taiki-e/install-action@15413b256f995d819248ea62704771a959284285 # v2
         with:
           tool: just
 
@@ -230,7 +230,7 @@ jobs:
         uses: ublue-os/remove-unwanted-software@cc0becac701cf642c8f0a6613bbdaf5dc36b259e # v9
 
       - name: Setup Just
-        uses: taiki-e/install-action@6ed6112eb9893c58dd600eebccdf6e77ab7bfa9c # v2
+        uses: taiki-e/install-action@15413b256f995d819248ea62704771a959284285 # v2
         with:
           tool: just
 
