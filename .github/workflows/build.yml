@@ -68,15 +68,15 @@ jobs:
           key: bst-show-${{ hashFiles('elements/gnome-build-meta.bst', 'elements/freedesktop-sdk.bst', 'Justfile') }}
           restore-keys: bst-show-
 
-      - name: Validate BST element graph (default)
+      - name: Validate BST element graph (default + nvidia in parallel)
         env:
           BST_FLAGS: -o x86_64_v3 true --no-interactive
-        run: just bst show --deps all oci/bluefin.bst
-
-      - name: Validate BST element graph (nvidia)
-        env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive
-        run: just bst show --deps all oci/bluefin-nvidia.bst
+        run: |
+          just bst show --deps all oci/bluefin.bst &
+          p1=$!
+          just bst show --deps all oci/bluefin-nvidia.bst &
+          p2=$!
+          wait "$p1" && wait "$p2"
 
   # ── Full OCI build ────────────────────────────────────────────────────────
   # Fires on merge_group, schedule, and workflow_dispatch — NOT on pull_request.

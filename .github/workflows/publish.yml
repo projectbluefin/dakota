@@ -107,55 +107,10 @@ jobs:
         env:
           CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
           CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
-        run: |
-          mkdir -p logs
-          echo "$CASD_CLIENT_CERT" > client.crt
-          echo "$CASD_CLIENT_KEY" > client.key
-          cat > buildstream-ci.conf <<'BSTCONF'
-          scheduler:
-            on-error: continue
-            fetchers: 32
-            builders: 4
-            network-retries: 3
-
-          logging:
-            message-format: '[%{wallclock}][%{elapsed}][%{key}][%{element}] %{action} %{message}'
-            error-lines: 80
-
-          cachedir: /root/.cache/buildstream
-          logdir: /src/logs
-
-          BSTCONF
-
-          if [[ -n "$CASD_CLIENT_CERT" ]] && [[ -n "$CASD_CLIENT_KEY" ]]; then
-            cat >> buildstream-ci.conf <<'BSTCONFFETCH'
-          artifacts:
-            servers:
-            - url: https://cache.projectbluefin.io:11002
-              push: false
-              connection-config:
-                keepalive-time: 180
-                retry-limit: 5
-                retry-delay: 1000
-                request-timeout: 180
-              auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
-
-          source-caches:
-            servers:
-            - url: https://cache.projectbluefin.io:11002
-              push: false
-              connection-config:
-                keepalive-time: 180
-                retry-limit: 5
-                retry-delay: 1000
-                request-timeout: 180
-              auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
-          BSTCONFFETCH
-          fi
+        uses: ./.github/actions/generate-bst-ci-config
+        with:
+          enable-remote-execution: 'false'
+          enable-push: 'false'
 
       - name: Export OCI image from BuildStream
         id: export
