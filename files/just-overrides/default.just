@@ -138,6 +138,56 @@ report:
     #!/usr/bin/bash
     set -euo pipefail
 
+    # ── --confirm mode: lightweight me-too fingerprint on an existing issue ──
+    CONFIRM_ISSUE=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --confirm) CONFIRM_ISSUE="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    if [[ -n "$CONFIRM_ISSUE" ]]; then
+        if ! [[ "$CONFIRM_ISSUE" =~ ^[0-9]+$ ]]; then
+            echo "Usage: ujust report --confirm <issue-number>"
+            exit 1
+        fi
+
+        if ! gh auth status --active &>/dev/null; then
+            echo "gh is not authenticated. Run: gh auth login"
+            exit 1
+        fi
+
+        IMAGE_REF=$(grep '^BOOTED_IMAGE=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "unknown")
+        IMAGE_VERSION=$(grep '^IMAGE_VERSION=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "unknown")
+        KERNEL=$(uname -r)
+        ARCH=$(uname -m)
+        FAILED=$(systemctl list-units --state=failed --no-legend --plain 2>/dev/null \
+                 | awk '{print $1}' | head -10 | paste -sd ',' || echo "none")
+        if [[ -r /etc/machine-id ]]; then
+            DEVICE_ID=$(printf 'ujust-report:%s' "$(cat /etc/machine-id)" | sha256sum | cut -c1-8)
+        else
+            DEVICE_ID="unknown"
+        fi
+
+        BODY="$(printf '**System fingerprint** (via `ujust report --confirm`)\n\n* Image: %s\n* Version: %s\n* Kernel: %s\n* Arch: %s\n* Failed units: %s\n* Anonymous device ID: %s (truncated sha256)' \
+            "$IMAGE_REF" "$IMAGE_VERSION" "$KERNEL" "$ARCH" "${FAILED:-none}" "$DEVICE_ID")"
+
+        echo ""
+        echo "Will post to: https://github.com/projectbluefin/dakota/issues/$CONFIRM_ISSUE"
+        echo ""
+        echo "$BODY"
+        echo ""
+
+        if [[ -t 0 && -t 1 ]]; then
+            gum confirm "Post this comment?" || exit 0
+        fi
+
+        URL=$(gh issue comment "$CONFIRM_ISSUE" --repo projectbluefin/dakota --body "$BODY" 2>&1)
+        echo "$URL"
+        exit 0
+    fi
+
     REPORT_DIR="$(mktemp -d /tmp/ujust-report-XXXXXX)"
     OTEL_CONFIG=""
     cleanup() {
