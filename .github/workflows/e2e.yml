@@ -1,0 +1,43 @@
+# E2E Tests — GNOME 50
+#
+# Delegates to the projectbluefin/testsuite reusable workflow.
+# All VM provisioning, QEMU boot, session setup, and test execution is
+# handled there — see:
+#   https://github.com/projectbluefin/testsuite/tree/main/.github/actions/gnome-e2e
+#
+# PRs run 'smoke'. workflow_dispatch can run any supported GUI suite.
+
+name: E2E Tests — GNOME 50
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'elements/**'
+      - 'files/**'
+      - 'patches/**'
+      - 'Justfile'
+      - 'project.conf'
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "OCI image to test (default: dakota:latest)"
+        required: false
+        default: "ghcr.io/projectbluefin/dakota:latest"
+      suites:
+        description: "Comma-separated GUI suites: smoke,developer,dx,software,vanilla-gnome"
+        required: false
+        default: "smoke"
+
+permissions: read-all
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@main
+    with:
+      image: ${{ github.event.inputs.image || 'ghcr.io/projectbluefin/dakota:latest' }}
+      suites: ${{ github.event.inputs.suites || 'smoke' }}

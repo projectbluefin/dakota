@@ -83,7 +83,7 @@ This also defines what agents and automation must not do:
 │  │              ISSUE TRACKER (the bus)                     │   │
 │  │                                                         │   │
 │  │  Bug filed → discussed → approved → claimed →           │   │
-│  │  PR opened → CI validates → lab:pass → merged →         │   │
+│  │  PR opened → CI validates → e2e tests pass → merged →   │   │
 │  │  nightly ships → community verifies → closed            │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
@@ -119,30 +119,28 @@ Contributors can verify fixes on their own machines before merge. For
 hardware-specific bugs, contributors with the affected hardware build the
 PR branch and test directly.
 
-### Ghost Lab (automated hardware-in-the-loop)
+### CI (automated e2e tests on GitHub Actions)
 
 | Step | What happens | Evidence produced |
 |------|-------------|-------------------|
-| ghost build | Full BST build on dedicated hardware | Build success/failure |
-| zot publish | Image pushed to local OCI registry | Image available for testing |
-| exo-dakota bootc switch | NUC boots into new image | Real hardware boot |
-| Verification | `uname -r` + `bootc status` + GDM active | PASS/FAIL report on PR |
+| Build | Full BST build on GHA runner | Build success/failure |
+| QEMU boot | Desktop image boots in QEMU | Automated boot verification |
+| e2e suite | projectbluefin/testsuite reusable workflow | PASS/FAIL status on PR |
 
-The ghost lab produces the `lab:pass` label that gates merge. It is the
-maintainer's hardware proxy — confirming that the image boots and the desktop
-works on physical iron, not just in QEMU.
+The e2e CI workflow gates merge. It runs automatically on every PR and confirms
+the image boots and the desktop works before any code lands on main.
 
 ---
 
 ## How Evidence Flows Through the Lifecycle
 
 ```
-Stage              User evidence          Contributor evidence     Lab evidence
-─────              ──────────────         ────────────────────     ────────────
+Stage              User evidence          Contributor evidence     CI evidence
+─────              ──────────────         ────────────────────     ───────────
 Bug filed          ujust report gist      —                        —
 Discussion         ujust confirm (me too) —                        —
 Fix in PR          —                      just validate/build/test CI validate
-Lab gate           —                      —                        lab:pass
+e2e gate           —                      —                        e2e tests pass
 Merged             —                      —                        —
 Nightly ships      —                      —                        —
 Verification       ujust verify           —                        —
@@ -159,8 +157,8 @@ trust — there is always a command to run and a result to share.
 1. **Every bot comment includes the next command.** When actionadon moves an
    issue forward, it tells the relevant role exactly what to type next.
 
-2. **Evidence is always user-owned.** Gists belong to the user. Lab reports
-   belong to the maintainer. Nothing is aggregated into a central database.
+2. **Evidence is always user-owned.** Gists belong to the user. CI reports
+   belong to the repo. Nothing is aggregated into a central database.
 
 3. **The Justfile is the single source of truth.** Every verification step is a
    `just` or `ujust` command. No loose shell. No "run this incantation."
@@ -171,13 +169,13 @@ trust — there is always a command to run and a result to share.
    |------|-----|-----|-----------|
    | 1 | User | Reboot into nightly + `ujust verify` | Good |
    | 2 | Contributor | `just build` + `just boot-fast` | Better |
-   | 3 | Lab | Ghost build + exo-dakota hardware boot | Best |
+   | 3 | CI | e2e suite in QEMU on GHA | Best |
 
    Most issues need Tier 1. Hardware bugs need Tier 2 or 3.
 
-5. **The lab supplements, never replaces, community feedback.** The ghost lab
-   has one machine. Users have hundreds of different hardware combinations.
-   Both signals matter.
+5. **CI supplements, never replaces, community feedback.** Automated tests run
+   on a standard QEMU image. Users have hundreds of different hardware
+   combinations. Both signals matter.
 
 6. **No telemetry. No metrics. No phone-home.** Dakota's feedback loop is
    human-initiated, human-reviewed, and human-owned. The user decides what
@@ -195,8 +193,8 @@ trust — there is always a command to run and a result to share.
   laptop owner can build the PR branch, boot it, confirm the logout bug is
   fixed, and post structured evidence — all from their couch.
 
-- **The lab catches what users can't.** Build regressions, boot failures, and
-  service crashes are caught by ghost + exo-dakota before they ever reach
+- **CI catches what users can't.** Build regressions, boot failures, and
+  service crashes are caught by the e2e suite before they ever reach
   users.
 
 - **Agents produce the same evidence as humans.** An agent claiming an issue

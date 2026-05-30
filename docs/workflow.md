@@ -150,7 +150,7 @@ Copy `files/hive/hive-project.yaml.example` to `/etc/hive/hive-project.yaml` and
 | `hold` | Do not touch |
 | `do-not-merge` | Do not merge or automate |
 | `lgtm` | Maintainer approved — ready to merge |
-| `lab:pass` | Lab validation passed; enables label-gated auto-merge |
+| `tests:pass` | e2e tests passed; enables label-gated auto-merge |
 | `kind:bug` / `kind:improvement` / `kind:tech-debt` / `kind:github-action` | Change type |
 | `kind:agent-donation` | Investigation request — report comment, not code |
 | `flow/project-report` / `flow/issue-review` / `flow/pr-review` | Hive scanner flow routing |
