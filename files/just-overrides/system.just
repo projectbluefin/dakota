@@ -173,3 +173,46 @@ mount-drive:
     sudo systemctl daemon-reload
     sudo systemctl enable --now "$UNIT_NAME"
     echo "Mounted $DEVICE at $MOUNTPOINT and enabled on boot."
+
+# Clean up stale bootloader entries left behind after an OS/image rename
+# Closes #531
+[group('System')]
+cleanup-stale-boot-entries:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Scanning for stale bootloader entries..."
+    ENTRIES_DIR="/boot/loader/entries"
+    if [[ ! -d "$ENTRIES_DIR" ]]; then
+        echo "No $ENTRIES_DIR found — nothing to clean."
+        exit 0
+    fi
+    CURRENT_PREFIX=$(grep -oP 'bootc[^\s]*' /proc/cmdline | head -1 || echo "")
+    if [[ -z "$CURRENT_PREFIX" ]]; then
+        echo "Could not determine current bootc prefix from /proc/cmdline."
+        exit 1
+    fi
+    echo "Current image prefix: $CURRENT_PREFIX"
+    STALE=()
+    while IFS= read -r -d '' entry; do
+        basename="$(basename "$entry")"
+        if [[ "$basename" != bootc_${CURRENT_PREFIX}* ]]; then
+            STALE+=("$entry")
+        fi
+    done < <(find "$ENTRIES_DIR" -name "bootc_*.conf" -print0 2>/dev/null)
+    if [[ ${#STALE[@]} -eq 0 ]]; then
+        echo "No stale entries found. All good!"
+        exit 0
+    fi
+    echo ""
+    echo "Found ${#STALE[@]} stale bootloader entries:"
+    for entry in "${STALE[@]}"; do
+        echo "  - $(basename "$entry")"
+    done
+    echo ""
+    echo "These can cause 'Multiple extra entries in /boot' errors."
+    if ! gum confirm "Remove these stale entries?"; then
+        echo "Cancelled."
+        exit 0
+    fi
+    sudo rm -f "${STALE[@]}"
+    echo "Removed ${#STALE[@]} stale entries."
