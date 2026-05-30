@@ -115,6 +115,9 @@ rebase-helper:
     @/usr/bin/ublue-rollback-helper
 
 # Show current kernel parameters and explain how to add persistent ones
+# On Dakota (composefs/bootc), /usr is read-only — use a custom image layer
+# See: bootc kargs docs for creating /usr/lib/bootc/kargs.d/ entries
+# Closes #362
 [group('System')]
 kargs:
     #!/usr/bin/env bash
@@ -134,6 +137,8 @@ kargs:
     echo "     with a file at /usr/lib/bootc/kargs.d/99-custom.toml containing:"
     echo "     [kargs]"
     echo "     append = [\"your.karg=value\"]"
+    echo ""
+    echo "  3. Reference: https://github.com/containers/bootc/blob/main/docs/src/kargs.md"
 
 # Mount a drive persistently using a systemd.mount unit
 [group('System')]
