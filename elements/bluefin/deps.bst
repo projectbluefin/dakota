@@ -39,6 +39,7 @@ depends:
   - bluefin/xdg-terminal-exec.bst
   - bluefin/nautilus-python.bst
   - bluefin/network.bst
+  - bluefin/countme.bst
 
   # Include things missing from the gnomeos base image
   - gnome-build-meta.bst:core-deps/fwupd.bst

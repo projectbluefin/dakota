@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly Bluefin user count ping
+Documentation=https://countme.projectbluefin.io
+
+[Timer]
+OnCalendar=weekly
+RandomizedDelaySec=86400
+Persistent=true
+
+[Install]
+WantedBy=timers.target
