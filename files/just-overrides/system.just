@@ -186,16 +186,25 @@ cleanup-stale-boot-entries:
         echo "No $ENTRIES_DIR found — nothing to clean."
         exit 0
     fi
-    CURRENT_PREFIX=$(grep -oP 'bootc[^\s]*' /proc/cmdline | head -1 || echo "")
+    CURRENT_PREFIX=""
+    CURRENT_IMAGE=$(sudo bootc status --json 2>/dev/null | jq -r '.status.booted.image.image.image // empty')
+    if [[ -n "$CURRENT_IMAGE" ]]; then
+        IMAGE_NAME=$(echo "$CURRENT_IMAGE" | sed -E 's|.*/||; s|:.*||; s|@.*||')
+        CURRENT_PREFIX="bootc_${IMAGE_NAME}"
+    else
+        # Fallback to cmdline parsing if bootc status fails
+        CURRENT_PREFIX=$(grep -oP 'bootc[^\s]*' /proc/cmdline | head -1 || echo "")
+    fi
+
     if [[ -z "$CURRENT_PREFIX" ]]; then
-        echo "Could not determine current bootc prefix from /proc/cmdline."
+        echo "Could not determine current bootc prefix."
         exit 1
     fi
     echo "Current image prefix: $CURRENT_PREFIX"
     STALE=()
     while IFS= read -r -d '' entry; do
         basename="$(basename "$entry")"
-        if [[ "$basename" != bootc_${CURRENT_PREFIX}* ]]; then
+        if [[ "$basename" != ${CURRENT_PREFIX}* ]]; then
             STALE+=("$entry")
         fi
     done < <(find "$ENTRIES_DIR" -name "bootc_*.conf" -print0 2>/dev/null)
