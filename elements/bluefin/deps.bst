@@ -39,6 +39,7 @@ depends:
   - bluefin/efibootmgr.bst
   - bluefin/xdg-terminal-exec.bst
   - bluefin/nautilus-python.bst
+  - bluefin/gnome-ponytail-daemon.bst
   - bluefin/network.bst
   - bluefin/countme.bst
 
