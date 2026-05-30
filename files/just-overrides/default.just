@@ -478,8 +478,9 @@ file-issue:
     echo "Opening: $URL"
     xdg-open "$URL" 2>/dev/null || echo "Could not open browser. Visit: $URL"
 
-# Confirm you also experience an issue ("me too" with system context).
-# Usage: ujust confirm 531
+# Confirm you also experience an issue — posts a minimal fingerprint as a
+# "me too" comment on the given issue number. Fast (< 2 s), no gist required.
+# Usage: ujust confirm 579
 confirm issue_number:
     #!/usr/bin/bash
     set -euo pipefail
@@ -487,25 +488,68 @@ confirm issue_number:
     ISSUE="{{issue_number}}"
     REPO="projectbluefin/dakota"
 
-    echo "📋 Confirming you also experience issue #${ISSUE}..."
-    echo ""
-
-    # Collect lightweight system fingerprint
-    BOOTC_JSON=$(sudo bootc status --json 2>/dev/null || echo '{}')
-    BOOTED_IMAGE=$(echo "$BOOTC_JSON" | jq -r '.status.booted.image.image.image // "unknown"')
-    BOOTED_DIGEST=$(echo "$BOOTC_JSON" | jq -r '.status.booted.imageDigest // "unknown"')
-    KERNEL_VER=$(uname -r)
-    ARCH=$(uname -m)
-    FAILED_UNITS=$(systemctl list-units --state=failed --no-legend --plain 2>/dev/null \
-                   | awk '{print $1}' | head -10 || echo "")
-
-    if [[ -r /etc/machine-id ]]; then
-        HOST_ID=$(printf 'ujust-confirm:%s' "$(cat /etc/machine-id)" | sha256sum | cut -c1-8)
-    else
-        HOST_ID="unknown"
+    # Validate that issue_number looks like a number
+    if ! [[ "$ISSUE" =~ ^[0-9]+$ ]]; then
+        echo "Error: issue number must be a positive integer (e.g. ujust confirm 579)" >&2
+        exit 1
     fi
 
-    # Build the comment
+    echo ""
+    gum style \
+        --border rounded --border-foreground 99 \
+        --padding "1 2" --margin "0 1" \
+        --bold --foreground 212 \
+        "✋ Confirm issue #${ISSUE}"
+    echo ""
+
+    # Fetch issue title when gh is authenticated (best-effort — non-fatal)
+    ISSUE_TITLE=""
+    if gh auth status --active &>/dev/null; then
+        ISSUE_TITLE=$(gh issue view "$ISSUE" --repo "$REPO" --json title --jq '.title' 2>/dev/null || echo "")
+    fi
+    if [[ -n "$ISSUE_TITLE" ]]; then
+        gum style --foreground 245 --margin "0 2" "Issue: ${ISSUE_TITLE}"
+        echo ""
+    fi
+
+    gum style --foreground 245 --margin "0 2" \
+        "Collects a minimal fingerprint (image, kernel, arch) and posts it"
+    gum style --foreground 245 --margin "0 2" \
+        "as a comment on issue #${ISSUE}. No gist. No full report. Fast."
+    echo ""
+
+    # Collect lightweight fingerprint — sudo needed for bootc status
+    gum style --foreground 214 --margin "0 2" \
+        "→ Reading your booted image (you may be prompted for your password):"
+    echo ""
+
+    BOOTC_JSON=$(sudo bootc status --json 2>/dev/null || echo '{}')
+
+    COLLECTION_OUT="$(mktemp)"
+    gum spin --spinner dot --title " Collecting fingerprint..." -- bash -c "
+        BOOTED_IMAGE=\$(printf '%s' '$BOOTC_JSON' | jq -r '.status.booted.image.image.image // \"unknown\"' 2>/dev/null || echo unknown)
+        BOOTED_DIGEST=\$(printf '%s' '$BOOTC_JSON' | jq -r '.status.booted.imageDigest // \"unknown\"' 2>/dev/null || echo unknown)
+        KERNEL_VER=\$(uname -r)
+        ARCH=\$(uname -m)
+        FAILED_UNITS=\$(systemctl list-units --state=failed --no-legend --plain 2>/dev/null \
+                        | awk '{print \$1}' | head -10 || echo '')
+        if [[ -r /etc/machine-id ]]; then
+            HOST_ID=\$(printf 'ujust-confirm:%s' \"\$(cat /etc/machine-id)\" | sha256sum | cut -c1-8)
+        else
+            HOST_ID=unknown
+        fi
+        printf 'BOOTED_IMAGE=%q\n'  \"\$BOOTED_IMAGE\"  > '$COLLECTION_OUT'
+        printf 'BOOTED_DIGEST=%q\n' \"\$BOOTED_DIGEST\" >> '$COLLECTION_OUT'
+        printf 'KERNEL_VER=%q\n'    \"\$KERNEL_VER\"    >> '$COLLECTION_OUT'
+        printf 'ARCH=%q\n'          \"\$ARCH\"           >> '$COLLECTION_OUT'
+        printf 'FAILED_UNITS=%q\n'  \"\$FAILED_UNITS\"  >> '$COLLECTION_OUT'
+        printf 'HOST_ID=%q\n'       \"\$HOST_ID\"        >> '$COLLECTION_OUT'
+    "
+    # shellcheck disable=SC1090
+    source "$COLLECTION_OUT"
+    rm -f "$COLLECTION_OUT"
+
+    # Build the comment body
     COMMENT=$(printf '### ✋ I also experience this issue\n\n')
     COMMENT+=$(printf '| Field | Value |\n|-------|-------|\n')
     COMMENT+=$(printf '| Image | `%s` |\n' "$BOOTED_IMAGE")
@@ -515,13 +559,16 @@ confirm issue_number:
     COMMENT+=$(printf '| Device ID | `%s` |\n' "$HOST_ID")
     if [[ -n "$FAILED_UNITS" ]]; then
         COMMENT+=$(printf '\n**Failed units:** ')
-        COMMENT+=$(echo "$FAILED_UNITS" | tr '\n' ',' | sed 's/,$//')
+        COMMENT+=$(printf '%s' "$FAILED_UNITS" | tr '\n' ',' | sed 's/,$//')
         COMMENT+=$(printf '\n')
     fi
     COMMENT+=$(printf '\n_Submitted via `ujust confirm %s`_\n' "$ISSUE")
 
-    # Show user what will be posted
-    echo "$COMMENT"
+    # Show the user what will be posted
+    echo ""
+    gum style --foreground 99 --bold --margin "0 2" "Comment to be posted:"
+    echo ""
+    printf '%s\n' "$COMMENT"
     echo ""
 
     if ! gum confirm "Post this as a comment on issue #${ISSUE}?"; then
@@ -530,20 +577,38 @@ confirm issue_number:
     fi
 
     if gh auth status --active &>/dev/null; then
-        gh issue comment "$ISSUE" --repo "$REPO" --body "$COMMENT"
+        COMMENT_URL=$(gh issue comment "$ISSUE" --repo "$REPO" --body "$COMMENT" 2>/dev/null)
         echo ""
-        echo "✅ Confirmation posted on issue #${ISSUE}"
+        gum style \
+            --border rounded --border-foreground 82 \
+            --padding "1 2" --margin "0 1" \
+            --bold --foreground 82 \
+            "✓ Confirmation posted on issue #${ISSUE}"
+        echo ""
+        gum style --foreground 245 --margin "0 2" \
+            "https://github.com/${REPO}/issues/${ISSUE}"
     else
+        echo ""
+        gum style --foreground 214 --bold --margin "0 2" \
+            "gh is not signed in — no problem:"
         echo ""
         if command -v wl-copy &>/dev/null; then
             printf '%s' "$COMMENT" | wl-copy
-            echo "📋 Copied to clipboard! Paste it as a comment on:"
+            gum style --foreground 82 --margin "0 2" \
+                "✓ Comment copied to clipboard (wl-copy). Paste it at:"
+        elif command -v xclip &>/dev/null; then
+            printf '%s' "$COMMENT" | xclip -selection clipboard
+            gum style --foreground 82 --margin "0 2" \
+                "✓ Comment copied to clipboard (xclip). Paste it at:"
         else
-            echo "📋 Copy the text above and paste it as a comment on:"
+            gum style --foreground 245 --margin "0 2" \
+                "Copy the comment above and paste it at:"
         fi
-        echo "  https://github.com/${REPO}/issues/${ISSUE}"
+        gum style --foreground 245 --margin "0 4" \
+            "https://github.com/${REPO}/issues/${ISSUE}"
         echo ""
-        echo "Or authenticate gh first: gh auth login"
+        gum style --foreground 245 --margin "0 2" \
+            "Or sign in first:  gh auth login"
     fi
 
 # Verify that a fix works on your hardware after upgrading.
