@@ -158,7 +158,7 @@ report:
             exit 1
         fi
 
-        IMAGE_REF=$(grep '^IMAGE_REF=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "unknown")
+        IMAGE_REF=$(grep '^BOOTED_IMAGE=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "unknown")
         IMAGE_VERSION=$(grep '^IMAGE_VERSION=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "unknown")
         KERNEL=$(uname -r)
         ARCH=$(uname -m)
@@ -180,16 +180,11 @@ report:
         echo ""
 
         if [[ -t 0 && -t 1 ]]; then
-            if command -v gum &>/dev/null; then
-                gum confirm "Post this comment?" || exit 0
-            else
-                read -r -p "Post this comment? [y/N] " REPLY
-                [[ "$REPLY" =~ ^[Yy]$ ]] || exit 0
-            fi
+            gum confirm "Post this comment?" || exit 0
         fi
 
-        COMMENT_URL=$(gh issue comment "$CONFIRM_ISSUE" --repo projectbluefin/dakota --body "$BODY" 2>&1)
-        echo "$COMMENT_URL"
+        URL=$(gh issue comment "$CONFIRM_ISSUE" --repo projectbluefin/dakota --body "$BODY" 2>&1)
+        echo "$URL"
         exit 0
     fi
 
