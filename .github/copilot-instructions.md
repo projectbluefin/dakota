@@ -24,15 +24,21 @@ just bst build oci/bluefin.bst
 
 ## ⚠️ Hard rules (learned from real mistakes)
 
-### 1. Always branch from upstream/main
+### 1. Work directly in projectbluefin/dakota — always push to `upstream`
 
 ```bash
 git checkout upstream/main -b feature/my-change
+git push upstream feature/my-change
 ```
 
-**Never branch from local `main`.** The `castrojo/dakota` fork diverges from `projectbluefin/dakota` by 20+ commits. Branching from local `main` creates PRs with hundreds of unrelated files.
+**Never push via the `castrojo` fork** for any PR or retrigger intended for `projectbluefin/dakota`. The fork diverges and PRs/CI runs against the fork have no effect on upstream.
 
-Verify before pushing:
+**Dep-update PRs** (`auto/track-*`) are same-repo branches in `projectbluefin/dakota`. Retrigger by pushing directly to `upstream`:
+```bash
+git push upstream local-branch:auto/track-foo
+```
+
+Verify your diff is clean before pushing:
 ```bash
 git diff upstream/main...HEAD --stat
 ```
