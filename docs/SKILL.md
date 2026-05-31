@@ -6,6 +6,7 @@ Agent entry point. Load only the skill for your current task — do not load eve
 
 | I need to... | Load |
 |---|---|
+| Review a pull request | `docs/workflow.md` + `docs/pr-checklist.md` |
 | Add a package to Bluefin | `docs/skills/add-package.md` |
 | Remove a package | `docs/skills/remove-package.md` |
 | Update a package version | `docs/skills/update-refs.md` |
