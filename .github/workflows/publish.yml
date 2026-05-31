@@ -88,25 +88,19 @@ jobs:
         with:
           ref: ${{ needs.setup.outputs.sha }}
 
-      - name: Setup Just
-        uses: taiki-e/install-action@873c7452cadb7c034694a1282227095d93fbdf92 # v2
-        with:
-          tool: just
-
       - name: Capture build timestamp
         id: timestamp
         run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-      - name: Remove unwanted software
-        uses: ublue-os/remove-unwanted-software@cc0becac701cf642c8f0a6613bbdaf5dc36b259e # v9
-
-      - name: Mount BTRFS for podman storage
-        uses: ublue-os/container-storage-action@dc1f4c8f17b672069e921f001132f7cf98a423a6
-        continue-on-error: true
+      # update-podman: true — newer podman from Ubuntu resolute for bst2 + push.
+      # Note: setup-runner btrfs does not expose loopback-free; watch for disk
+      # pressure and upstream the option if needed.
+      - name: Setup runner
+        uses: projectbluefin/actions/bootc-build/setup-runner@95dc404b7c69ad65889e3f3bf49ecba5cd3018e6 # v1.1.0
         with:
-          target-dir: /var/lib/containers
-          mount-opts: compress-force=zstd:2
-          loopback-free: '1'
+          storage-backend: btrfs
+          update-podman: true
+          install-tools: '["just"]'
 
       # Fetch-only BST config — pull artifact from remote CAS, no build/push
       - name: Generate BST fetch config
@@ -228,20 +222,19 @@ jobs:
 
           echo "digest=$(cat /tmp/digest.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: Install cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-        with:
-          cosign-release: v3.0.6
-
       - name: Install oras
         uses: oras-project/setup-oras@38de303aac69abb66f3e6255b7198bff35f323e3 # v2.0.0
 
-      - name: Sign image
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
-        run: |
-          cosign sign -y \
-            "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}@${DIGEST}"
+      - name: Sign image and create attestation
+        # generate-sbom: false — dakota uses just sbom (BST-native provenance via
+        # bst artifact list). Syft post-build scan is less accurate for BST builds.
+        # SBOM attachment and SBOM signing are handled in the steps below.
+        uses: projectbluefin/actions/bootc-build/sign-and-publish@95dc404b7c69ad65889e3f3bf49ecba5cd3018e6 # v1.1.0
+        with:
+          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
+          digest: ${{ steps.push.outputs.digest }}
+          generate-sbom: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Attach SBOM
         id: sbom-attach
@@ -267,13 +260,6 @@ jobs:
         run: |
           cosign sign -y \
             "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}@${SBOM_DIGEST}"
-
-      - name: SLSA attestation
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-        with:
-          subject-name: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
 
   # ── E2E gate ─────────────────────────────────────────────────────────────
   # Smoke-tests the freshly pushed :$sha before promoting to :testing.
