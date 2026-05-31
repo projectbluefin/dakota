@@ -187,7 +187,7 @@ cleanup-stale-boot-entries:
         exit 0
     fi
     CURRENT_PREFIX=""
-    CURRENT_IMAGE=$(sudo bootc status --json 2>/dev/null | jq -r '.status.booted.image.image.image // empty')
+    CURRENT_IMAGE=$(sudo bootc status --json 2>/dev/null | jq -r '.status.booted.image.image.image // empty' || true)
     if [[ -n "$CURRENT_IMAGE" ]]; then
         IMAGE_NAME=$(echo "$CURRENT_IMAGE" | sed -E 's|.*/||; s|:.*||; s|@.*||')
         CURRENT_PREFIX="bootc_${IMAGE_NAME}"
