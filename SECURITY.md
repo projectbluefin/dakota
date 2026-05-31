@@ -43,7 +43,7 @@ Verify the image signature:
 cosign verify \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/projectbluefin/dakota/.github/workflows/publish.yml@refs/heads/main$' \
-  ghcr.io/projectbluefin/dakota:latest
+  ghcr.io/projectbluefin/dakota:stable
 ```
 
 Verify the SLSA provenance:
@@ -52,5 +52,5 @@ cosign verify-attestation \
   --type https://slsa.dev/provenance/v1 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/projectbluefin/dakota/.github/workflows/publish.yml@refs/heads/main$' \
-  ghcr.io/projectbluefin/dakota:latest
+  ghcr.io/projectbluefin/dakota:stable
 ```

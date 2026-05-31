@@ -14,14 +14,14 @@ common ────────────────────────�
                                  ▼
 bluefin  (main→stable)       ←── images ──→ testsuite (e2e gate)
 bluefin-lts (main→lts)       ←── images ──→ testsuite (e2e gate)
-dakota  (main→:latest)       ←── images ──→ testsuite (e2e gate)
+dakota  (main→testing→latest/stable) ←── images ──→ testsuite (e2e gate)
                                  │
                                  ▼
                                 iso (installation media)
 ```
 
 Each image repo pulls `ghcr.io/projectbluefin/common:latest` as a base layer.
-testsuite gates `:latest` promotion in all three image repos.
+testsuite gates `:testing` promotion nightly and `:latest`/`:stable` promotion weekly.
 
 ---## Data donation
 

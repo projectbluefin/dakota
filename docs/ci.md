@@ -22,9 +22,24 @@ setup → publish (matrix) → e2e-gate → promote
 | `setup` | Resolves SHA and trigger event |
 | `publish` | Exports from CAS, pushes `:$sha`, signs, SBOM, attests |
 | `e2e-gate` | Smoke-tests `ghcr.io/projectbluefin/dakota:$sha` — schedule/dispatch only |
-| `promote` | Re-tags `:$sha` → `:latest` after e2e passes — schedule/dispatch only |
+| `promote` | Re-tags `:$sha` → `:testing` after e2e passes — schedule/dispatch only |
 
-`:latest` is never published without a passing e2e smoke test.
+`:testing` is never published without a passing e2e smoke test.
+
+## Weekly promotion (weekly-testing-promotion.yml)
+
+Runs Tuesday 06:00 UTC. Promotes `:testing` → `:latest` + `:stable` via digest-pinned re-tagging.
+
+```
+resolve → check-diff → promote → update-branches
+```
+
+| Job | What |
+|---|---|
+| `resolve` | Pins `:testing` digest, verifies default + NVIDIA share same source SHA |
+| `check-diff` | Skips if `:testing` == `:latest` (nothing new to promote) |
+| `promote` | Re-tags both variants as `:latest` + `:stable` |
+| `update-branches` | Fast-forwards `latest` and `stable` branches to promoted SHA |
 
 ## Schedule
 
@@ -36,7 +51,12 @@ setup → publish (matrix) → e2e-gate → promote
 
 ## Published images
 
-`ghcr.io/projectbluefin/dakota:latest` and `ghcr.io/projectbluefin/dakota:<sha>`
+`ghcr.io/projectbluefin/dakota:{testing,latest,stable}` and `ghcr.io/projectbluefin/dakota:<sha>`
+
+Streams:
+- `:testing` — nightly build, promoted after e2e passes
+- `:latest` — weekly promotion from testing (Tuesday 06:00 UTC)
+- `:stable` — weekly promotion from testing (same cadence as latest)
 
 Build triggers: `merge_group`, `schedule`, `workflow_dispatch` — **not** `pull_request`.
 

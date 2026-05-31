@@ -21,9 +21,9 @@ on:
   workflow_dispatch:
     inputs:
       image:
-        description: "OCI image to test (default: dakota:latest)"
+        description: "OCI image to test (default: dakota:testing)"
         required: false
-        default: "ghcr.io/projectbluefin/dakota:latest"
+        default: "ghcr.io/projectbluefin/dakota:testing"
       suites:
         description: "Comma-separated GUI suites: smoke,developer,dx,software,vanilla-gnome"
         required: false
@@ -41,5 +41,5 @@ jobs:
   e2e:
     uses: projectbluefin/testsuite/.github/workflows/e2e.yml@main
     with:
-      image: ${{ github.event.inputs.image || 'ghcr.io/projectbluefin/dakota:latest' }}
+      image: ${{ github.event.inputs.image || 'ghcr.io/projectbluefin/dakota:testing' }}
       suites: ${{ github.event.inputs.suites || 'smoke' }}

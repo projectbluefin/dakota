@@ -1,0 +1,214 @@
+name: Weekly Testing Promotion
+
+on:
+  schedule:
+    - cron: '0 6 * * 2' # Tuesday 06:00 UTC (same as bluefin)
+  workflow_dispatch:
+
+concurrency:
+  group: weekly-testing-promotion
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # ── Resolve current :testing digests ─────────────────────────────────────
+  # Pins the exact digests and verifies both variants share the same source SHA.
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      source_sha: ${{ steps.verify.outputs.source_sha }}
+      default_digest: ${{ steps.resolve-default.outputs.digest }}
+      nvidia_digest: ${{ steps.resolve-nvidia.outputs.digest }}
+      has_nvidia: ${{ steps.resolve-nvidia.outputs.found }}
+    steps:
+      - name: Login to GHCR (read-only)
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | sudo podman login ghcr.io --username "$GH_ACTOR" --password-stdin
+
+      - name: Resolve default :testing digest
+        id: resolve-default
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${{ github.repository_owner }}/dakota:testing"
+          sudo podman pull "$IMAGE"
+          DIGEST=$(sudo podman inspect "$IMAGE" --format '{{.Digest}}')
+          SHA=$(sudo podman inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Default :testing → digest=$DIGEST, source_sha=$SHA"
+
+      - name: Resolve NVIDIA :testing digest
+        id: resolve-nvidia
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${{ github.repository_owner }}/dakota-nvidia:testing"
+          if sudo podman pull "$IMAGE" 2>/dev/null; then
+            DIGEST=$(sudo podman inspect "$IMAGE" --format '{{.Digest}}')
+            SHA=$(sudo podman inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
+            echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "NVIDIA :testing → digest=$DIGEST, source_sha=$SHA"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "NVIDIA :testing not found — skipping NVIDIA promotion"
+          fi
+
+      - name: Verify variants share same source SHA
+        id: verify
+        env:
+          DEFAULT_SHA: ${{ steps.resolve-default.outputs.sha }}
+          NVIDIA_SHA: ${{ steps.resolve-nvidia.outputs.sha }}
+          HAS_NVIDIA: ${{ steps.resolve-nvidia.outputs.found }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEFAULT_SHA" ]; then
+            echo "ERROR: default :testing has no org.opencontainers.image.revision label"
+            exit 1
+          fi
+
+          if [ "$HAS_NVIDIA" = "true" ] && [ "$NVIDIA_SHA" != "$DEFAULT_SHA" ]; then
+            echo "ERROR: NVIDIA source SHA ($NVIDIA_SHA) != default source SHA ($DEFAULT_SHA)"
+            echo "Variants are out of sync — skipping promotion."
+            echo "Default was built from $DEFAULT_SHA, NVIDIA from $NVIDIA_SHA."
+            exit 1
+          fi
+
+          echo "source_sha=$DEFAULT_SHA" >> "$GITHUB_OUTPUT"
+          echo "Source SHA: $DEFAULT_SHA (both variants match)"
+
+  # ── Check diff — skip if already promoted ────────────────────────────────
+  check-diff:
+    needs: [resolve]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      has_diff: ${{ steps.compare.outputs.has_diff }}
+    steps:
+      - name: Login to GHCR
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | sudo podman login ghcr.io --username "$GH_ACTOR" --password-stdin
+
+      - name: Compare :testing vs :latest digests
+        id: compare
+        env:
+          TESTING_DIGEST: ${{ needs.resolve.outputs.default_digest }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${{ github.repository_owner }}/dakota:latest"
+          if sudo podman pull "$IMAGE" 2>/dev/null; then
+            LATEST_DIGEST=$(sudo podman inspect "$IMAGE" --format '{{.Digest}}')
+            if [ "$LATEST_DIGEST" = "$TESTING_DIGEST" ]; then
+              echo "No diff between :testing and :latest — nothing to promote"
+              echo "has_diff=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "has_diff=true" >> "$GITHUB_OUTPUT"
+          echo "Promotion needed: :testing differs from :latest"
+
+  # ── Promote :testing → :latest + :stable ────────────────────────────────
+  promote:
+    needs: [resolve, check-diff]
+    if: needs.check-diff.outputs.has_diff == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: default
+            image_suffix: ''
+            digest_key: default_digest
+            continue: false
+          - variant: nvidia
+            image_suffix: '-nvidia'
+            digest_key: nvidia_digest
+            continue: true
+    continue-on-error: ${{ matrix.continue }}
+    steps:
+      - name: Skip if variant unavailable
+        if: matrix.variant == 'nvidia' && needs.resolve.outputs.has_nvidia != 'true'
+        run: |
+          echo "NVIDIA variant not available — skipping"
+          exit 0
+
+      - name: Login to GHCR
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | sudo podman login ghcr.io --username "$GH_ACTOR" --password-stdin
+
+      - name: Promote to :latest and :stable
+        env:
+          SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${{ github.repository_owner }}/dakota${{ matrix.image_suffix }}"
+
+          # Pull the :testing image (already digest-verified in resolve job)
+          sudo podman pull "${IMAGE}:testing"
+
+          # Tag and push as :latest
+          sudo podman tag "${IMAGE}:testing" "${IMAGE}:latest"
+          PUSH_OK=false
+          for attempt in 1 2 3; do
+            sudo podman push --compression-format=zstd "${IMAGE}:latest" && { PUSH_OK=true; break; }
+            echo "Push attempt ${attempt} failed for :latest, retrying in 5s..."
+            [ "$attempt" -lt 3 ] && sleep 5
+          done
+          $PUSH_OK || { echo "ERROR: all push attempts failed for :latest"; exit 1; }
+
+          # Tag and push as :stable
+          sudo podman tag "${IMAGE}:testing" "${IMAGE}:stable"
+          PUSH_OK=false
+          for attempt in 1 2 3; do
+            sudo podman push --compression-format=zstd "${IMAGE}:stable" && { PUSH_OK=true; break; }
+            echo "Push attempt ${attempt} failed for :stable, retrying in 5s..."
+            [ "$attempt" -lt 3 ] && sleep 5
+          done
+          $PUSH_OK || { echo "ERROR: all push attempts failed for :stable"; exit 1; }
+
+          echo "Promoted ${IMAGE}:testing → :latest + :stable (source SHA: $SOURCE_SHA)"
+
+  # ── Fast-forward branches ────────────────────────────────────────────────
+  update-branches:
+    needs: [resolve, promote]
+    if: needs.promote.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Fast-forward latest and stable branches
+        env:
+          SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+
+          for BRANCH in latest stable; do
+            # Try fast-forward first; create if branch doesn't exist yet.
+            if ! gh api "repos/${REPO}/git/refs/heads/${BRANCH}" \
+                --method PATCH \
+                --field sha="$SOURCE_SHA" \
+                --field force=false 2>/dev/null; then
+              gh api "repos/${REPO}/git/refs" \
+                --method POST \
+                --field ref="refs/heads/${BRANCH}" \
+                --field sha="$SOURCE_SHA"
+              echo "Created ${BRANCH} branch at ${SOURCE_SHA}"
+            else
+              echo "Fast-forwarded ${BRANCH} to ${SOURCE_SHA}"
+            fi
+          done

@@ -24,7 +24,8 @@ Load when you need context on what dakota is, how it differs from production Blu
 - The validation gate is: `bootc upgrade` on test hardware succeeds + reboot + GDM active.
 - CI green is not sufficient. Hardware confirmation is.
 
-**Production image = `ghcr.io/projectbluefin/dakota:latest`.**
+**Production image = `ghcr.io/projectbluefin/dakota:stable`.**
+- Streams: `:testing` (nightly, e2e-gated), `:latest` + `:stable` (weekly promotion)
 - When someone says "is X in the image", check the GHCR image via `skopeo inspect` or `podman run --rm` — not a local machine unless explicitly asked.
 
 **Verify hypothesis before stating root cause.**
@@ -38,7 +39,7 @@ freedesktop-sdk provides glibc/systemd/kernel, gnome-build-meta provides GNOME S
 
 **Key positioning:** Dakota is a **curated subset** of production Bluefin, not a 1:1 clone. It intentionally includes things production Bluefin doesn't have (sudo-rs, uutils-coreutils, GNOME nightly) and intentionally omits things that don't make sense for a from-source build (Nvidia drivers, ZFS, enterprise AD/Kerberos).
 
-Published image: `ghcr.io/projectbluefin/dakota:latest`
+Published image: `ghcr.io/projectbluefin/dakota:{testing,latest,stable}`
 
 ## Architecture Comparison
 

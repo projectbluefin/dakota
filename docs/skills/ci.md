@@ -18,7 +18,7 @@ Load when debugging CI failures, understanding the build pipeline, or working wi
 | Build timeout | 330 min (job: 360 min) |
 | Remote cache server | `cache.projectbluefin.io:11002` |
 | Cache auth | mTLS — `CASD_CLIENT_CERT` (repo variable) + `CASD_CLIENT_KEY` (secret) |
-| Published image | `ghcr.io/projectbluefin/dakota:latest` and `:$SHA` |
+| Published image | `ghcr.io/projectbluefin/dakota:{testing,latest,stable}` and `:$SHA` |
 | Build logs artifact | `buildstream-logs-x86_64-<variant>` (7-day retention) |
 | Trigger (validate) | `pull_request` — `bst show --deps all`, no CAS |
 | Trigger (build) | `merge_group`, `schedule` (13:00 UTC), `workflow_dispatch` |
@@ -29,7 +29,8 @@ Load when debugging CI failures, understanding the build pipeline, or working wi
 | File | Role |
 |---|---|
 | `.github/workflows/build.yml` | BST build + push artifacts to remote CAS. Fires on merge_group/schedule/dispatch. Does NOT push to GHCR directly. |
-| `.github/workflows/publish.yml` | 4-stage pipeline: setup → publish → e2e-gate → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, smoke-tests, then promotes to `:latest`. |
+| `.github/workflows/publish.yml` | 4-stage pipeline: setup → publish → e2e-gate → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, smoke-tests, then promotes to `:testing`. |
+| `.github/workflows/weekly-testing-promotion.yml` | Weekly promotion (Tue 06:00 UTC): verifies `:testing` digests, re-tags as `:latest` + `:stable`, fast-forwards branches. |
 | `.github/workflows/e2e.yml` | Smoke test via projectbluefin/testsuite. Fires on PR when image-affecting paths change. |
 
 ## Trigger Behavior

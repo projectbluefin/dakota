@@ -74,7 +74,7 @@ https://github.com/bootc-dev/bootc/issues/7
 - **Schedule:** nightly at 13:00 UTC (after gnome-build-meta nightly ~08:00 UTC finish)
 - **Publish triggers:** `merge_group`, `schedule`, `workflow_dispatch` (not `pull_request`)
 - **Remote cache:** `cache.projectbluefin.io:11002` (mTLS — `CASD_CLIENT_CERT` + `CASD_CLIENT_KEY`)
-- **Image:** `ghcr.io/projectbluefin/dakota:latest` and `:<sha>`
+- **Image:** `ghcr.io/projectbluefin/dakota:{testing,latest,stable}` and `:<sha>`
 
 ## Key architecture
 
