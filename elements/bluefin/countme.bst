@@ -12,7 +12,6 @@ variables:
 
 config:
   install-commands:
-  - install -Dm644 bluefin-countme.service "%{install-root}/usr/lib/systemd/system/bluefin-countme.service"
-  - install -Dm644 bluefin-countme.timer "%{install-root}/usr/lib/systemd/system/bluefin-countme.timer"
+  - install -Dm644 bluefin-countme.{service,timer} -t "%{install-root}/usr/lib/systemd/system/"
   - mkdir -p "%{install-root}/usr/lib/systemd/system/timers.target.wants/"
   - ln -sf ../bluefin-countme.timer "%{install-root}/usr/lib/systemd/system/timers.target.wants/bluefin-countme.timer"
