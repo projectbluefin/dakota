@@ -60,3 +60,20 @@ Non-compliance = automatic rejection.
 **@ mentions in context only.** Only ping someone if asking them to do something specific. Always inside the combined comment — never as a standalone comment.
 
 **When in doubt, don't post.** If the only thing to report is "tests pass", post nothing.
+
+## PR Review
+
+When asked to review a pull request, load the branch workflow before giving feedback:
+
+1. Read [`docs/workflow.md`](docs/workflow.md) — issue lifecycle, labels, and branch flow
+2. Read [`docs/pr-checklist.md`](docs/pr-checklist.md) — per-category checklist (all PRs, junction bumps, patches, OCI, elements)
+
+**Review priorities (in order):**
+
+1. **Branch hygiene** — PR must branch from `upstream/main`, not a fork's local `main`. Check `git diff upstream/main...HEAD --stat` is minimal.
+2. **Checklist compliance** — verify the relevant checklist items from `pr-checklist.md` for the type of change.
+3. **CI gate status** — `validate` and `e2e` are required status checks. If CI hasn't run, note it.
+4. **Scope discipline** — one logical change per PR. Junction bumps must not include patch modifications in the same commit.
+5. **Correctness** — element syntax, layer kind (`compose` not `stack`), cargo sources generated not hand-written, etc.
+
+**Recommend the workflow.** If a contributor's PR doesn't follow the branch flow (e.g., branched from fork `main`, missing `Closes #NNN`, no checklist in PR body), guide them toward the correct pattern documented in `docs/workflow.md` rather than just rejecting.
