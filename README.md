@@ -56,16 +56,6 @@ Leave a comment, push back on the design, or share how your hardware is affected
 
 Ready to build something? See the [agent-ready queue](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Aqueue%2Fagent-ready+no%3Aassignee) for issues with clear acceptance criteria and no open questions.
 
-## Help shape what gets built
-
-These issues need human judgment before any code is written — design review, domain knowledge, or hardware context the team doesn't have yet:
-
-### [Issues open for discussion &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fdiscussing)
-
-Leave a comment, push back on the design, or share how your hardware is affected. When a discussion reaches consensus, a maintainer marks it `status/approved` and it enters the contributor queue.
-
-Ready to build something? See the [agent-ready queue](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Aqueue%2Fagent-ready+no%3Aassignee) for issues with clear acceptance criteria and no open questions.
-
 ## ISO Download
 
 [dakota-live-latest.iso](https://projectbluefin.dev/dakota-live-latest.iso) · [Checksum](https://projectbluefin.dev/dakota-live-latest.iso-CHECKSUM)
