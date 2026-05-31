@@ -52,12 +52,10 @@ jobs:
       - name: Check bst2 image pin consistency
         uses: ./.github/actions/check-bst2-pin
 
-      - name: Setup runner
-        uses: projectbluefin/actions/bootc-build/setup-runner@95dc404b7c69ad65889e3f3bf49ecba5cd3018e6 # v1.1.0
+      - name: Setup Just
+        uses: taiki-e/install-action@873c7452cadb7c034694a1282227095d93fbdf92 # v2
         with:
-          storage-backend: remove-software
-          update-podman: false
-          install-tools: '["just"]'
+          tool: just
 
       # Cache the BST workspace (junction git sources + bst2 container layers).
       # Key includes junction element refs so junction bumps start fresh.
