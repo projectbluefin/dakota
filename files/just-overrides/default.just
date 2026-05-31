@@ -134,9 +134,105 @@ check-local-overrides:
 # Collect a privacy-respecting diagnostic report and upload to your GitHub gist.
 # The gist is yours — you can view, share, or delete it any time.
 # ujust report
-report:
+report *ARGS="":
     #!/usr/bin/bash
     set -euo pipefail
+
+    # Parse --confirm option for me-too issue reporting
+    CONFIRM_ISSUE=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --confirm)
+                if [[ -n "${2:-}" ]]; then
+                    CONFIRM_ISSUE="$2"
+                    shift 2
+                else
+                    echo "Error: --confirm requires an issue number." >&2
+                    echo "Usage: ujust report --confirm <issue-number>" >&2
+                    exit 1
+                fi
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    if [[ -n "$CONFIRM_ISSUE" ]]; then
+        if ! [[ "$CONFIRM_ISSUE" =~ ^[0-9]+$ ]]; then
+            echo "Error: Issue number must be a positive integer." >&2
+            echo "Usage: ujust report --confirm <issue-number>" >&2
+            exit 1
+        fi
+
+        if ! gh auth status &>/dev/null; then
+            echo "Error: gh is not authenticated." >&2
+            echo "Please run: gh auth login" >&2
+            exit 1
+        fi
+
+        echo "Collecting system fingerprint for issue #$CONFIRM_ISSUE..."
+        
+        # Read from /etc/os-release first, fall back to /usr/lib/os-release
+        IMAGE_REF=""
+        if [[ -r /etc/os-release ]]; then
+            IMAGE_REF=$(grep '^IMAGE_REF=' /etc/os-release | cut -d= -f2- | tr -d '"' || echo "")
+        fi
+        if [[ -z "$IMAGE_REF" && -r /usr/lib/os-release ]]; then
+            IMAGE_REF=$(grep '^IMAGE_REF=' /usr/lib/os-release | cut -d= -f2- | tr -d '"' || echo "")
+        fi
+        if [[ -z "$IMAGE_REF" ]]; then
+            IMAGE_REF="ghcr.io/projectbluefin/dakota:latest"
+        fi
+
+        IMAGE_VERSION=""
+        if [[ -r /etc/os-release ]]; then
+            IMAGE_VERSION=$(grep '^IMAGE_VERSION=' /etc/os-release | cut -d= -f2- | tr -d '"' || echo "")
+        fi
+        if [[ -z "$IMAGE_VERSION" && -r /usr/lib/os-release ]]; then
+            IMAGE_VERSION=$(grep '^IMAGE_VERSION=' /usr/lib/os-release | cut -d= -f2- | tr -d '"' || echo "")
+        fi
+        if [[ -z "$IMAGE_VERSION" ]]; then
+            IMAGE_VERSION="latest"
+        fi
+
+        KERNEL=$(uname -r)
+        ARCH=$(uname -m)
+        
+        # Find failed units
+        FAILED=$(systemctl list-units --state=failed --no-legend --plain 2>/dev/null \
+                 | awk '{print $1}' | head -10 | paste -sd ',' || echo "")
+        if [[ -z "$FAILED" ]]; then
+            FAILED="none"
+        fi
+
+        if [[ -r /etc/machine-id ]]; then
+            DEVICE_ID=$(printf 'ujust-report:%s' "$(cat /etc/machine-id)" | sha256sum | cut -c1-8)
+        else
+            DEVICE_ID="unknown"
+        fi
+
+        BODY="$(printf '**System fingerprint** (via `ujust report --confirm`)\n\n* Image: %s\n* Version: %s\n* Kernel: %s\n* Arch: %s\n* Failed units: %s\n* Anonymous device ID: %s (truncated sha256)' \
+            "$IMAGE_REF" "$IMAGE_VERSION" "$KERNEL" "$ARCH" "$FAILED" "$DEVICE_ID")"
+
+        echo ""
+        echo "┌─ What will be posted as a comment on issue #$CONFIRM_ISSUE ──────────┐"
+        echo "$BODY" | sed 's/^/│ /'
+        echo "└───────────────────────────────────────────────────────────┘"
+        echo ""
+
+        if [[ -t 0 && -t 1 ]]; then
+            if ! gum confirm "Post this comment to https://github.com/projectbluefin/dakota/issues/$CONFIRM_ISSUE?"; then
+                echo "Cancelled."
+                exit 0
+            fi
+        fi
+
+        echo "Posting comment..."
+        COMMENT_URL=$(gh issue comment "$CONFIRM_ISSUE" --repo projectbluefin/dakota --body "$BODY")
+        echo "✅ Comment posted: $COMMENT_URL"
+        exit 0
+    fi
 
     REPORT_DIR="$(mktemp -d /tmp/ujust-report-XXXXXX)"
     OTEL_CONFIG=""
