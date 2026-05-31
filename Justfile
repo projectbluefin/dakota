@@ -60,16 +60,11 @@ bst *ARGS:
         "{{bst2_image}}" \
         bash -c 'bst --colors "$@"' -- ${EFFECTIVE_BST_FLAGS} {{ARGS}}
 
-# Validate BST element graph — both variants in parallel.
+# Validate BST element graph — mirrors CI validate job.
 [group('dev')]
 validate:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just bst show --deps all oci/bluefin.bst &
-    p1=$!
-    just bst show --deps all oci/bluefin-nvidia.bst &
-    p2=$!
-    wait "$p1" && wait "$p2"
+    just bst show --deps all oci/bluefin.bst
+    just bst show --deps all oci/bluefin-nvidia.bst
 
 # ── Build ─────────────────────────────────────────────────────────────
 # Build the OCI image and load it into podman.
