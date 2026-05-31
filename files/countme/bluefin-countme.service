@@ -8,6 +8,6 @@ ConditionPathExists=!/etc/bluefin-countme-opt-out
 [Service]
 Type=oneshot
 EnvironmentFile=/etc/os-release
-ExecStart=/usr/bin/bash -c '/usr/bin/curl -sf \
+ExecStart=/usr/bin/bash -c '/usr/bin/curl -sf --max-time 10 \
   "https://countme.projectbluefin.io/count?os=${ID}&version=${VERSION_ID}&arch=$(uname -m)&countme=1" \
   -o /dev/null'
