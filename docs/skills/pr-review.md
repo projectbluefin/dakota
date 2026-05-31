@@ -1,0 +1,51 @@
+# PR Review
+
+Consolidated review workflow for dakota pull requests.
+
+## Before you review
+
+1. Read [`docs/workflow.md`](../workflow.md) — issue lifecycle, labels, branch flow
+2. Read [`docs/pr-checklist.md`](../pr-checklist.md) — per-category checklist
+
+## Review priorities (in order)
+
+1. **Branch hygiene** — PR must branch from `upstream/main`, not a fork's local `main`. Verify with `git diff upstream/main...HEAD --stat` — it should be minimal and contain only the PR's changes.
+2. **Checklist compliance** — verify the relevant items from `pr-checklist.md` for the type of change (junction bump, patch, OCI, element, etc.).
+3. **CI gate status** — `validate` and `e2e` are required status checks. If CI hasn't run, note it. If `e2e` was skipped (non-image paths), that counts as passing.
+4. **Scope discipline** — one logical change per PR. Junction bumps must not include patch modifications in the same commit.
+5. **Correctness** — element syntax, layer kind (`compose` not `stack`), cargo sources generated not hand-written, systemd units enabled via BST install commands.
+
+## Common rejection reasons
+
+| Signal | What's wrong |
+|--------|--------------|
+| Hundreds of files in diff | Branched from fork `main` instead of `upstream/main` |
+| `kind: stack` in a layer element | Should be `kind: compose` — stack produces zero filesystem output |
+| Hand-written crate entries | Must use `generate_cargo_sources.py` |
+| Missing `Closes #NNN` | PR isn't linked to an issue |
+| `patches/` change in a junction bump commit | Must be separate commits or separate PRs |
+| No `just lint` / `just boot-test` evidence | Verification gate not met |
+
+## How to give feedback
+
+- **Guide, don't just reject.** Point contributors toward the correct pattern in `docs/workflow.md` or `docs/pr-checklist.md`.
+- **One comment per review event.** Combine all findings into a single review comment. Never post follow-ups for new observations — edit the existing comment.
+- **Do not duplicate GitHub UI.** Don't restate approval counts, merge queue status, or CI summaries that GitHub already shows.
+- **Minimal test reports.** What ran, pass/fail, blockers. No diff summaries.
+
+## Ghost detection
+
+Agent-assisted PRs are identified by the checked template checkbox:
+`[x] I am using an agent and I take responsibility for this PR`
+
+Hold these to the same standard as human PRs. The operator is accountable.
+
+## Mergeraptor pre-approval
+
+Junction-only bumps from `mergeraptor[bot]` are pre-approved once `validate` and `e2e` pass (or e2e is skipped for non-image paths). No human review required for those.
+
+## Lessons Learned
+
+Add new lessons below as: `### <pattern name> (YYYY-MM-DD)`
+
+---
