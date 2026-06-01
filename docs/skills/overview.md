@@ -89,7 +89,7 @@ Production Bluefin images are **Containerfile-based overlays** — they start wi
 | Package | Dakota | bluefin |
 |---|:---:|:---:|
 | Tailscale | Y | Y |
-| wireguard-tools | N | Y |
+| wireguard-tools | Y | Y |
 
 ### Containers
 
