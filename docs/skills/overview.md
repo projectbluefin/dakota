@@ -78,7 +78,7 @@ Production Bluefin images are **Containerfile-based overlays** — they start wi
 | glow | Y | Y |
 | gum | Y | Y |
 | fzf | Y | Y |
-| fish | N | Y |
+| fish | Y | Y |
 | zsh | N | Y |
 | tmux | N | Y |
 | fastfetch | N | Y |
@@ -109,7 +109,6 @@ Nvidia drivers, ZFS, Xbox controller (xone), Framework laptop modules — not in
 |---|---|
 | fastfetch | System info tool, in both production Bluefins |
 | Starship prompt | Shell prompt, core Bluefin UX; pre-built binary |
-| fish shell | Alternative shell; requires build from source |
 | fwupd | Firmware updates; upstream element exists |
 | uupd (auto-updater) | Upstream OTA update daemon |
 | Bazaar (app store) | Flatpak-based app store |
