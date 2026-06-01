@@ -2,7 +2,7 @@ name: Weekly Testing Promotion
 
 on:
   schedule:
-    - cron: '0 6 * * 2' # Tuesday 06:00 UTC (same as bluefin)
+    - cron: '0 6 * * 0' # Sunday 06:00 UTC
   workflow_dispatch:
 
 concurrency:
