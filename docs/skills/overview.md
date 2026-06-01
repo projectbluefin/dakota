@@ -80,7 +80,7 @@ Production Bluefin images are **Containerfile-based overlays** — they start wi
 | fzf | Y | Y |
 | fish | N | Y |
 | zsh | N | Y |
-| tmux | N | Y |
+| tmux | Y | Y |
 | fastfetch | N | Y |
 | Starship prompt | N | Y |
 
