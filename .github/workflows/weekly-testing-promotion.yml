@@ -40,8 +40,10 @@ jobs:
           sudo podman pull "$IMAGE"
           DIGEST=$(sudo podman inspect "$IMAGE" --format '{{.Digest}}')
           SHA=$(sudo podman inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "digest=$DIGEST"
+            echo "sha=$SHA"
+          } >> "$GITHUB_OUTPUT"
           echo "Default :testing → digest=$DIGEST, source_sha=$SHA"
 
       - name: Resolve NVIDIA :testing digest
@@ -52,9 +54,11 @@ jobs:
           if sudo podman pull "$IMAGE" 2>/dev/null; then
             DIGEST=$(sudo podman inspect "$IMAGE" --format '{{.Digest}}')
             SHA=$(sudo podman inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
-            echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-            echo "found=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "digest=$DIGEST"
+              echo "sha=$SHA"
+              echo "found=true"
+            } >> "$GITHUB_OUTPUT"
             echo "NVIDIA :testing → digest=$DIGEST, source_sha=$SHA"
           else
             echo "found=false" >> "$GITHUB_OUTPUT"
