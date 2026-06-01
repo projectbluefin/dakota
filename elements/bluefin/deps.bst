@@ -17,6 +17,7 @@ depends:
   - bluefin/glow.bst
   - bluefin/gum.bst
   - bluefin/fzf.bst
+  - bluefin/fastfetch.bst
   - bluefin/tealdeer.bst
 
   - bluefin/common.bst

@@ -81,7 +81,7 @@ Production Bluefin images are **Containerfile-based overlays** — they start wi
 | fish | N | Y |
 | zsh | N | Y |
 | tmux | N | Y |
-| fastfetch | N | Y |
+| fastfetch | Y | Y |
 | Starship prompt | N | Y |
 
 ### Networking & VPN
@@ -107,7 +107,6 @@ Nvidia drivers, ZFS, Xbox controller (xone), Framework laptop modules — not in
 
 | Package | Notes |
 |---|---|
-| fastfetch | System info tool, in both production Bluefins |
 | Starship prompt | Shell prompt, core Bluefin UX; pre-built binary |
 | fish shell | Alternative shell; requires build from source |
 | fwupd | Firmware updates; upstream element exists |
