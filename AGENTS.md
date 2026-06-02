@@ -49,6 +49,14 @@ Non-compliance = automatic rejection.
 
 **Human maintainability:** Every agent action must be replicable by a human via the Justfile. No AI-optimized black boxes. Do not rename existing recipes without explicit human approval.
 
+**Skill contribution:** If you discover a pattern, fix a recurring mistake, or learn something that would help future agents, you **must** update the relevant skill file in `docs/skills/` in the same PR as your change. If no relevant skill file exists, create one and add it to the routing table in `docs/skills/README.md`. Skills are living documents — every agent improves them.
+
+**Agents MUST NOT push directly to `main`.** All changes via PR from a feature branch. Branch protection enforces this.
+
+**Production promotion** (`weekly-testing-promotion.yml`) requires 2 distinct human approvals in the GitHub `production` Environment. No agent may trigger, approve, or bypass this gate. Admin bypasses are permanently logged in Environment deployment history.
+
+**`.github/workflows/`, `Justfile`, `build_files/`, and `elements/` are CODEOWNERS-protected** — PRs touching these paths require maintainer review.
+
 ## PR Comment Policy
 
 **One comment per PR event, max.** Combine all findings into a single comment. Never post a follow-up comment for a new observation — edit the existing one instead.
@@ -60,3 +68,20 @@ Non-compliance = automatic rejection.
 **@ mentions in context only.** Only ping someone if asking them to do something specific. Always inside the combined comment — never as a standalone comment.
 
 **When in doubt, don't post.** If the only thing to report is "tests pass", post nothing.
+
+## PR Review
+
+When asked to review a pull request, load the branch workflow before giving feedback:
+
+1. Read [`docs/workflow.md`](docs/workflow.md) — issue lifecycle, labels, and branch flow
+2. Read [`docs/pr-checklist.md`](docs/pr-checklist.md) — per-category checklist (all PRs, junction bumps, patches, OCI, elements)
+
+**Review priorities (in order):**
+
+1. **Branch hygiene** — PR must branch from `upstream/main`, not a fork's local `main`. Check `git diff upstream/main...HEAD --stat` is minimal.
+2. **Checklist compliance** — verify the relevant checklist items from `pr-checklist.md` for the type of change.
+3. **CI gate status** — `validate` and `e2e` are required status checks. If CI hasn't run, note it.
+4. **Scope discipline** — one logical change per PR. Junction bumps must not include patch modifications in the same commit.
+5. **Correctness** — element syntax, layer kind (`compose` not `stack`), cargo sources generated not hand-written, etc.
+
+**Recommend the workflow.** If a contributor's PR doesn't follow the branch flow (e.g., branched from fork `main`, missing `Closes #NNN`, no checklist in PR body), guide them toward the correct pattern documented in `docs/workflow.md` rather than just rejecting.

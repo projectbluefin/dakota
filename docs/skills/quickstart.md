@@ -39,6 +39,34 @@ Zero-context entry point for routine dakota maintenance — add package, remove 
 | `auto-merge` | App packages, shell extensions — low-risk, squash-merged automatically |
 | `manual-merge` | Junctions, Rust elements — requires human review |
 
+## Fix an Issue — End-to-End
+
+```bash
+# 1. Claim the issue
+gh issue comment 635 --repo projectbluefin/dakota --body "/claim"
+
+# 2. Branch from upstream/main
+git checkout upstream/main -b fix/short-description
+
+# 3. Make changes, validate
+just validate && just lint
+
+# 4. Commit with correct trailer
+git commit -m "fix(bluefin): short description
+
+Closes #635
+
+Assisted-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+
+# 5. Push to upstream (never castrojo fork)
+git push upstream fix/short-description
+
+# 6. Open PR with checklist checkbox checked
+gh pr create --repo projectbluefin/dakota ...
+```
+
+If the issue is still `needs-triage` (not yet `status/approved`), ask the user before claiming — agents don't self-approve issues.
+
 ## Commit Conventions
 
 ```text
@@ -47,6 +75,8 @@ chore(deps): update <name>
 fix(bluefin): <description>
 chore: remove <name>
 ```
+
+**Trailer:** Always `Assisted-by:` or `Signed-off-by:` — never `Co-authored-by:`. This is a hard rule from `docs/pr-checklist.md`.
 
 ## Key Paths
 

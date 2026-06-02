@@ -98,3 +98,24 @@ git merge upstream/main  # or cherry-pick relevant commits
 
 > Add entries here when you discover a new pattern or fix a recurring mistake.
 > Format: `### <pattern name> (YYYY-MM-DD)`
+
+### Installer flatpak leaks to installed system (2026-06-01)
+
+The ISO's `install-flatpaks.sh` installs the bootc-installer as a system Flatpak into `/var/lib/flatpak/`. When fisherman runs `bootc install`, it copies all system flatpaks to the target — including the installer itself. The installed system then shows the installer as an available app.
+
+**Fix:** `bluefin-remove-installer.service` (a firstboot oneshot in `files/firstboot/`) removes `org.bootcinstaller.Installer` and `.Devel` if present, then prunes unused runtimes. Gated by a stamp file at `/var/lib/ublue-os/.installer-removed`.
+
+**Root cause is in `dakota-iso`** (`install-flatpaks.sh`), but the defensive fix lives in dakota because the installed image should never ship the installer regardless of how it got there.
+
+## Dakota vs Dakota-ISO boundary
+
+The installer is NOT built from source in this repo. The boundary:
+
+| What | Where |
+|------|-------|
+| OCI image (deployed to disk) | `projectbluefin/dakota` — this repo |
+| Live ISO, installer Flatpak, squashfs | `projectbluefin/dakota-iso` |
+| Installer source (GTK4 app) | `projectbluefin/bootc-installer` |
+| Installer backend (Go) | `tuna-os/fisherman` (submodule in bootc-installer) |
+
+If a bug involves the installer UI, recipe, or ISO boot — it's a `dakota-iso` or `bootc-installer` issue. If it involves what's on the installed system after installation — it's a `dakota` issue (fix in elements or firstboot services).

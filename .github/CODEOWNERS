@@ -1,1 +1,8 @@
+# Default: any one maintainer approves
 * @castrojo @p5 @m2Giles @tulilirockz
+
+# Sensitive paths — require maintainer review
+.github/workflows/  @castrojo @p5 @m2Giles @tulilirockz
+Justfile            @castrojo @p5 @m2Giles @tulilirockz
+build_files/        @castrojo @p5 @m2Giles @tulilirockz
+elements/           @castrojo @p5 @m2Giles @tulilirockz

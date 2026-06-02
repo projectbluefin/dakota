@@ -1,0 +1,20 @@
+[Unit]
+Description=Remove bootc installer if present on installed system
+ConditionPathExists=!/var/lib/ublue-os/.installer-removed
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c '\
+  removed=0; \
+  for app in org.bootcinstaller.Installer org.bootcinstaller.Installer.Devel; do \
+    if flatpak info --system "$app" >/dev/null 2>&1; then \
+      flatpak uninstall --system --noninteractive "$app" && removed=1; \
+    fi; \
+  done; \
+  flatpak uninstall --system --noninteractive --unused 2>/dev/null || true; \
+  mkdir -p /var/lib/ublue-os && touch /var/lib/ublue-os/.installer-removed'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

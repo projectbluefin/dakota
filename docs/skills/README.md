@@ -33,8 +33,19 @@ every future agent and contributor — not just you, and not just on one machine
 | Project overview and what Bluefin is | [`overview.md`](overview.md) |
 | ujust recipes in `files/just-overrides/` | [`.github/skills/ujust-recipes.md`](../../.github/skills/ujust-recipes.md) |
 | Installer (bootc-installer) | [`installer.md`](installer.md) |
+| PR review workflow | [`pr-review.md`](pr-review.md) |
 
-## How to add a lesson
+## Mandatory skill contribution
+
+**All agents must improve skills.** If you discover a new pattern, fix a recurring
+mistake, or learn something that would help future contributors, update the
+relevant skill file in this directory — in the same PR as your change.
+
+- If no relevant skill file exists, create one and add it to the routing table above.
+- If your lesson applies to an existing skill, add it under `## Lessons Learned`.
+- Skills are living documents. Every agent and human contributor improves them.
+
+### How to add a lesson
 
 1. Open the relevant skill file (or create a new one)
 2. Add a section under `## Lessons Learned`: `### <pattern name> (YYYY-MM-DD)`
