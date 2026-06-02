@@ -18,7 +18,18 @@
 
 ## Images
 
-Browse available streams, versions, and `bootc switch` commands on the **[Images page →](https://docs.projectbluefin.io/images/)**
+Full catalog at [docs.projectbluefin.io/images →](https://docs.projectbluefin.io/images/)
+
+### Bluefin Dakota
+
+Project Bluefin Dakota image stream.
+
+```bash
+# Latest
+sudo bootc switch ghcr.io/projectbluefin/dakota:latest --enforce-container-sigpolicy
+# Latest — NVIDIA
+sudo bootc switch ghcr.io/projectbluefin/dakota-nvidia:latest --enforce-container-sigpolicy
+```
 
 ## Getting Started
 
