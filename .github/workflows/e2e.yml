@@ -12,12 +12,6 @@ name: E2E Tests — GNOME 50
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'elements/**'
-      - 'files/**'
-      - 'patches/**'
-      - 'Justfile'
-      - 'project.conf'
   workflow_dispatch:
     inputs:
       image:
@@ -38,8 +32,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  should-run:
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.check.outputs.result }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+      - id: check
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "result=true" >> "$GITHUB_OUTPUT"
+          else
+            changed=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- \
+              elements/ files/ patches/ Justfile project.conf | wc -l)
+            echo "result=$([[ $changed -gt 0 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          fi
+
   e2e:
-    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@main
+    needs: should-run
+    if: needs.should-run.outputs.result == 'true'
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@927c1117c1f42df87089c4eaa15f4f978d21f576 # main
     with:
       image: ${{ github.event.inputs.image || 'ghcr.io/projectbluefin/dakota:testing' }}
       suites: ${{ github.event.inputs.suites || 'smoke' }}
