@@ -40,8 +40,10 @@ jobs:
           sudo podman pull "$IMAGE"
           DIGEST=$(sudo podman inspect "$IMAGE" --format '{{.Digest}}')
           SHA=$(sudo podman inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "digest=$DIGEST"
+            echo "sha=$SHA"
+          } >> "$GITHUB_OUTPUT"
           echo "Default :testing → digest=$DIGEST, source_sha=$SHA"
 
       - name: Resolve NVIDIA :testing digest
