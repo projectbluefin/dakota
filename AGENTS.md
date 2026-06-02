@@ -51,6 +51,12 @@ Non-compliance = automatic rejection.
 
 **Skill contribution:** If you discover a pattern, fix a recurring mistake, or learn something that would help future agents, you **must** update the relevant skill file in `docs/skills/` in the same PR as your change. If no relevant skill file exists, create one and add it to the routing table in `docs/skills/README.md`. Skills are living documents — every agent improves them.
 
+**Agents MUST NOT push directly to `main`.** All changes via PR from a feature branch. Branch protection enforces this.
+
+**Production promotion** (`weekly-testing-promotion.yml`) requires 2 distinct human approvals in the GitHub `production` Environment. No agent may trigger, approve, or bypass this gate. Admin bypasses are permanently logged in Environment deployment history.
+
+**`.github/workflows/`, `Justfile`, `build_files/`, and `elements/` are CODEOWNERS-protected** — PRs touching these paths require maintainer review.
+
 ## PR Comment Policy
 
 **One comment per PR event, max.** Combine all findings into a single comment. Never post a follow-up comment for a new observation — edit the existing one instead.
