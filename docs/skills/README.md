@@ -30,6 +30,7 @@ every future agent and contributor — not just you, and not just on one machine
 | Hardware testlab one-time setup | [`testlab-setup.md`](testlab-setup.md) |
 | CI pipeline, remote cache, GHCR | [`ci.md`](ci.md) |
 | Manual promotion (testing → stable) and release | [`ci.md`](ci.md) — *Manual stable promotion flow* |
+| Clearing stuck merge queue | [`merge-queue.md`](merge-queue.md) |
 | Actionadon lifecycle, issue queue, data donation | [`actionadon.md`](actionadon.md) |
 | Project overview and what Bluefin is | [`overview.md`](overview.md) |
 | ujust recipes in `files/just-overrides/` | [`.github/skills/ujust-recipes.md`](../../.github/skills/ujust-recipes.md) |

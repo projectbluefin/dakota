@@ -1,137 +1,98 @@
-# Dep-Update PR Merge Queue
+# Merge Queue Operations
 
-Load when reviewing, retargeting, or merging chore/dep-update PRs
-(`auto/track-*`, `renovate/*`) into the `testing` branch.
+## When to Load
+
+Load when clearing stuck dependency-update PRs, rebasing chore branches against `testing`, or finishing a batch of bot PR merges.
 
 ## When NOT to Use
 
-- Adding a new package → `add-package.md`
-- Updating a ref manually → `update-refs.md`
-- Junction bumps → `patch-junctions.md`
+- Reviewing normal feature PRs → `pr-review.md`
+- Debugging a failing workflow run or cache issue → `ci.md`
+- Rebasing a single code branch that is not part of the chore queue
 
-## Quick Reference
+## How to Identify Stuck PRs
 
-| Task | Command |
-|------|---------|
-| Retarget PR to testing | `gh pr edit <N> --repo projectbluefin/dakota --base testing` |
-| Merge on testing (no protection) | `gh pr merge <N> --repo projectbluefin/dakota --squash` |
-| Check dep PRs with CI status | `gh pr list --repo projectbluefin/dakota --state open --json number,title,statusCheckRollup,baseRefName` |
+Look for these signals:
 
-## Why Dep-Update PRs Need Special Handling
+- chore/dependency PR is open against `main` instead of `testing`
+- merge box shows `CONFLICTING` after other chore PRs landed in `testing`
+- `gh pr merge --auto` fails with `Protected branch rules not configured for this branch`
+- e2e is stale and the branch cannot be rerun by pushing
+- PR is technically open but has no diff after rebasing onto `testing`
 
-Auto-generated dep-update PRs (`auto/track-*` from `track-bst-sources.yml`,
-`renovate/*`) always target `main` by default. But new image content merges
-to `testing` first. This means:
-
-1. The PR branch is based on `main`, which is behind `testing` in package
-   versions but may be ahead in CI/docs commits.
-2. Naively merging brings in unrelated CI/docs commits.
-3. Some PRs may be **redundant** — `testing` already has the same version.
-
-## Standard Flow
+Useful checks:
 
 ```bash
-# 1. Verify the PR has actual new content vs testing
-git fetch upstream testing auto/track-<pkg>
-git show upstream/testing:elements/bluefin/<pkg>.bst | grep -E "ref:|tag:" | head -3
-git show upstream/auto/track-<pkg>:elements/bluefin/<pkg>.bst | grep -E "ref:|tag:" | head -3
-# If refs are identical → close the PR, it's redundant.
-
-# 2. Identify the dep-update commit (always the top commit on the PR branch)
-git log --oneline upstream/testing..upstream/auto/track-<pkg> | head -1
-# e.g.: 8bb62fd chore(deps): update uupd v1.3.0 -> v1.4.0
-
-# 3. Cherry-pick onto a clean testing branch
-git fetch upstream testing
-git checkout upstream/testing -b rebase/track-<pkg>
-git cherry-pick <sha>
-# If conflict in the element file: take the newer version from the PR.
-
-# 4. Force-push to the PR branch
-git push upstream rebase/track-<pkg>:auto/track-<pkg> --force
-
-# 5. Retarget the PR to testing
-gh pr edit <N> --repo projectbluefin/dakota --base testing
-
-# 6. Merge directly (testing has no branch protection)
-gh pr merge <N> --repo projectbluefin/dakota --squash \
-  --subject "chore(deps): update <pkg> vX -> vY" --body ""
+gh pr list --repo projectbluefin/dakota --search 'is:open is:pr'
+gh pr view <N> --repo projectbluefin/dakota --json baseRefName,headRefName,mergeStateStatus,isCrossRepository
 ```
 
-## Conflict Resolution
+## Retarget Chore PRs to `testing`
 
-When cherry-picking a dep update onto `testing` that already has an older
-version of the same package, there will be a conflict in the element's `ref:`
-field. Always take the **newer ref from the PR**:
+Bot PRs from mergeraptor and renovate are created against `main` by default. Dependency-update chores must land in `testing` first.
+
+1. Retarget the PR:
 
 ```bash
-# Remove conflict markers, keeping the PR's ref
-sed -i '/<<<<<<< HEAD/,/=======/d; />>>>>>> .*/d' elements/bluefin/<pkg>.bst
-git add elements/bluefin/<pkg>.bst
-GIT_EDITOR=true git cherry-pick --continue
+gh pr edit <N> --base testing --repo projectbluefin/dakota
 ```
 
-## Checking for Redundant PRs
-
-Before spending time rebasing, verify the PR actually changes something:
+2. Fetch the branch and rebase it onto `upstream/testing`:
 
 ```bash
-# Quick: compare the ref fields
-git show upstream/testing:elements/bluefin/<pkg>.bst | grep "ref:" | head -3
-git show upstream/auto/track-<pkg>:elements/bluefin/<pkg>.bst | grep "ref:" | head -3
-
-# Thorough: diff only element/files paths
-git diff upstream/testing..upstream/auto/track-<pkg> -- elements/ files/ | head -40
+git fetch upstream <branch> testing
+git checkout -B fix-<branch> upstream/<branch>
+git rebase upstream/testing
+git push upstream HEAD:<branch> --force-with-lease
 ```
 
-If the refs are identical → close with:
+3. Re-check mergeability:
+
 ```bash
-gh pr close <N> --repo projectbluefin/dakota \
-  --comment "Closing - testing already has this version. No new content to merge."
+gh pr view <N> --repo projectbluefin/dakota --json mergeStateStatus
 ```
 
-## When E2E Fails on All Dep PRs
+## Rebase Conflicting PRs
 
-`e2e` tests `ghcr.io/projectbluefin/dakota:testing`, not the PR branch.
-When the **same** e2e failure appears on every dep-update PR simultaneously,
-it is always an infrastructure issue, not a PR issue.
+Sequential merges into `testing` advance the target branch every time. A branch that was clean before PR #1 can become stale after PRs #2 through #6 land.
 
-**Diagnosis checklist:**
+Use this loop:
 
-1. Check if the failure message is "SSH never became ready after 15 minutes" —
-   this means the QEMU VM boot failed, caused by a stale or broken `:testing` image.
-2. Check `publish.yml` run history for `startup_failure`:
-   ```bash
-   gh run list --repo projectbluefin/dakota --workflow publish.yml --limit 10 \
-     --json databaseId,status,conclusion,createdAt
-   ```
-   Two or more consecutive `startup_failure` = nightly build is broken,
-   `:testing` is stale.
-3. Check projectbluefin/testsuite for open issues before filing a new one.
+1. Merge the ready PRs.
+2. Re-list the remaining open chore PRs.
+3. Rebase any PRs still showing `CONFLICTING` or stale checks.
+4. Do a final pass after the batch — expect at least one more rebase round.
 
-**When infrastructure is confirmed broken:**
-
-- `validate` passing + correct diff is sufficient to merge dep-update PRs.
-- Merge with `gh pr merge --squash` directly — `testing` has no protection rules.
-- Do NOT wait for e2e to green before merging routine dep bumps.
-
-## ⚠️ `gh pr merge --auto` Does Not Work on `testing`
-
-`testing` has no branch protection rules configured. `--auto` fails with
-"Protected branch rules not configured". Always use `--squash` directly:
+Standard rebase sequence:
 
 ```bash
-# ✅ works
+git fetch upstream <branch> testing
+git checkout -B fix-<branch> upstream/<branch>
+git rebase upstream/testing
+git push upstream HEAD:<branch> --force-with-lease
+```
+
+## Merge Chore PRs
+
+`testing` does not have auto-merge configured in branch protection.
+
+Do **not** use:
+
+```bash
+gh pr merge <N> --auto
+```
+
+Use direct squash merge instead:
+
+```bash
 gh pr merge <N> --repo projectbluefin/dakota --squash
-
-# ❌ fails with "Protected branch rules not configured"
-gh pr merge <N> --repo projectbluefin/dakota --auto --squash
 ```
 
-## AGENTS.md Rebase Conflict
+## Known `AGENTS.md` Rebase Conflict
 
-When rebasing a branch onto `testing`, `AGENTS.md` reliably conflicts because
-`testing` and `main` have diverged. Resolve by keeping the testing version:
+When rebasing from `main` onto `testing`, `AGENTS.md` often conflicts because `testing` already contains the text being replayed.
+
+Resolve by keeping the `testing` version (`HEAD`) and removing conflict markers:
 
 ```bash
 sed -i '/<<<<<<< HEAD/d; />>>>>>> .*/d; /^=======$/d' AGENTS.md
@@ -139,21 +100,89 @@ git add AGENTS.md
 GIT_EDITOR=true git rebase --continue
 ```
 
-## Lessons Learned
+If the only conflict is duplicated text already present on `testing`, do not try to manually merge both sides.
 
-> Add entries here when you discover a new pattern or fix a recurring mistake.
-> Format: `### <pattern name> (YYYY-MM-DD)`
+## Empty PR Detection
 
-### Cherry-pick is empty = already in testing (2026-06-04)
+After rebasing onto `testing`, verify the branch still has a diff:
 
-If `git cherry-pick <sha>` results in "The previous cherry-pick is now empty",
-the content of that commit is **already present** in `testing` by a prior merge.
-The PR is redundant — close it rather than forcing an empty commit.
+```bash
+gh api repos/projectbluefin/dakota/compare/testing...<branch> --jq '{ahead: .ahead_by, behind: .behind_by}'
+```
 
-### Multi-PR e2e failure = look at :testing not the PRs (2026-06-04)
+If `ahead` is `0`, the target branch already contains the change. Close the PR with a short note explaining that rebasing showed no remaining diff.
 
-When 4+ dep-update PRs all show `e2e / GNOME 50 — smoke: FAILURE` with the
-same "SSH never became ready" message, the root cause is always `publish.yml`
-not having run recently. Check `gh run list --workflow publish.yml` —
-`startup_failure` on the nightly runs means `:testing` is stale and unbootable.
-Fix the nightly first; don't debug individual PRs.
+## Retriggering e2e
+
+### Same-repo branches
+
+If `gh run rerun` is unavailable because the run is too old, retrigger by pushing an empty commit to the branch:
+
+```bash
+git fetch upstream <branch>
+git checkout -B retrigger-<N> upstream/<branch>
+git commit --allow-empty -m "ci: retrigger e2e"
+git push upstream HEAD:<branch>
+```
+
+Only do this for branches in `projectbluefin/dakota`.
+
+### Fork PR limitation
+
+Do **not** push to contributor fork branches. You cannot force-push or append empty commits to an external fork from the main repo workflow.
+
+Options:
+
+- `gh run rerun <run-id> --failed` if the run is still recent enough
+- comment asking the contributor to push an empty commit
+
+## Feature PRs vs Chore PRs — Different Targets
+
+- **Chore / dep-update PRs** → target `testing`. Rebase onto `upstream/testing`.
+- **Feature / fix PRs** → target `main`. Rebase onto `upstream/main`.
+
+Retargeting a feature PR to `testing` is wrong. Check `baseRefName` before rebasing:
+
+```bash
+gh pr view <N> --repo projectbluefin/dakota --json baseRefName,isCrossRepository \
+  --jq '{base:.baseRefName, cross:.isCrossRepository}'
+```
+
+## Cross-Repository (Fork) PRs
+
+When `isCrossRepository: true`, the PR branch lives on the contributor's fork — **not** on `upstream`. `git push upstream HEAD:<branch>` will fail silently or push to the wrong place.
+
+For cross-repo PRs:
+
+```bash
+# Check maintainerCanModify first
+gh pr view <N> --repo projectbluefin/dakota --json maintainerCanModify,headRepositoryOwner,headRefName
+
+# If maintainerCanModify is true, add fork as remote and push there
+git remote add <contributor> git@github.com:<headRepositoryOwner>/dakota.git
+git fetch <contributor> <headRefName>
+git checkout -B fix-<N> <contributor>/<headRefName>
+git rebase upstream/main      # or upstream/testing for chores
+git push <contributor> HEAD:<headRefName> --force-with-lease
+```
+
+If `maintainerCanModify: false`, do not push. Request the contributor rebase instead.
+
+## Fleet Parallel Dispatch Pattern
+
+When multiple chore PRs are all stuck against `testing`, dispatch rebases in parallel, usually in pairs.
+
+Each agent should own one branch and run exactly this sequence:
+
+1. Check `isCrossRepository` — use the fork push path if true (see above)
+2. `git fetch upstream <branch>` (or `git fetch <fork> <branch>` for cross-repo)
+3. `git checkout -B fix-<branch> upstream/<branch>`
+4. `git rebase upstream/testing`
+5. `git push upstream HEAD:<branch> --force-with-lease` (or push to fork for cross-repo)
+
+Why pairs: it speeds up queue recovery without turning every branch into a moving target at once. After the first wave lands, run one more cleanup pass for any PRs that became stale during the earlier merges.
+
+## Cross-References
+
+- `ci.md` — reruns, status checks, and workflow behavior
+- `pr-review.md` — mergeability and review expectations
