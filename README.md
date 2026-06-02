@@ -1,84 +1,93 @@
 # Bluefin Dakota
-*Dakotaraptor steini* 
+*Dakotaraptor steini*
 
-[Bluefin](https://projectbluefin.io) built on [GNOME OS](https://os.gnome.org/), assembled entirely from source.
+[![Build Bluefin dakota](https://github.com/projectbluefin/dakota/actions/workflows/build.yml/badge.svg)](https://github.com/projectbluefin/dakota/actions/workflows/build.yml) [![Scorecard supply-chain security](https://github.com/projectbluefin/dakota/actions/workflows/scorecard.yml/badge.svg)](https://github.com/projectbluefin/dakota/actions/workflows/scorecard.yml) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/projectbluefin/dakota)
 
-<a href="https://docs.projectbluefin.io/changelogs">
+[Bluefin](https://projectbluefin.io) built on [GNOME OS](https://os.gnome.org/), assembled entirely from source. **Alpha** — [filing issues](https://github.com/projectbluefin/dakota/issues) is the whole point.
+
+![Dakorator](https://github.com/user-attachments/assets/ee92291d-a617-496e-abb6-9045a4c665ce)
+
+## Latest Release
+
+<a href="https://docs.projectbluefin.io/changelogs/">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://docs.projectbluefin.io/img/cards/dakota-dark.png">
-    <img src="https://docs.projectbluefin.io/img/cards/dakota-light.png" alt="Bluefin Dakota" width="800">
+    <img src="https://docs.projectbluefin.io/img/cards/dakota-light.png" alt="Bluefin Dakota latest release" width="800">
   </picture>
 </a>
 
-**Alpha** — [filing issues](https://github.com/projectbluefin/dakota/issues) is the whole point.
+## Images
+
+Full catalog at [docs.projectbluefin.io/images →](https://docs.projectbluefin.io/images/)
+
+### Bluefin Dakota
+
+Project Bluefin Dakota image stream.
+
+```bash
+# Latest
+sudo bootc switch ghcr.io/projectbluefin/dakota:latest --enforce-container-sigpolicy
+# Latest — NVIDIA
+sudo bootc switch ghcr.io/projectbluefin/dakota-nvidia:latest --enforce-container-sigpolicy
+```
+
+## Getting Started
+
+Download the latest ISO: **[dakota-live-latest.iso](https://projectbluefin.dev/dakota-live-latest.iso)** · [Checksum](https://projectbluefin.dev/dakota-live-latest.iso-CHECKSUM)
+
+See [AGENTS.md](AGENTS.md) for the full contributor workflow, build instructions, and PR checklist.
+
+**Known gaps:**
+- Installation path is still being worked on
+- Upgrades and rollbacks need more hardening
+
+See [open issues](https://github.com/projectbluefin/dakota/issues) for where things stand.
 
 ## Built-in feedback loop
 
-Dakota doesn't eat tickets, it treats them as evidence.
-
-Every user running Dakota is part of a structured loop that flows directly back into upstream GNOME, freedesktop, and the kernel. When something breaks on your hardware, you have three commands:
+Dakota doesn't eat tickets, it treats them as evidence. Every user running Dakota is part of a structured loop that flows directly back into upstream GNOME, freedesktop, and the kernel.
 
 | Command | What it does |
 |---|---|
 | `ujust report` | Captures your system state and opens a pre-filled issue. One command instead of a wall of "please attach logs." |
-| `ujust confirm <issue>` | Tells the team your hardware hits the same bug. Adds a hardware fingerprint to the issue — no duplicate filing. |
-| `ujust verify <issue>` | After a fix ships in a nightly, confirms it works on your machine. Closes the loop with evidence. |
+| `ujust confirm <issue>` | Adds a hardware fingerprint to an existing issue — no duplicate filing. |
+| `ujust verify <issue>` | Confirms a fix works on your machine after it ships. Closes the loop with evidence. |
 
-No telemetry. No phone-home. Every report is reviewed by you before it leaves your machine, lives in a gist you own, and can be deleted anytime.
-
-When three users independently run `ujust verify` on a fix, that issue closes with real confidence — not just "we think this is fixed."
-
-### The hardware layer
-
-Each Dakota installation is designed to run as a hardware diagnostic lab for itself. When will you find your first?
-
-[Read the full feedback loop design](docs/feedback-loop.md)
+No telemetry. Every report is reviewed by you before it leaves your machine, lives in a gist you own, and can be deleted anytime. [Read the full design](docs/feedback-loop.md)
 
 ## The research behind it
 
-Dakota is human driven with contribution workflows for agents, so if you have tokens to donate, ask it to review issues or PRs, it's useful! The humans make the final decisions. We coordinate this project via a tool called [Hive](https://github.com/kubestellar/hive) from Kubestellar, a CNCF Sandbox project. 
-
-Dakota's feedback loop model is grounded in Andy Anderson's work on autonomous AI-assisted software development. The core finding: the intelligence of a system like this lives not in any single model, but in the infrastructure of instructions, tests, metrics, and feedback loops surrounding it.
+Dakota's feedback loop model is grounded in Andy Anderson's work on autonomous AI-assisted software development:
 
 - [The AI Codebase Maturity Model](https://arxiv.org/abs/2604.09388) — the arxiv paper
 - [When AI agents become contributors](https://www.cncf.io/blog/2026/05/14/when-ai-agents-become-contributors-how-kubestellar-reached-81-pr-acceptance/) — CNCF blog
 - [Beyond prompting: How KubeStellar reached 81% PR acceptance](https://thenewstack.io/ai-codebase-maturity-model/) — The New Stack
-- [KubeStellar Hive](https://github.com/kubestellar/hive) — the reference implementation Dakota draws from
+
+We coordinate via [KubeStellar Hive](https://github.com/kubestellar/hive). Humans make the final decisions.
 
 ## Help shape what gets built
 
-These issues need human judgment before any code is written — design review, domain knowledge, or hardware context the team doesn't have yet:
+These issues need human judgment before any code is written:
 
-### [Issues open for discussion &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fdiscussing)
+**[Issues open for discussion →](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fdiscussing)**
 
-Leave a comment, push back on the design, or share how your hardware is affected. When a discussion reaches consensus, a maintainer marks it `status/approved` and it enters the contributor queue.
+Ready to build? See the [agent-ready queue](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Aqueue%2Fagent-ready+no%3Aassignee) for issues with clear acceptance criteria.
 
-Ready to build something? See the [agent-ready queue](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Aqueue%2Fagent-ready+no%3Aassignee) for issues with clear acceptance criteria and no open questions.
+## Community
 
-## Help shape what gets built
+- 📰 **[Blog](https://blog.projectbluefin.io/)** — announcements and release posts
+- 💬 **[Discussions](https://community.projectbluefin.io/)** — community forum
+- 📋 **[Project Board](https://todo.projectbluefin.io/)** — what we're working on
+- 📖 **[Documentation](https://docs.projectbluefin.io/)** — user guides and reference
 
-These issues need human judgment before any code is written — design review, domain knowledge, or hardware context the team doesn't have yet:
+## Contributing
 
-### [Issues open for discussion &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fdiscussing)
+See [AGENTS.md](AGENTS.md) for the contributor workflow and build instructions. All participants are expected to follow the [Universal Blue Community Guidelines](https://docs.projectbluefin.io/contributing#community-guidelines).
 
-Leave a comment, push back on the design, or share how your hardware is affected. When a discussion reaches consensus, a maintainer marks it `status/approved` and it enters the contributor queue.
+Report security vulnerabilities via [SECURITY.md](SECURITY.md).
 
-Ready to build something? See the [agent-ready queue](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Aqueue%2Fagent-ready+no%3Aassignee) for issues with clear acceptance criteria and no open questions.
+## License
 
-## ISO Download
+Apache License 2.0 — see [LICENSE](LICENSE).
 
-[dakota-live-latest.iso](https://projectbluefin.dev/dakota-live-latest.iso) · [Checksum](https://projectbluefin.dev/dakota-live-latest.iso-CHECKSUM)
-
-
-## Known gaps
-
-- Installation path is still being worked on
-- Upgrades and rollbacks need more hardening
-
-See the [open issues](https://github.com/projectbluefin/dakota/issues) for where things stand.
-
-## Contributing or building from source
-
-See [AGENTS.md](AGENTS.md) for the full contributor workflow, build instructions, and PR checklist.
-
-![Dakorator](https://github.com/user-attachments/assets/ee92291d-a617-496e-abb6-9045a4c665ce)
+Dakota incorporates [GNOME OS](https://os.gnome.org/), [freedesktop-sdk](https://gitlab.freedesktop.org/freedesktop-sdk/freedesktop-sdk), and various upstream projects, each under their respective licenses.
