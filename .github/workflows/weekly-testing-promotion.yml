@@ -121,6 +121,7 @@ jobs:
 
   # ── Promote :testing → :latest + :stable ────────────────────────────────
   promote:
+    environment: production
     needs: [resolve, check-diff]
     if: needs.check-diff.outputs.has_diff == 'true'
     runs-on: ubuntu-24.04
