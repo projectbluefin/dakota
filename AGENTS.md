@@ -39,8 +39,6 @@ Non-compliance = automatic rejection.
 
 **Read-First:** Read `README.md`, `AGENTS.md`, `.github/copilot-instructions.md`, and `docs/SKILL.md` before modifying anything. Do not assume project structure or patterns.
 
-**Rate limit:** Max 4 open PRs at a time. If a PR is closed for quality, document the root cause on the closed PR before resubmitting.
-
 **Operator accountability:** The human deploying the agent is responsible for all decisions. PR template checkbox: `[ ] I am using an agent and I take responsibility for this PR`
 
 **Verification:** Every PR must confirm `just lint` passed and the image booted. Use `just boot-test` for automated pass/fail. No WIP PRs.
