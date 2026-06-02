@@ -1,0 +1,24 @@
+name: Cleanup Old Images
+on:
+  schedule:
+    - cron: "15 0 * * 0" # 0015 UTC on Sundays
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+
+jobs:
+  delete-older-than-90:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Delete Images Older Than 90 Days
+        uses: projectbluefin/actions/bootc-build/ghcr-cleanup@fb75840b642bc5ed21d93323894f62197372f3d8 # feat/ghcr-cleanup-orphaned-images
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          packages: dakota,dakota-nvidia
+          older-than: 90 days
+          delete-orphaned-images: true
+          keep-n-tagged: 7
+          keep-n-untagged: 7
