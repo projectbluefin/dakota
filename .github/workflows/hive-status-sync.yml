@@ -129,7 +129,7 @@ jobs:
                             "--label", label, "--state", "open", "--json", "number")
               return len(raw) if raw else 0
 
-          n_p0 = count_label("P0")
+          n_p0 = count_label("hive/p0")
 
           # Fireteam — unique contributors from merged PRs (last 50), excluding bots
           # Ghost contributors (agent-assisted) detected via checked PR template checkbox
@@ -310,7 +310,7 @@ jobs:
 
           n_ready   = count_label("queue/agent-ready")
           n_claimed = count_label("queue/claimed")
-          n_p0      = count_label("P0")
+          n_p0      = count_label("hive/p0")
 
           # Build title
           parts = [ci, f"{n_ready} ready", f"{n_claimed} claimed"]
