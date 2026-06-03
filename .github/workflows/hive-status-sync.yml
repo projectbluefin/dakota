@@ -130,6 +130,7 @@ jobs:
               return len(raw) if raw else 0
 
           n_p0 = count_label("hive/p0")
+          n_p1 = count_label("hive/p1")
 
           # Fireteam — unique contributors from merged PRs (last 50), excluding bots
           # Ghost contributors (agent-assisted) detected via checked PR template checkbox
@@ -190,9 +191,10 @@ jobs:
           # Timestamp
           now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-          # Status bar — P0 count only surfaces when non-zero
+          # Status bar — Hive priority counts surface when non-zero
           p0_fragment = f" · ▲ {n_p0} P0" if n_p0 > 0 else ""
-          status_bar  = f"`[{health_bar}]` {formation_status} · {n_active}/{total} active · {ci_label}{p0_fragment}"
+          p1_fragment = f" · {n_p1} P1" if n_p1 > 0 else ""
+          status_bar  = f"`[{health_bar}]` {formation_status} · {n_active}/{total} active · {ci_label}{p0_fragment}{p1_fragment}"
 
           # Active agent names for header
           header = f"**{n_active}/{total} active**"
@@ -311,11 +313,14 @@ jobs:
           n_ready   = count_label("queue/agent-ready")
           n_claimed = count_label("queue/claimed")
           n_p0      = count_label("hive/p0")
+          n_p1      = count_label("hive/p1")
 
           # Build title
           parts = [ci, f"{n_ready} ready", f"{n_claimed} claimed"]
           if n_p0 > 0:
               parts.append(f"{n_p0} P0 🔥")
+          if n_p1 > 0:
+              parts.append(f"{n_p1} P1")
           title = "Dakota Development — " + " · ".join(parts)
 
           print(f"Setting title: {title}")
