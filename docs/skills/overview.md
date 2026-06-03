@@ -69,6 +69,8 @@ Production Bluefin images are **Containerfile-based overlays** — they start wi
 
 ## Gap Analysis
 
+Gaps as of 2026-06-03. Y = present, N = absent.
+
 ### Shell & Terminal Tools
 
 | Package | Dakota | bluefin |
@@ -105,14 +107,14 @@ Nvidia drivers, ZFS, Xbox controller (xone), Framework laptop modules — not in
 
 ### Notable Gaps (Priority Order)
 
-| Package | Notes |
-|---|---|
-| fastfetch | System info tool, in both production Bluefins |
-| Starship prompt | Shell prompt, core Bluefin UX; pre-built binary |
-| fish shell | Alternative shell; requires build from source |
-| fwupd | Firmware updates; upstream element exists |
-| uupd (auto-updater) | Upstream OTA update daemon |
-| Bazaar (app store) | Flatpak-based app store |
+| Package | Dakota | Notes |
+|---|:---:|---|
+| fastfetch | N | System info tool, in both production Bluefins |
+| Starship prompt | N | Shell prompt, core Bluefin UX; pre-built binary |
+| fish shell | N | Alternative shell; requires build from source |
+| fwupd | Y | via gnome-build-meta junction |
+| uupd (auto-updater) | Y | `elements/bluefin/uupd.bst` |
+| Bazaar (app store) | N | Flatpak-based app store |
 
 ## Build Optimization Notes
 
