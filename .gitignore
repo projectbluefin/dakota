@@ -1,6 +1,9 @@
 # Ignore Python local cache across repo
 **/__pycache__/
 
+# Debug session artifacts
+debug-session/
+
 # Ignore BuildStream local state
 .bst
 .bst2

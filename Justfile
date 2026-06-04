@@ -663,6 +663,125 @@ boot-fast: _ensure-bcvk
         --vcpus "{{vm_cpus}}" \
         "localhost/{{image_name}}:{{image_tag}}"
 
+# Interactive debug session — boots the image, captures serial console and systemd
+# journal on exit. Artifacts are saved to ./debug-session/ for bug reports.
+# Requires: bcvk, qemu-kvm, virtiofsd
+[group('test')]
+debug-session: _ensure-bcvk
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    VM_NAME="dakota-debug-$$"
+    SESSION_DIR="./debug-session"
+    START_TS=$(date +%s)
+
+    # Use sudo unless already root
+    SUDO_CMD=""
+    if [ "$(id -u)" -ne 0 ]; then
+        SUDO_CMD="sudo"
+    fi
+
+    if ! $SUDO_CMD podman image exists "{{image_name}}:{{image_tag}}"; then
+        echo "ERROR: Image '{{image_name}}:{{image_tag}}' not found in podman." >&2
+        echo "Run 'just build' first to build and export the OCI image." >&2
+        exit 1
+    fi
+
+    cleanup() {
+        set +e
+        END_TS=$(date +%s)
+        DURATION=$((END_TS - START_TS))
+
+        # Capture console log via podman logs (works even if guest hung/crashed)
+        $SUDO_CMD podman logs "$VM_NAME" > "${SESSION_DIR}/serial.log" 2>/dev/null || true
+
+        # Capture journal and summary via SSH if VM is still reachable
+        KERNEL="unknown"
+        FAILED_DISPLAY="none"
+        if $SUDO_CMD bcvk ephemeral ssh "$VM_NAME" -- true 2>/dev/null; then
+            echo "==> Capturing systemd journal..."
+            $SUDO_CMD bcvk ephemeral ssh "$VM_NAME" -- journalctl -b --no-pager > "${SESSION_DIR}/journal.log" 2>/dev/null || true
+
+            KERNEL=$($SUDO_CMD bcvk ephemeral ssh "$VM_NAME" -- uname -r 2>/dev/null || echo "unknown")
+            FAILED=$($SUDO_CMD bcvk ephemeral ssh "$VM_NAME" -- systemctl list-units --state=failed --no-legend --plain 2>/dev/null | awk '{print $1}' | head -10 | paste -sd ',' 2>/dev/null || true)
+            if [ -n "$FAILED" ]; then FAILED_DISPLAY="$FAILED"; fi
+        fi
+
+        {
+            echo "Debug session: {{image_name}}:{{image_tag}}"
+            echo "Duration: ${DURATION}s"
+            echo "Kernel: ${KERNEL}"
+            echo "Failed units: ${FAILED_DISPLAY}"
+            echo ""
+            echo "Artifacts:"
+            echo "  serial.log   — full serial console from boot"
+            echo "  journal.log  — systemd journal from this boot"
+            echo "  summary.txt  — this file"
+            echo ""
+            echo "Include these artifacts when filing an issue at:"
+            echo "  https://github.com/projectbluefin/dakota/issues/new?template=bug-report.yml"
+        } > "${SESSION_DIR}/summary.txt"
+
+        echo ""
+        echo "==> Debug session artifacts in ${SESSION_DIR}/"
+        if [[ -f "${SESSION_DIR}/serial.log" ]]; then
+            echo "    serial.log   ($(du -sh "${SESSION_DIR}/serial.log" | cut -f1)) — full serial console from boot"
+        fi
+        if [[ -f "${SESSION_DIR}/journal.log" ]]; then
+            echo "    journal.log  ($(du -sh "${SESSION_DIR}/journal.log" | cut -f1)) — systemd journal from this boot"
+        fi
+        if [[ -f "${SESSION_DIR}/summary.txt" ]]; then
+            echo "    summary.txt  — session summary"
+        fi
+        echo ""
+        echo "File an issue with the artifacts above:"
+        echo "  https://github.com/projectbluefin/dakota/issues/new?template=bug-report.yml"
+
+        echo "==> Tearing down VM ${VM_NAME}..."
+        $SUDO_CMD bcvk ephemeral rm -f "$VM_NAME" 2>/dev/null || true
+    }
+    trap cleanup EXIT
+
+    mkdir -p "${SESSION_DIR}"
+
+    echo "==> debug-session: booting {{image_name}}:{{image_tag}} with serial capture..."
+    echo "    RAM: {{vm_ram}}M, CPUs: {{vm_cpus}}"
+    echo "    Artifacts will be saved to ${SESSION_DIR}/"
+    echo ""
+
+    # Launch VM detached; -K enables bcvk ephemeral ssh, --console routes guest
+    # serial output to podman logs for reliable capture even when guest is hung
+    $SUDO_CMD bcvk ephemeral run -d --rm -K --console \
+        --memory "{{vm_ram}}M" \
+        --vcpus "{{vm_cpus}}" \
+        --name "$VM_NAME" \
+        "localhost/{{image_name}}:{{image_tag}}"
+
+    # Wait for SSH to become available
+    echo "==> Waiting for VM to boot..."
+    ELAPSED=0
+    TIMEOUT=120
+    while [ $ELAPSED -lt "$TIMEOUT" ]; do
+        if $SUDO_CMD bcvk ephemeral ssh "$VM_NAME" -- true 2>/dev/null; then
+            break
+        fi
+        sleep 5
+        ELAPSED=$((ELAPSED + 5))
+        printf '.' >&2
+    done
+    echo ""
+
+    if [ $ELAPSED -ge "$TIMEOUT" ]; then
+        echo "FAIL: SSH did not become available within ${TIMEOUT}s" >&2
+        exit 1
+    fi
+    echo "==> VM ready after ~${ELAPSED}s. Starting interactive session."
+    echo "    Reproduce your bug here. Exit the shell when done (Ctrl+D)."
+    echo ""
+
+    # Drop user into interactive SSH session
+    $SUDO_CMD bcvk ephemeral ssh "$VM_NAME"
+
 # Automated boot smoke test — boots the image, verifies GDM starts, exits 0/1.
 # Non-interactive. Intended for CI and agent verification loops.
 # Requires: bcvk, qemu-kvm, virtiofsd
