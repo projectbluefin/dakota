@@ -115,7 +115,7 @@ jobs:
 
       # FIXME: Make the build with JWT work
       # - name: Get JWT token
-      #   uses: actions/github-script@v7
+      #   previously used actions/github-script (kept disabled)
       #   with:
       #     script: |
       #       const fs = require('fs');

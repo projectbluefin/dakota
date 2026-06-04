@@ -15,3 +15,11 @@ repos:
     rev: v1.7.7
     hooks:
       - id: actionlint
+  - repo: local
+    hooks:
+      - id: no-floating-action-tags
+        name: Block floating GitHub Action tags
+        language: pygrep
+        entry: 'uses:(?!.*projectbluefin/).*@(main|master|latest|v[0-9])'
+        types: [yaml]
+        files: '(^\.github/workflows/.*\.yml$|action\.yml$)'
