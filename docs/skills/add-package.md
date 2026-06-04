@@ -1,6 +1,6 @@
 # Adding a Package
 
-Entry-point workflow for adding any software package to the Bluefin image.
+Entry-point workflow for adding any software package to the Dakota image.
 
 ## When NOT to Use
 
@@ -19,6 +19,11 @@ cp elements/bluefin/glow.bst elements/bluefin/<name>.bst
 ```
 
 There are no scaffold scripts. Copy an existing element of the appropriate kind as a starting point.
+
+**Historical path note:** new Dakota packages still live under
+`elements/bluefin/` and are added to `elements/bluefin/deps.bst`. That path
+name is historical only — do not translate package work into dnf, RPM, or
+Containerfile-overlay steps.
 
 ## Choose Element Kind
 
@@ -80,6 +85,7 @@ install-commands:
 | `EnvironmentFile=/etc/default/...` | GNOME OS doesn't use `/etc/default/`; remove from upstream service files |
 | Variables in source URLs | BuildStream doesn't support this; use literal URLs with aliases |
 | Missing `%{install-extra}` | Must be last install-command |
+| Trying to add the package in `Containerfile`/`Justfile` | Package and image-content changes belong in `.bst` elements plus `deps.bst` |
 | Forgot to add element to `deps.bst` | Element builds but won't be in the image |
 | Wrong dependency stack | Use `freedesktop-sdk.bst:public-stacks/runtime-minimal.bst` for runtime deps |
 

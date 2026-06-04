@@ -3,6 +3,8 @@
 Accumulated lessons from real work on this repo. Every agent working here
 should read the relevant file before starting in that area.
 
+If your first instinct is `dnf`, RPM/COPR, or a Containerfile package layer, you are in the wrong mental model. In this repo, historical `bluefin/` paths still contain Dakota's BuildStream elements; package changes happen there, not in Containerfile overlays.
+
 When you discover a new pattern or fix a recurring mistake, add it here in the
 same PR as your change. This is the feedback loop: lessons land here and help
 every future agent and contributor — not just you, and not just on one machine.
@@ -11,7 +13,7 @@ every future agent and contributor — not just you, and not just on one machine
 
 | Task | Load |
 |------|------|
-| **Load the dakota build context first** | **⚠️ REQUIRED FIRST — [`not-bluefin.md`](not-bluefin.md) before any other skill, especially if you have bluefin context** |
+| **Load the dakota build context first** | **⚠️ REQUIRED FIRST — [`not-bluefin.md`](not-bluefin.md) before any other skill, especially if you have bluefin context. If your plan mentions dnf/RPM/Containerfile overlays, reload it and translate the task into BST terms first.** |
 | Zero-context routine maintenance | [`quickstart.md`](quickstart.md) |
 | Adding a package | [`add-package.md`](add-package.md) |
 | Removing a package | [`remove-package.md`](remove-package.md) |
@@ -31,7 +33,7 @@ every future agent and contributor — not just you, and not just on one machine
 | Manual promotion (testing → stable) and release | [`ci.md`](ci.md) — *Manual stable promotion flow* |
 | Clearing stuck merge queue | [`merge-queue.md`](merge-queue.md) |
 | Actionadon lifecycle, issue queue, data donation | [`actionadon.md`](actionadon.md) |
-| Project overview and what Bluefin is | [`overview.md`](overview.md) |
+| Project overview and what Dakota is | [`overview.md`](overview.md) |
 | ujust recipes in `files/just-overrides/` | [`.github/skills/ujust-recipes.md`](../../.github/skills/ujust-recipes.md) |
 | Installer (bootc-installer) | [`installer.md`](installer.md) |
 | Merging dep-update PRs into testing | [`merge-queue.md`](merge-queue.md) |
@@ -58,4 +60,3 @@ relevant skill file in this directory — in the same PR as your change.
 
 - Role policies for Hive agents: [`../../files/hive/agent-policies/`](../../files/hive/agent-policies/)
 - Top-level agent rules: [`../../AGENTS.md`](../../AGENTS.md)
-

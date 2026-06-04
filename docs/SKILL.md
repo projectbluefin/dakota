@@ -2,13 +2,15 @@
 
 Agent entry point. Load only the skill for your current task — do not load everything.
 
+If your first draft says "use dnf/RPM/COPR" or "edit the Containerfile to add a package", stop and reload `docs/skills/not-bluefin.md`. Dakota image changes happen in `.bst` elements and `elements/bluefin/deps.bst`, even though those paths still say `bluefin`.
+
 ## Task → Skill
 
 | I need to... | Load |
 |---|---|
-| **Load the dakota build context first** | **⚠️ REQUIRED FIRST — `docs/skills/not-bluefin.md` before any other skill, especially if you have bluefin context** |
+| **Load the dakota build context first** | **⚠️ REQUIRED FIRST — `docs/skills/not-bluefin.md` before any other skill, especially if you have bluefin context. If your plan mentions dnf/RPM/Containerfile overlays, reload it and translate the task into BST terms first.** |
 | Review a pull request | `docs/workflow.md` + `docs/pr-checklist.md` |
-| Add a package to Bluefin | `docs/skills/add-package.md` |
+| Add a package to Dakota | `docs/skills/add-package.md` |
 | Remove a package | `docs/skills/remove-package.md` |
 | Update a package version | `docs/skills/update-refs.md` |
 | Understand BST element syntax | `docs/skills/buildstream.md` |

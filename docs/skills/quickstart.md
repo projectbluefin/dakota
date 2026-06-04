@@ -2,6 +2,10 @@
 
 Zero-context entry point for routine dakota maintenance — add package, remove package, update refs.
 
+Historical path note: `elements/bluefin/*` is Dakota's package tree. The name
+is legacy. Do not use it as a cue to reach for dnf, RPM/COPR, or Containerfile
+overlay workflows.
+
 ## 5 Always Rules
 
 1. **Always run `just --list` first** — the Justfile is the ground truth for available recipes
@@ -10,13 +14,14 @@ Zero-context entry point for routine dakota maintenance — add package, remove 
 4. **Always grep for all references before removing** — `grep -r <name> elements/ .github/workflows/ files/`
 5. **Always use `just bst` not bare `bst`** — BST must run inside the pinned container
 
-## 5 Never Rules
+## 6 Never Rules
 
 1. **Never edit** `elements/freedesktop-sdk.bst` or `elements/gnome-build-meta.bst` without human review
 2. **Never open a PR** to `projectbluefin/dakota` without running `just validate` first
 3. **Never add Renovate entries** for elements already in the `track-tarballs` CI job — causes racing PRs
 4. **Never call `bst` directly** — always `just bst ...`
 5. **Never skip `just validate`** even if `just bst build` "looks right"
+6. **Never solve package/image-content changes in `Containerfile`** — those belong in `.bst` elements and `elements/bluefin/deps.bst`
 
 ## Task Routing
 

@@ -203,7 +203,9 @@ clean:
     rm -f bootable.raw .ovmf-vars.fd
     rm -rf .build-out
 
-# ── Containerfile build (alternative) ────────────────────────────────
+# ── Containerfile build (lint helper only) ───────────────────────────
+# This is not Dakota's package assembly path.
+# Real image content changes happen in BuildStream elements and `just build`.
 [group('build')]
 build-containerfile $image_name=image_name:
     sudo podman build --security-opt label=type:unconfined_t --squash-all -t "${image_name}:latest" .

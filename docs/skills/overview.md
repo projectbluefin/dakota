@@ -41,6 +41,10 @@ freedesktop-sdk provides glibc/systemd/kernel, gnome-build-meta provides GNOME S
 
 Published image: `ghcr.io/projectbluefin/dakota:{testing,latest,stable}`
 
+**Historical path note:** the repo still uses `bluefin` in key filenames such as
+`elements/bluefin/*` and `oci/bluefin.bst`. Those are Dakota paths, not proof
+that Dakota follows bluefin's dnf/Containerfile overlay model.
+
 ## Architecture Comparison
 
 | Dimension | **Dakota** | **bluefin** | **bluefin-lts** |

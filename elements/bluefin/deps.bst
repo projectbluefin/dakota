@@ -1,3 +1,6 @@
+# Historical path note: despite the directory name, this is Dakota's package
+# manifest. Add or remove image content via `.bst` elements here — never via
+# dnf/RPM/Containerfile overlay logic.
 kind: stack
 
 depends:

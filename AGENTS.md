@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Dakota is a [BuildStream 2](https://buildstream.build/) project producing **Bluefin** — a bootc OCI desktop image built from source. No RPMs. No dnf. BST elements only. Load [`docs/skills/not-bluefin.md`](docs/skills/not-bluefin.md) FIRST if you have any bluefin context.
+Dakota is a [BuildStream 2](https://buildstream.build/) project producing **Dakota** — Project Bluefin's bootc OCI desktop image built from source. No RPMs. No dnf. No Containerfile package overlays. BST elements only. Historical `bluefin/` paths in this repo are Dakota build paths, not permission to use bluefin's dnf/RPM workflow. Load [`docs/skills/not-bluefin.md`](docs/skills/not-bluefin.md) FIRST if you have any bluefin context.
 
 Load **[docs/SKILL.md](docs/SKILL.md)** for the full reference skill tree. Only load docs relevant to your task.
 

@@ -1,6 +1,6 @@
 # Removing a Package
 
-Load when removing a software package from the Bluefin image in `projectbluefin/dakota`.
+Load when removing a software package from the Dakota image in `projectbluefin/dakota`.
 
 ## When NOT to Use
 
@@ -11,6 +11,11 @@ Load when removing a software package from the Bluefin image in `projectbluefin/
 ## Quick Start
 
 There is no `just remove-package` recipe. Remove packages manually using the checklist below.
+
+**Historical path note:** packages still live under `elements/bluefin/` because
+of repo history. Treat that as a path name only — removing software from Dakota
+means editing BST elements and dependency stacks, not Containerfile or RPM
+metadata.
 
 ## What to Remove
 

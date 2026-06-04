@@ -23,6 +23,10 @@ elements/oci/bluefin.bst            ← kind: script (final OCI assembly)
   └── runs: build-oci script to assemble the image
 ```
 
+Historical path note: the `bluefin` filenames above are Dakota's OCI assembly
+paths. They are not a sign to switch to the separate bluefin repo's
+Containerfile-overlay workflow.
+
 ## Critical: `kind: compose` vs `kind: stack`
 
 **This is the most common layer bug:**
@@ -47,7 +51,7 @@ grep "^kind:" elements/oci/layers/bluefin.bst
 
 ```yaml
 kind: compose
-description: Bluefin image layer
+description: Dakota image layer (historical bluefin path name)
 depends:
 - deps.bst
 - filename: freedesktop-sdk.bst:elements/base/base.bst
