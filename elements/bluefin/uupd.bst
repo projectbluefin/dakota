@@ -4,11 +4,11 @@ sources:
 - kind: tar
   (?):
   - arch == "x86_64":
-      url: github_files:ublue-os/uupd/releases/download/v1.3.0/uupd_Linux_x86_64.tar.gz
-      ref: 22afe1950959b7f8a31a81c75afbe1eaaa3b3db94c6c09a926232b27147841ab
+      url: github_files:ublue-os/uupd/releases/download/v1.4.0/uupd_Linux_x86_64.tar.gz
+      ref: c7463f193cd35b92cde2ee05496501d6ac13808899bd26e17e027b7ee9ee1acc
   - arch == "aarch64":
-      url: github_files:ublue-os/uupd/releases/download/v1.3.0/uupd_Linux_arm64.tar.gz
-      ref: b84a9235e554418f6fe8e096c79b1cd577a7b4494e97eee573adff3a380416d7
+      url: github_files:ublue-os/uupd/releases/download/v1.4.0/uupd_Linux_arm64.tar.gz
+      ref: 90f493aceadc3ef1a5a5fecff6ce21873dfed13bdca5d5d684e7f97c077a6855
   base-dir: ""
 
 build-depends:
