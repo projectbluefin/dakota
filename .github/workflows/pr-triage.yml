@@ -1,0 +1,137 @@
+name: PR triage
+
+# pr/needs-review lifecycle:
+#   opened / reopened / synchronize → add pr/needs-review
+#   approving review from maintainer → remove pr/needs-review
+#   changes_requested or dismissed review → re-add pr/needs-review
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  ensure-labels:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Create pr/needs-review label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh label create "pr/needs-review" \
+            --color "e4e669" \
+            --description "PR needs a maintainer review before it can move forward." \
+            --repo "$REPO" 2>/dev/null \
+            || gh label edit "pr/needs-review" \
+            --color "e4e669" \
+            --description "PR needs a maintainer review before it can move forward." \
+            --repo "$REPO" 2>/dev/null \
+            || true
+
+  # ── PR opened or updated ───────────────────────────────────────────────────
+  # Label + post contributor instructions every time.
+  # synchronize fires on new commits — re-adds the label if a previous approval
+  # is now stale (reviewer needs to re-check after the new code).
+  on-pr-opened-or-updated:
+    if: github.event_name == 'pull_request_target'
+    needs: ensure-labels
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Add pr/needs-review and post instructions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          gh pr edit "$PR_URL" --add-label "pr/needs-review"
+
+          # Only comment on open and reopen — not on every push.
+          if [ "$ACTION" = "synchronize" ]; then
+            exit 0
+          fi
+
+          cat << 'EOF' > /tmp/comment.md
+          Thanks for the PR! A maintainer will review it.
+
+          While you wait, make sure these pass locally:
+          ```bash
+          just validate        # element graph check
+          just build default   # build the image
+          just boot-test       # confirm the desktop boots (exits 0 = pass)
+          just lint            # bootc container lint
+          ```
+
+          If this PR fixes a bug, add verify steps to the linked issue so users can confirm the fix on their hardware after the next nightly ships:
+          ````markdown
+          ```verify
+          ujust <something>   # what users should run to confirm the fix
+          ```
+          ````
+          EOF
+          gh pr comment "$PR_URL" --body-file /tmp/comment.md
+
+  # ── PR review submitted or dismissed ──────────────────────────────────────
+  # Only maintainer reviews (write/maintain/admin) change the label.
+  # Bot and self-reviews are ignored.
+  on-pr-review:
+    if: github.event_name == 'pull_request_review'
+    needs: ensure-labels
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check reviewer is maintainer
+        id: perm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          REVIEWER: ${{ github.event.review.user.login }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          if [ "$REVIEWER" = "$PR_AUTHOR" ] || [[ "$REVIEWER" == *"[bot]"* ]]; then
+            echo "is_maintainer=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          PERMISSION=$(gh api "repos/${REPO}/collaborators/${REVIEWER}/permission" \
+            --jq '.permission' 2>/dev/null || echo "none")
+          case "$PERMISSION" in
+            admin|maintain|write) echo "is_maintainer=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "is_maintainer=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Approved — clear label
+        if: >-
+          steps.perm.outputs.is_maintainer == 'true' &&
+          github.event.review.state == 'approved'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr edit "$PR_URL" --remove-label "pr/needs-review" 2>/dev/null || true
+          cat << 'EOF' > /tmp/comment.md
+          Approved. Auto-merge is now eligible — the PR will enter the merge queue once all required checks pass.
+
+          After it ships in nightly, users can confirm the fix with:
+          ```bash
+          ujust verify <issue-number>
+          ```
+          EOF
+          gh pr comment "$PR_URL" --body-file /tmp/comment.md
+
+      - name: Changes requested — re-add label and tell the author what to do
+        if: >-
+          steps.perm.outputs.is_maintainer == 'true' &&
+          (github.event.review.state == 'changes_requested' ||
+           github.event.action == 'dismissed')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          REVIEWER: ${{ github.event.review.user.login }}
+        run: |
+          gh pr edit "$PR_URL" --add-label "pr/needs-review" 2>/dev/null || true
+          printf 'Changes requested by @%s. Address the review comments, push a new commit, and the PR will be re-queued for review.\n' \
+            "$REVIEWER" > /tmp/comment.md
+          gh pr comment "$PR_URL" --body-file /tmp/comment.md

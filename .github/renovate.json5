@@ -1,73 +1,46 @@
 {
-  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
-  extends: [
-    'config:best-practices',
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Enable GitHub's native automerge; merging is handled by GitHub and remains subject to branch protection/bypass settings
+  "platformAutomerge": true,
+
+  // Only target testing branch - keep as is for dakota
+  "baseBranchPatterns": ["testing"],
+
+  "extends": [
+    "config:best-practices",
   ],
-  automerge: true,
-  automergeType: 'pr',
-  platformAutomerge: true,
-  rebaseWhen: 'conflicted',
-  customManagers: [
-    {
-      customType: 'regex',
-      managerFilePatterns: [
-        '/\\.github/workflows/build\\.yml$/',
-        '/\\.github/workflows/track-bst-sources\\.yml$/',
-        '/^Justfile$/',
-      ],
-      matchStrings: [
-        '(?:BST2_IMAGE[":]\\s*|bst2_image\\s*:=\\s*env\\("BST2_IMAGE",\\s*")(?<depName>registry\\.gitlab\\.com/freedesktop-sdk/infrastructure/freedesktop-sdk-docker-images/bst2):(?<currentValue>[a-f0-9]+)"?',
-      ],
-      datasourceTemplate: 'docker',
-      versioningTemplate: 'loose',
-    },
-    {
-      customType: 'regex',
-      managerFilePatterns: [
-        '/elements/plugins/.*\\.bst$/',
-      ],
-      matchStrings: [
-        'url:\\s*pypi:[a-f0-9/]+/(?<depName>buildstream[-_]plugins(?:[-_]community)?)-(?<currentValue>\\d+\\.\\d+\\.\\d+)\\.tar\\.gz\\n\\s+ref:\\s*(?<currentDigest>[a-f0-9]{64})',
-      ],
-      datasourceTemplate: 'pypi',
-      versioningTemplate: 'pep440',
-    },
+
+  "git-submodules": {
+    "enabled": true
+  },
+
+  // Do not rebase when the default branch is updated
+  "rebaseWhen": "never",
+  "customManagers": [
     {
       customType: 'regex',
       managerFilePatterns: [
         '/^Justfile$/',
       ],
       matchStrings: [
-        'CHUNKAH_REF="(?<depName>quay\\.io/coreos/chunkah):(?<currentValue>v[^@]+)@(?<currentDigest>sha256:[a-f0-9]{64})"',
+        '(?<justName>.+?)\\s:=\\s"(?<packageName>\\S+):(?<currentValue>\\S+)@(?<currentDigest>sha256:[a-f0-9]+?)"',
       ],
       datasourceTemplate: 'docker',
     },
-  ],
-  packageRules: [
+    ],
+
+  "packageRules": [
     {
-      enabled: false,
-      matchDepNames: [
-        '/^ghcr.io/projectbluefin//',
-      ],
+      // Auto-merge all digest/pin updates across all managers (dockerfile, github-actions, regex/Justfile)
+      "automerge": true,
+      "matchUpdateTypes": ["digest", "pin", "pinDigest"]
     },
     {
-      automerge: true,
-      matchManagers: [
-        'github-actions',
-        'custom.regex',
-      ],
-    },
-    {
-      groupName: 'GitHub Actions',
-      matchManagers: [
-        'github-actions',
-      ],
-    },
-    {
-      groupName: 'bst2 container image',
-      matchDepNames: [
-        'registry.gitlab.com/freedesktop-sdk/infrastructure/freedesktop-sdk-docker-images/bst2',
-      ],
-    },
-  ],
+      // Auto-merge minor/patch version bumps for GitHub Actions (e.g. cosign-installer v3.8 → v3.9)
+      "automerge": true,
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch"]
+    }
+  ]
 }

@@ -4,11 +4,11 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/common.git
   track: main
-  ref: v2026.05-76-ga9330df6de70eb44b8b7e0726da302e01dfa0771
+  ref: v2026.06-21-g8895184f72910e368ccef803614106effc13ec63
 - kind: git_module
   url: github:projectbluefin/branding/
   path: bluefin-branding
-  ref: 59ca14a42f5a922159895d37935f70e408a42c7d
+  ref: f5213ca61615bb79a8315fc4c5378a80ca93922e
 - kind: local
   path: files/wallpaper-month
 

@@ -1,0 +1,22 @@
+name: GHCR Cleanup
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'  # Mondays 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Prune old GHCR images
+        uses: projectbluefin/actions/bootc-build/ghcr-cleanup@95dc404b7c69ad65889e3f3bf49ecba5cd3018e6 # v1.1.0
+        with:
+          packages: dakota,dakota-nvidia
+          older-than: 90 days
+          keep-n-tagged: 7
+          keep-n-untagged: 7
+          github-token: ${{ secrets.GITHUB_TOKEN }}

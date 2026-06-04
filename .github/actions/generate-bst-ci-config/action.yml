@@ -5,6 +5,10 @@ inputs:
   enable-remote-execution:
     description: Enable x86_64 remote execution settings and max-jobs tuning.
     required: true
+  enable-push:
+    description: Push artifacts and sources to the remote cache. Set false for fetch-only jobs (e.g. publish).
+    required: false
+    default: 'true'
 
 runs:
   using: composite
@@ -13,6 +17,7 @@ runs:
       shell: bash
       env:
         ENABLE_REMOTE_EXECUTION: ${{ inputs.enable-remote-execution }}
+        ENABLE_PUSH: ${{ inputs.enable-push }}
       run: |
         mkdir -p logs
 
@@ -55,11 +60,13 @@ runs:
         fi
 
         if [[ -n "${CASD_CLIENT_CERT:-}" ]] && [[ -n "${CASD_CLIENT_KEY:-}" ]]; then
-          cat >> buildstream-ci.conf <<'BSTCONFCACHE'
+          PUSH_FLAG="true"
+          [[ "${ENABLE_PUSH:-true}" == "false" ]] && PUSH_FLAG="false"
+          cat >> buildstream-ci.conf <<BSTCONFCACHE
         artifacts:
           servers:
           - url: https://cache.projectbluefin.io:11002
-            push: true
+            push: ${PUSH_FLAG}
             connection-config:
               keepalive-time: 180
               retry-limit: 5
@@ -72,7 +79,7 @@ runs:
         source-caches:
           servers:
           - url: https://cache.projectbluefin.io:11002
-            push: true
+            push: ${PUSH_FLAG}
             connection-config:
               keepalive-time: 180
               retry-limit: 5

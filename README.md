@@ -47,13 +47,17 @@ Dakota's feedback loop model is grounded in Andy Anderson's work on autonomous A
 
 ## Help shape what gets built
 
-These issues need human judgment before any code is written — design review, domain knowledge, or hardware context the team doesn't have yet:
+**Architects and designers** — these features and epics need your input before any code is written. Design decisions, tradeoffs, and priorities:
 
-### [Issues open for discussion &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fdiscussing)
+### [Open features and epics for discussion &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fdiscussing+label%3Atype%2Ffeature%2Ckind%2Fepic)
 
-Leave a comment, push back on the design, or share how your hardware is affected. When a discussion reaches consensus, a maintainer marks it `status/approved` and it enters the contributor queue.
+Leave a comment, challenge the design, propose alternatives. When a discussion reaches consensus a maintainer marks it `status/approved` and it enters the build queue.
 
-Ready to build something? See the [agent-ready queue](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Aqueue%2Fagent-ready+no%3Aassignee) for issues with clear acceptance criteria and no open questions.
+**Engineers** — these issues have clear acceptance criteria and no open design questions. Pick one up and build it:
+
+### [Agent-ready build queue &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Aqueue%2Fagent-ready+no%3Aassignee)
+
+Comment `/claim` to take an issue. See [AGENTS.md](AGENTS.md) for the full contributor workflow.
 
 ## Help shape what gets built
 

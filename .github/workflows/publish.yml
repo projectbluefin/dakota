@@ -13,7 +13,12 @@ env:
   IMAGE_NAME: dakota
   IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
 
-permissions: read-all
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+  actions: read
 
 concurrency:
   group: publish-main
@@ -76,7 +81,6 @@ jobs:
       packages: write
       id-token: write
       attestations: write
-      artifact-metadata: write
       actions: read
     steps:
       - name: Checkout repository
@@ -84,80 +88,29 @@ jobs:
         with:
           ref: ${{ needs.setup.outputs.sha }}
 
-      - name: Setup Just
-        uses: taiki-e/install-action@873c7452cadb7c034694a1282227095d93fbdf92 # v2
-        with:
-          tool: just
-
       - name: Capture build timestamp
         id: timestamp
         run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-      - name: Remove unwanted software
-        uses: ublue-os/remove-unwanted-software@cc0becac701cf642c8f0a6613bbdaf5dc36b259e # v9
-
-      - name: Mount BTRFS for podman storage
-        uses: ublue-os/container-storage-action@dc1f4c8f17b672069e921f001132f7cf98a423a6
-        continue-on-error: true
+      # update-podman: true — newer podman from Ubuntu resolute for bst2 + push.
+      # Note: setup-runner btrfs does not expose loopback-free; watch for disk
+      # pressure and upstream the option if needed.
+      - name: Setup runner
+        uses: projectbluefin/actions/bootc-build/setup-runner@95dc404b7c69ad65889e3f3bf49ecba5cd3018e6 # v1.1.0
         with:
-          target-dir: /var/lib/containers
-          mount-opts: compress-force=zstd:2
-          loopback-free: '1'
+          storage-backend: btrfs
+          update-podman: true
+          install-tools: '["just"]'
 
       # Fetch-only BST config — pull artifact from remote CAS, no build/push
       - name: Generate BST fetch config
         env:
           CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
           CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
-        run: |
-          mkdir -p logs
-          echo "$CASD_CLIENT_CERT" > client.crt
-          echo "$CASD_CLIENT_KEY" > client.key
-          cat > buildstream-ci.conf <<'BSTCONF'
-          scheduler:
-            on-error: continue
-            fetchers: 32
-            builders: 4
-            network-retries: 3
-
-          logging:
-            message-format: '[%{wallclock}][%{elapsed}][%{key}][%{element}] %{action} %{message}'
-            error-lines: 80
-
-          cachedir: /root/.cache/buildstream
-          logdir: /src/logs
-
-          BSTCONF
-
-          if [[ -n "$CASD_CLIENT_CERT" ]] && [[ -n "$CASD_CLIENT_KEY" ]]; then
-            cat >> buildstream-ci.conf <<'BSTCONFFETCH'
-          artifacts:
-            servers:
-            - url: https://cache.projectbluefin.io:11002
-              push: false
-              connection-config:
-                keepalive-time: 180
-                retry-limit: 5
-                retry-delay: 1000
-                request-timeout: 180
-              auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
-
-          source-caches:
-            servers:
-            - url: https://cache.projectbluefin.io:11002
-              push: false
-              connection-config:
-                keepalive-time: 180
-                retry-limit: 5
-                retry-delay: 1000
-                request-timeout: 180
-              auth:
-                client-key: /src/client.key
-                client-cert: /src/client.crt
-          BSTCONFFETCH
-          fi
+        uses: ./.github/actions/generate-bst-ci-config
+        with:
+          enable-remote-execution: 'false'
+          enable-push: 'false'
 
       - name: Export OCI image from BuildStream
         id: export
@@ -224,20 +177,19 @@ jobs:
 
           echo "digest=$(cat /tmp/digest.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: Install cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-        with:
-          cosign-release: v3.0.6
-
       - name: Install oras
         uses: oras-project/setup-oras@38de303aac69abb66f3e6255b7198bff35f323e3 # v2.0.0
 
-      - name: Sign image
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
-        run: |
-          cosign sign -y \
-            "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}@${DIGEST}"
+      - name: Sign image and create attestation
+        # generate-sbom: false — dakota uses just sbom (BST-native provenance via
+        # bst artifact list). Syft post-build scan is less accurate for BST builds.
+        # SBOM attachment and SBOM signing are handled in the steps below.
+        uses: projectbluefin/actions/bootc-build/sign-and-publish@95dc404b7c69ad65889e3f3bf49ecba5cd3018e6 # v1.1.0
+        with:
+          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
+          digest: ${{ steps.push.outputs.digest }}
+          generate-sbom: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Attach SBOM
         id: sbom-attach
@@ -264,13 +216,6 @@ jobs:
           cosign sign -y \
             "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}@${SBOM_DIGEST}"
 
-      - name: SLSA attestation
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-        with:
-          subject-name: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
-
   # ── E2E gate ─────────────────────────────────────────────────────────────
   # Smoke-tests the freshly pushed :$sha before promoting to :testing.
   # Only runs on schedule and workflow_dispatch — merge_group does not
@@ -281,7 +226,7 @@ jobs:
       needs.publish.result == 'success' &&
       (needs.setup.outputs.event == 'schedule' ||
        needs.setup.outputs.event == 'workflow_dispatch')
-    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@main
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@9e18c86aceccb709d40c6d9a1f19af5262c1a6e0 # main
     with:
       image: ghcr.io/projectbluefin/dakota:${{ needs.setup.outputs.sha }}
       suites: smoke

@@ -39,6 +39,34 @@ Zero-context entry point for routine dakota maintenance — add package, remove 
 | `auto-merge` | App packages, shell extensions — low-risk, squash-merged automatically |
 | `manual-merge` | Junctions, Rust elements — requires human review |
 
+## Fix an Issue — End-to-End
+
+```bash
+# 1. Claim the issue
+gh issue comment 635 --repo projectbluefin/dakota --body "/claim"
+
+# 2. Branch from upstream/main
+git checkout upstream/main -b fix/short-description
+
+# 3. Make changes, validate
+just validate && just lint
+
+# 4. Commit with correct trailer
+git commit -m "fix(bluefin): short description
+
+Closes #635
+
+Assisted-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+
+# 5. Push to upstream (never castrojo fork)
+git push upstream fix/short-description
+
+# 6. Open PR with checklist checkbox checked
+gh pr create --repo projectbluefin/dakota ...
+```
+
+If the issue is still `needs-triage` (not yet `status/approved`), ask the user before claiming — agents don't self-approve issues.
+
 ## Commit Conventions
 
 ```text
@@ -47,6 +75,8 @@ chore(deps): update <name>
 fix(bluefin): <description>
 chore: remove <name>
 ```
+
+**Trailer:** Always `Assisted-by:` or `Signed-off-by:` — never `Co-authored-by:`. This is a hard rule from `docs/pr-checklist.md`.
 
 ## Key Paths
 
@@ -72,3 +102,20 @@ If working through a backlog of issues, do not stop after the first fix. Work fr
 
 > Add entries here when you discover a new pattern or fix a recurring mistake.
 > Format: `### <pattern name> (YYYY-MM-DD)`
+
+### Restarting the publish factory after a pause (2026-06-05)
+
+When publishing has been intentionally paused (e.g., post-repo-refactor), the
+factory restart sequence is:
+
+1. Fix any `startup_failure` in `publish.yml` — check for invalid `permissions:` scopes
+   (e.g., `artifact-metadata: write` is not a valid GITHUB_TOKEN scope) and
+   job-level `permissions:` on reusable workflow call jobs.
+2. Dispatch `build.yml --ref main` to populate the remote CAS.
+3. Wait ~60–90 minutes for the build to complete.
+4. `publish.yml` auto-triggers via `workflow_run`. If not, dispatch manually.
+5. After `:testing` lands, dispatch `weekly-testing-promotion.yml` and get
+   2 human approvals at https://github.com/projectbluefin/dakota/deployments
+   to promote `:testing` → `:latest` + `:stable`.
+
+Full details: `docs/ci.md` → "Restarting the factory".

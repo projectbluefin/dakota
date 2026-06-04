@@ -1,19 +1,17 @@
-From 77a06d2e354b23ba6ea0022e75b1fb981c409a8a Mon Sep 17 00:00:00 2001
+From f3e54c0b85d6189d485503bc1368ce7bdb585130 Mon Sep 17 00:00:00 2001
 From: Jordan Petridis <jpetridis@gnome.org>
 Date: Tue, 12 May 2026 15:19:22 +0300
 Subject: [PATCH] Update shell and mutter
 
 ---
  elements/core/gnome-shell.bst | 4 ++--
- elements/core/mutter.bst      | 4 ++--
- 2 files changed, 4 insertions(+), 4 deletions(-)
+ 1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/elements/core/gnome-shell.bst b/elements/core/gnome-shell.bst
-index 6659fc462..d4a8315b4 100644
+index 19b1995a..08dbfcbb 100644
 --- a/elements/core/gnome-shell.bst
 +++ b/elements/core/gnome-shell.bst
-@@ -1,16 +1,16 @@
- kind: meson
+@@ -2,8 +2,8 @@ kind: meson
  
  sources:
  - kind: tar
@@ -21,39 +19,9 @@ index 6659fc462..d4a8315b4 100644
 -  ref: 85952fbd4929cfe613b876b2237e0d13464b0c2788b8a9867fb51c260255b0e3
 +  url: gnome_downloads:gnome-shell/50/gnome-shell-50.1.tar.xz
 +  ref: 1b47760172c14f3f4edd1c9aff365f4de45583517bf0f80df4d3acbd4e4cb294
- - kind: git_repo
-   url: gnome:libgnome-volume-control.git
-   directory: subprojects/gvc
-   ref: 5f9768a2eac29c1ed56f1fbb449a77a3523683b6
- - kind: git_repo
-   url: gnome:libshew.git
-   directory: subprojects/libshew
-   ref: ed782477cb5164320ae4f731d49bc5d475ab2a52
  - kind: patch
    path: patches/gnome-shell/launch-installer.patch
-diff --git a/elements/core/mutter.bst b/elements/core/mutter.bst
-index 44da80a9c..1a927db8f 100644
---- a/elements/core/mutter.bst
-+++ b/elements/core/mutter.bst
-@@ -1,16 +1,16 @@
- kind: meson
  
- sources:
- - kind: tar
--  url: gnome_downloads:mutter/50/mutter-50.0.tar.xz
--  ref: 9870595023a9aafde4bdc11f7a8a6c475d1382ea56b369c76237bdeead72165b
-+  url: gnome_downloads:mutter/50/mutter-50.1.tar.xz
-+  ref: 9344502ce473f788795f26b45f8b8ff53c0a36b867470d705a11a3ee0911021e
- 
- build-depends:
- - core-deps/python-argcomplete.bst
- - core-deps/python-dbusmock.bst
- - core-deps/umockdev.bst
- - core-deps/zenity.bst
- # Need the whole thing over just the capture for the dbus interface.
- # /usr/share/dbus-1/interfaces/org.gnome.Sysprof3.Profiler.xml
- - core/sysprof-app.bst
- - sdk/gtk-doc.bst
 -- 
 2.54.0
 
