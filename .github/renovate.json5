@@ -1,45 +1,29 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-
-  // Enable GitHub's native automerge; merging is handled by GitHub and remains subject to branch protection/bypass settings
-  "platformAutomerge": true,
-
-  // Only target testing branch - keep as is for dakota
-  "baseBranchPatterns": ["testing"],
-
   "extends": [
-    "config:best-practices",
+    "config:recommended",
   ],
+  "baseBranchPatterns": ["main"],
+  "branchPrefix": "renovate/",
+  "schedule": ["* 0-3 * * 1"],
 
-  "git-submodules": {
-    "enabled": true
-  },
+  // Limit Renovate to GitHub Actions and workflow image refs.
+  // BuildStream sources are tracked separately by track-bst-sources.yml.
+  "enabledManagers": ["github-actions"],
 
   // Do not rebase when the default branch is updated
   "rebaseWhen": "never",
-  "customManagers": [
-    {
-      customType: 'regex',
-      managerFilePatterns: [
-        '/^Justfile$/',
-      ],
-      matchStrings: [
-        '(?<justName>.+?)\\s:=\\s"(?<packageName>\\S+):(?<currentValue>\\S+)@(?<currentDigest>sha256:[a-f0-9]+?)"',
-      ],
-      datasourceTemplate: 'docker',
-    },
-    ],
 
   "packageRules": [
     {
-      // Auto-merge all digest/pin updates across all managers (dockerfile, github-actions, regex/Justfile)
-      "automerge": true,
-      "matchUpdateTypes": ["digest", "pin", "pinDigest"]
+      "matchManagers": ["github-actions"],
+      "matchDepTypes": ["action"],
+      "pinDigests": true
     },
     {
-      // Auto-merge minor/patch version bumps for GitHub Actions (e.g. cosign-installer v3.8 → v3.9)
       "automerge": true,
       "matchManagers": ["github-actions"],
+      "matchDepTypes": ["action"],
       "matchUpdateTypes": ["minor", "patch"]
     }
   ]
