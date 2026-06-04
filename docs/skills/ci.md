@@ -30,7 +30,7 @@ Load when debugging CI failures, understanding the build pipeline, or working wi
 |---|---|
 | `.github/workflows/build.yml` | BST build + push artifacts to remote CAS. Fires on merge_group/schedule/dispatch. Does NOT push to GHCR directly. |
 | `.github/workflows/publish.yml` | 4-stage pipeline: setup → publish → e2e-gate → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, smoke-tests, then promotes to `:testing`. |
-| `.github/workflows/weekly-testing-promotion.yml` | Weekly promotion (Tue 06:00 UTC): verifies `:testing` digests, re-tags as `:latest` + `:stable`, fast-forwards branches. |
+| `.github/workflows/weekly-testing-promotion.yml` | Weekly promotion (Sun 06:00 UTC): verifies `:testing` digests, re-tags as `:latest` + `:stable`, fast-forwards branches. Requires `production` environment (2 human approvals). |
 | `.github/workflows/e2e.yml` | Smoke test via projectbluefin/testsuite. Fires on PR when image-affecting paths change. |
 
 ## Trigger Behavior
@@ -176,6 +176,33 @@ gh run list --repo projectbluefin/dakota --limit 5
 
 > Add entries here when you discover a new pattern or fix a recurring mistake.
 > Format: `### <pattern name> (YYYY-MM-DD)`
+
+### Manual stable promotion flow (2026-06-04)
+
+To publish a stable release manually:
+
+```bash
+# 1. Ensure testing branch dep updates are in main first (see below)
+# 2. Trigger build + e2e → :testing (nightly or manual)
+gh workflow run publish.yml --repo projectbluefin/dakota
+
+# 3. Promote :testing → :latest + :stable (pauses for 2 human approvals)
+gh workflow run weekly-testing-promotion.yml --repo projectbluefin/dakota
+```
+
+Step 3 requires approval at: https://github.com/projectbluefin/dakota/deployments
+
+**The `testing` branch divergence trap:** dep-update PRs merged directly to `testing`
+accumulate there and never reach `main` (and thus never get built into `:testing`).
+Before dispatching `publish.yml`, check if `testing` is ahead of `main`:
+
+```bash
+git log --oneline upstream/main..upstream/testing -- elements/ files/ patches/
+```
+
+If commits exist: cherry-pick them to a branch from `main`, PR and merge to `main`.
+Do NOT try a direct `testing → main` PR — `.github/` workflow files will conflict.
+Cherry-pick only the element/file commits; the `.github/` divergence is intentional.
 
 ### publish.yml startup_failure = :testing is stale (2026-06-04)
 
