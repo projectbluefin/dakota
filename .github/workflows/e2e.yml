@@ -37,7 +37,7 @@ jobs:
     outputs:
       result: ${{ steps.check.outputs.result }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
       - id: check
@@ -53,7 +53,7 @@ jobs:
   e2e:
     needs: should-run
     if: needs.should-run.outputs.result == 'true'
-    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@927c1117c1f42df87089c4eaa15f4f978d21f576 # main
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@e7f46eac7266809401d22db3f9f14e87ccfb8d63 # main
     with:
       image: ${{ github.event.inputs.image || 'ghcr.io/projectbluefin/dakota:testing' }}
       suites: ${{ github.event.inputs.suites || 'smoke' }}
