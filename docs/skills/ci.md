@@ -187,6 +187,48 @@ the QEMU VM tries to boot the stale image. Fix: investigate `publish.yml`
 startup_failure first — check repo Secrets/Variables for `CASD_CLIENT_CERT`
 and `CASD_CLIENT_KEY` expiry, and confirm the CAS server is reachable.
 
+**Also check if the workflow is disabled.** A `disabled_manually` workflow
+silently produces `startup_failure` with zero job output — `jobs: []`.
+Check with:
+
+```bash
+gh api repos/projectbluefin/dakota/actions/workflows \
+  --jq '.workflows[] | "\(.id) \(.state) \(.name)"'
+```
+
+Re-enable with:
+
+```bash
+gh api repos/projectbluefin/dakota/actions/workflows/<id>/enable --method PUT
+```
+
+### Dep updates on testing not reaching main (2026-06-04)
+
+When dep-update PRs are merged directly to `testing`, `publish.yml` (which
+builds from `main`) never sees them. Before dispatching a build or promotion,
+check the gap:
+
+```bash
+git log --oneline upstream/main..upstream/testing -- elements/ files/ patches/
+```
+
+If commits exist, land them via a PR to `main`:
+
+```bash
+git checkout upstream/main -b fix/land-testing-deps
+# Apply only element/files/patches diff — avoid docs/CI conflicts:
+git diff upstream/main..upstream/testing -- elements/ files/ patches/ \
+  > /tmp/testing-deps.patch
+git apply --index /tmp/testing-deps.patch
+git commit -m "chore(deps): land testing dep updates into main"
+git push upstream fix/land-testing-deps
+gh pr create --repo projectbluefin/dakota --base main --head fix/land-testing-deps ...
+```
+
+Do **not** cherry-pick the squash commits directly — they bundle docs/CI
+changes that have already diverged between `testing` and `main`, producing
+unresolvable conflicts in `AGENTS.md`, `CODEOWNERS`, and `docs/skills/`.
+
 ### Same e2e failure on all PRs = infrastructure, not code (2026-06-04)
 
 If `e2e / GNOME 50 — smoke` fails with identical output across 4+ unrelated
@@ -201,3 +243,29 @@ gh run list --repo projectbluefin/dakota --workflow publish.yml --limit 10 \
 
 If the last successful publish run is >24 hours old, `:testing` is stale.
 Check projectbluefin/testsuite for open issues before filing a new one.
+
+### Manual stable promotion flow (2026-06-04)
+
+Full pipeline to promote `testing` → `stable` manually:
+
+```bash
+# 1. Check for testing-only element commits not yet in main
+git fetch upstream
+git log --oneline upstream/main..upstream/testing -- elements/ files/ patches/
+# If any: land them via PR (see "Dep updates on testing not reaching main" above)
+
+# 2. Ensure publish.yml is enabled
+gh api repos/projectbluefin/dakota/actions/workflows \
+  --jq '.workflows[] | select(.name | contains("Publish")) | "\(.id) \(.state)"'
+
+# 3. Dispatch publish.yml to build :testing from current main
+gh workflow run publish.yml --repo projectbluefin/dakota
+
+# 4. Once publish completes, dispatch promotion (pauses for 2 human approvals)
+gh workflow run weekly-testing-promotion.yml --repo projectbluefin/dakota
+```
+
+Step 4 requires approval at: https://github.com/projectbluefin/dakota/deployments
+
+The GitHub release (notes + card + SBOM) is created automatically by
+`release.yml` after every successful `publish.yml` run — no manual step needed.
