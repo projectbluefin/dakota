@@ -14,7 +14,7 @@ Load when running the live dakota validation loop: build → publish → bootc u
 Build host (your machine):
   1. just build               # build OCI image
   2. just export              # export OCI image to podman
-  3. sudo podman push <build-host-ip>:5000/dakota:latest  # push to local zot
+  3. just push-local <build-host-ip>:5000                # push to local zot
 
 Test machine (physical hardware running dakota):
   4. sudo bootc upgrade       # pull from build host's registry
@@ -71,7 +71,7 @@ gh pr comment ${PR} --repo projectbluefin/dakota \
 |---------|-------|------|
 | `just build` | Build host | Build OCI image |
 | `just export` | Build host | Export OCI image to podman |
-| `sudo podman push <build-host-ip>:5000/dakota:latest` | Build host | Push image to local zot registry |
+| `just push-local <build-host-ip>:5000` | Build host | Push image to local zot registry |
 | `sudo bootc upgrade` | Test machine | Pull latest from registry |
 | `bootc status` | Test machine | Verify booted image ref |
 | `systemctl --failed` | Test machine | Check for failed units |

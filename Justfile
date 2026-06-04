@@ -169,6 +169,32 @@ export variant="default":
     echo "==> Export complete. Image loaded as ${FINAL_NAME}:${FINAL_TAG}"
     $SUDO_CMD podman images | grep -E "{{image_name}}|REPOSITORY" || true
 
+# Push exported image to a local zot registry for lab testing.
+[group('dev')]
+push-local registry="localhost:5000":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    SUDO_CMD=""
+    if [ "$(id -u)" -ne 0 ]; then
+        SUDO_CMD="sudo"
+    fi
+
+    SOURCE_REF="{{image_name}}:{{image_tag}}"
+    TARGET_REF="{{registry}}/{{image_name}}:{{image_tag}}"
+
+    if ! $SUDO_CMD podman image exists "$SOURCE_REF"; then
+        echo "ERROR: Image '$SOURCE_REF' not found in podman." >&2
+        echo "Run 'just export' first." >&2
+        exit 1
+    fi
+
+    trap '$SUDO_CMD podman rmi "$TARGET_REF" >/dev/null 2>&1 || true' EXIT
+
+    echo "==> Tagging $SOURCE_REF as $TARGET_REF"
+    $SUDO_CMD podman tag "$SOURCE_REF" "$TARGET_REF"
+    echo "==> Pushing $TARGET_REF"
+    $SUDO_CMD podman push "$TARGET_REF"
 
 # ── Clean ─────────────────────────────────────────────────────────────
 # Remove generated artifacts (disk image, OVMF vars, build output).
