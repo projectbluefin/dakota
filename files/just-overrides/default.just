@@ -354,10 +354,24 @@ report:
 
     ISSUE_URL_BASE="https://github.com/projectbluefin/dakota/issues/new?template=bug-report.yml"
 
-    if ! gh auth status --active &>/dev/null; then
+    IS_AUTHENTICATED=0
+    HAS_GIST=0
+    if AUTH_STATUS=$(gh auth status 2>&1); then
+        IS_AUTHENTICATED=1
+        if echo "$AUTH_STATUS" | grep -qE "Token scopes:.*\bgist\b"; then
+            HAS_GIST=1
+        fi
+    fi
+
+    if [[ $HAS_GIST -eq 0 ]]; then
         echo ""
-        gum style --foreground 214 --bold --margin "0 2" \
-            "gh is not signed in — no problem, here are your options:"
+        if [[ $IS_AUTHENTICATED -eq 0 ]]; then
+            gum style --foreground 214 --bold --margin "0 2" \
+                "gh is not signed in — no problem, here are your options:"
+        else
+            gum style --foreground 214 --bold --margin "0 2" \
+                "gh is signed in, but is missing the 'gist' scope — here are your options:"
+        fi
         echo ""
         gum style --margin "0 2" "Option 1 — copy to clipboard and paste into an issue:"
         if command -v wl-copy &>/dev/null; then
@@ -371,8 +385,13 @@ report:
         fi
         gum style --foreground 245 --margin "0 4" "Open: $ISSUE_URL_BASE"
         echo ""
-        gum style --margin "0 2" "Option 2 — sign in to gh and upload:"
-        gum style --foreground 245 --margin "0 4" "gh auth login"
+        if [[ $IS_AUTHENTICATED -eq 0 ]]; then
+            gum style --margin "0 2" "Option 2 — sign in to gh and upload:"
+            gum style --foreground 245 --margin "0 4" "gh auth login"
+        else
+            gum style --margin "0 2" "Option 2 — authorize 'gist' scope and upload:"
+            gum style --foreground 245 --margin "0 4" "gh auth refresh -s gist"
+        fi
         gum style --foreground 245 --margin "0 4" "gh gist create --public --desc 'Bluefin diagnostic report' $REPORT_DIR/summary.md"
         echo ""
         gum style --foreground 245 --margin "0 2" "Your files are at: $REPORT_DIR/"
