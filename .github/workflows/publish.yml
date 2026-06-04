@@ -281,7 +281,9 @@ jobs:
       needs.publish.result == 'success' &&
       (needs.setup.outputs.event == 'schedule' ||
        needs.setup.outputs.event == 'workflow_dispatch')
-    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@main
+    permissions:
+      packages: write  # testsuite pushes desktop screenshot to GHCR
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@9e18c86aceccb709d40c6d9a1f19af5262c1a6e0 # main
     with:
       image: ghcr.io/projectbluefin/dakota:${{ needs.setup.outputs.sha }}
       suites: smoke
