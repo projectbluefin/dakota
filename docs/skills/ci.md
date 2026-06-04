@@ -202,6 +202,32 @@ Re-enable with:
 gh api repos/projectbluefin/dakota/actions/workflows/<id>/enable --method PUT
 ```
 
+**Two confirmed causes of `startup_failure` with `jobs: []` (2026-06-04):**
+
+1. **Invalid top-level `permissions:` key** — `artifact-metadata: write` is NOT a
+   valid `GITHUB_TOKEN` permission scope. GitHub rejects the workflow at parse time
+   before creating any jobs. `actionlint` does not catch this. Remove it.
+   Valid scopes: `actions`, `checks`, `contents`, `deployments`, `discussions`,
+   `environments`, `id-token`, `issues`, `packages`, `pages`, `pull-requests`,
+   `repository-projects`, `security-events`, `statuses`, `attestations`.
+
+2. **Job-level `permissions:` on a reusable workflow call job** — adding a
+   `permissions:` block to a job that uses `uses:` (external reusable workflow)
+   can cause GitHub to fail the entire workflow at startup. The working pattern
+   (used by local `e2e.yml`) is to call the reusable workflow WITHOUT job-level
+   permissions; it inherits from the top-level `permissions:` block instead.
+
+**After fixing startup_failure, publish may still fail if no BST artifact is in
+CAS for the current main SHA.** This happens when `build.yml` has only run on
+branches (not main). Fix: dispatch `build.yml` on main first, wait for it to
+complete (~5–6 hours), then dispatch `publish.yml`.
+
+```bash
+gh workflow run build.yml --repo projectbluefin/dakota --ref main
+# wait for completion, then:
+gh workflow run publish.yml --repo projectbluefin/dakota
+```
+
 ### Dep updates on testing not reaching main (2026-06-04)
 
 When dep-update PRs are merged directly to `testing`, `publish.yml` (which
