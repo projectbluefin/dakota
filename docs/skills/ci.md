@@ -176,3 +176,28 @@ gh run list --repo projectbluefin/dakota --limit 5
 
 > Add entries here when you discover a new pattern or fix a recurring mistake.
 > Format: `### <pattern name> (YYYY-MM-DD)`
+
+### publish.yml startup_failure = :testing is stale (2026-06-04)
+
+`startup_failure` on `publish.yml` nightly runs means the BST artifact or
+CAS cache lookup failed before the job even started. When this happens on two
+or more consecutive nights, `:testing` stops being updated. Symptoms visible
+downstream: every dep-update PR shows "SSH never became ready" in e2e because
+the QEMU VM tries to boot the stale image. Fix: investigate `publish.yml`
+startup_failure first — check repo Secrets/Variables for `CASD_CLIENT_CERT`
+and `CASD_CLIENT_KEY` expiry, and confirm the CAS server is reachable.
+
+### Same e2e failure on all PRs = infrastructure, not code (2026-06-04)
+
+If `e2e / GNOME 50 — smoke` fails with identical output across 4+ unrelated
+PRs simultaneously, it is always an infrastructure issue — never a per-PR
+code bug. The test suite tests `:testing` not the PR branch. Skip individual
+PR debugging and go straight to:
+
+```bash
+gh run list --repo projectbluefin/dakota --workflow publish.yml --limit 10 \
+  --json databaseId,conclusion,createdAt
+```
+
+If the last successful publish run is >24 hours old, `:testing` is stale.
+Check projectbluefin/testsuite for open issues before filing a new one.

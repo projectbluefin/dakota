@@ -44,6 +44,22 @@ Hold these to the same standard as human PRs. The operator is accountable.
 
 Junction-only bumps from `mergeraptor[bot]` are pre-approved once `validate` and `e2e` pass (or e2e is skipped for non-image paths). No human review required for those.
 
+## Dep-update PR review
+
+Auto-generated dep-update PRs (`auto/track-*`, `renovate/*`) always target
+`main` by default. Before reviewing, check:
+
+1. **Is it redundant?** — Compare the `ref:` field in the element against
+   `upstream/testing`. If identical, close the PR; `testing` already has it.
+2. **Cherry-pick, don't merge as-is** — The branch is based on `main` and
+   carries 4–6 unrelated CI/docs commits not in `testing`. Cherry-pick only
+   the top dep-update commit onto a clean `testing` base.
+3. **Skip e2e if infrastructure is broken** — If the same e2e failure appears
+   on every dep PR simultaneously ("SSH never became ready"), it's a stale
+   `:testing` issue, not a PR issue. Validate passing + correct diff is enough.
+
+See `merge-queue.md` for the full retarget/cherry-pick/merge flow.
+
 ## Lessons Learned
 
 Add new lessons below as: `### <pattern name> (YYYY-MM-DD)`

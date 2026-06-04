@@ -33,6 +33,7 @@ every future agent and contributor — not just you, and not just on one machine
 | Project overview and what Bluefin is | [`overview.md`](overview.md) |
 | ujust recipes in `files/just-overrides/` | [`.github/skills/ujust-recipes.md`](../../.github/skills/ujust-recipes.md) |
 | Installer (bootc-installer) | [`installer.md`](installer.md) |
+| Merging dep-update PRs into testing | [`merge-queue.md`](merge-queue.md) |
 | PR review workflow | [`pr-review.md`](pr-review.md) |
 
 ## Mandatory skill contribution
