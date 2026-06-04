@@ -158,9 +158,56 @@ Copy `files/hive/hive-project.yaml.example` to `/etc/hive/hive-project.yaml` and
 
 **Hive exempt** (do not touch): `hold`, `do-not-merge`, `status/discussing`, `status/approved`, `queue/claimed`, `agent/blocked`, `needs-human/agent-oops`, `duplicate`, `wontfix`, `stale`
 
-## Links
+## Image stream and branch model
 
-- [BuildStream docs](https://docs.buildstream.build/)
+Dakota publishes three streams from the `main` branch:
+
+```
+main (source of truth)
+  │
+  └─► build.yml (nightly + merge_group)
+          │
+          └─► publish.yml (workflow_run)
+                  │
+                  ├─► :sha     — immutable per-build tag
+                  └─► :testing — promoted after e2e smoke passes
+                                       │
+                              weekly-testing-promotion.yml
+                              (Tuesday 06:00 UTC, 2 human approvals)
+                                       │
+                                       ├─► :latest
+                                       └─► :stable
+```
+
+| Stream | Tag | Cadence | Gate |
+|---|---|---|---|
+| Development | `:sha` | Every merge to `main` | None |
+| Testing | `:testing` | Nightly | e2e smoke |
+| Latest | `:latest` | Weekly | e2e full suite + 2 human approvals |
+| Stable | `:stable` | Weekly | Same as `:latest` |
+
+**`main` IS the testing branch.** There is no separate `testing` branch for
+code. Content merges to `main`; CI builds from `main`; `:testing` is the
+published nightly result.
+
+**Branch protection is only on `main`.** Required status checks: `validate` + `e2e`.
+
+### Branch flow for contributors
+
+```bash
+# Branch from upstream/main (never fork's local main)
+git checkout upstream/main -b feat/my-change
+
+# Work, validate, commit
+just validate
+git commit -m "feat(bluefin): ..."
+
+# Push and open PR against main
+git push upstream feat/my-change
+gh pr create --repo projectbluefin/dakota --base main
+```
+
+
 - [freedesktop-sdk](https://gitlab.com/freedesktop-sdk/freedesktop-sdk)
 - [gnome-build-meta](https://github.com/GNOME/gnome-build-meta) — branch `gnome-50`
 - [Dakota issues](https://github.com/projectbluefin/dakota/issues)

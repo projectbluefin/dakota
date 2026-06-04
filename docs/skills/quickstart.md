@@ -102,3 +102,20 @@ If working through a backlog of issues, do not stop after the first fix. Work fr
 
 > Add entries here when you discover a new pattern or fix a recurring mistake.
 > Format: `### <pattern name> (YYYY-MM-DD)`
+
+### Restarting the publish factory after a pause (2026-06-05)
+
+When publishing has been intentionally paused (e.g., post-repo-refactor), the
+factory restart sequence is:
+
+1. Fix any `startup_failure` in `publish.yml` — check for invalid `permissions:` scopes
+   (e.g., `artifact-metadata: write` is not a valid GITHUB_TOKEN scope) and
+   job-level `permissions:` on reusable workflow call jobs.
+2. Dispatch `build.yml --ref main` to populate the remote CAS.
+3. Wait ~60–90 minutes for the build to complete.
+4. `publish.yml` auto-triggers via `workflow_run`. If not, dispatch manually.
+5. After `:testing` lands, dispatch `weekly-testing-promotion.yml` and get
+   2 human approvals at https://github.com/projectbluefin/dakota/deployments
+   to promote `:testing` → `:latest` + `:stable`.
+
+Full details: `docs/ci.md` → "Restarting the factory".
