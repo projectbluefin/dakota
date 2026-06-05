@@ -290,7 +290,10 @@ After=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/home/jorge/src/dakota
-ExecStartPre=/usr/bin/git pull origin main -q
+# Skip if a BST build is already running (prevents cache corruption from concurrent builds)
+ExecCondition=/bin/bash -c "! pgrep -x bst > /dev/null"
+ExecStartPre=/usr/bin/git fetch origin
+ExecStartPre=/usr/bin/git reset --hard origin/main
 ExecStart=/usr/bin/just build
 StandardOutput=append:/tmp/dakota-cache-warm.log
 StandardError=append:/tmp/dakota-cache-warm.log
