@@ -53,7 +53,7 @@ jobs:
   e2e:
     needs: should-run
     if: needs.should-run.outputs.result == 'true'
-    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@f7d8bd9d3bf41d265b9a4cbf11cc5d1e3e35bb44 # main
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@9392c9ec9e048a24f406e3fcde7a92c33f9e18f6 # main
     with:
       image: ${{ github.event.inputs.image || 'ghcr.io/projectbluefin/dakota:testing' }}
       suites: ${{ github.event.inputs.suites || 'smoke' }}
