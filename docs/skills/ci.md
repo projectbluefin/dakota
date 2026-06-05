@@ -229,6 +229,88 @@ gh workflow run build.yml --repo projectbluefin/dakota --ref main
 gh workflow run publish.yml --repo projectbluefin/dakota
 ```
 
+### Raw BST builds on ghost when CI builder is down (2026-06-04)
+
+When the CI builder (`cache.projectbluefin.io`) is unavailable, builds can be
+run directly on ghost (192.168.1.102) via SSH. This is the fallback path for
+unblocking PRs without waiting for CI to recover.
+
+**Sync ghost repo to current main:**
+
+```bash
+ssh jorge@192.168.1.102 "cd ~/src/dakota && git fetch origin && git reset --hard origin/main"
+```
+
+**Start a build in a persistent tmux session:**
+
+```bash
+ssh jorge@192.168.1.102 "tmux new-session -d -s dakota-build 'cd ~/src/dakota && just build 2>&1 | tee /tmp/dakota-build.log'"
+```
+
+**Monitor progress:**
+
+```bash
+ssh jorge@192.168.1.102 "tail -f /tmp/dakota-build.log"
+```
+
+`BUILD_SKIP_NVIDIA=1` is set in `~/.bashrc` on ghost — local builds skip the
+nvidia variant automatically. Builds take 15–60 min depending on remote cache
+hits from `gbm.gnome.org`. WebKitGTK is the dominant cache-miss cost (~60 min
+if uncached).
+
+**Note:** Builds on ghost do NOT push to `ghcr.io`. Use the local zot registry
+(`192.168.1.102:5000`) and `bootc switch` on exo-dakota for hardware validation.
+See `local-ota.md` for the publish + upgrade loop.
+
+### Daily cache warm timer on ghost (2026-06-04)
+
+A systemd user timer on ghost runs `just build` every day at 06:00 local time,
+keeping the BST artifact cache hot so PR builds are fast.
+
+```bash
+# Check status
+ssh jorge@192.168.1.102 "systemctl --user list-timers dakota-cache-warm.timer"
+
+# View logs
+ssh jorge@192.168.1.102 "cat /tmp/dakota-cache-warm.log"
+
+# Run manually
+ssh jorge@192.168.1.102 "systemctl --user start dakota-cache-warm.service"
+```
+
+Timer files live in `~/.config/systemd/user/` on ghost (not version-controlled —
+they are machine-local state). If ghost is re-provisioned, recreate them:
+
+```bash
+# dakota-cache-warm.service
+[Unit]
+Description=Dakota BST daily cache warm
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/src/dakota
+ExecStartPre=/usr/bin/git pull origin main -q
+ExecStart=/usr/bin/just build
+StandardOutput=append:/tmp/dakota-cache-warm.log
+StandardError=append:/tmp/dakota-cache-warm.log
+
+# dakota-cache-warm.timer
+[Unit]
+Description=Run Dakota BST cache warm daily at 6am
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl --user daemon-reload && systemctl --user enable --now dakota-cache-warm.timer
+```
+
 ### Dep updates on testing not reaching main (2026-06-04)
 
 When dep-update PRs are merged directly to `testing`, `publish.yml` (which
