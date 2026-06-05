@@ -85,7 +85,7 @@ jobs:
           ref: ${{ needs.setup.outputs.sha }}
 
       - name: Setup Just
-        uses: taiki-e/install-action@873c7452cadb7c034694a1282227095d93fbdf92 # v2
+        uses: taiki-e/install-action@cde8c9e634f4a17bc06b61413ac0ef75450eac46 # v2
         with:
           tool: just
 
