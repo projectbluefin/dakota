@@ -1,6 +1,6 @@
 name: "Bug report"
 description: "Something is broken. You are the only person who can confirm it."
-labels: ["type/bug"]
+labels: ["kind/bug", "status/triage"]
 type: "Bug"
 body:
   - type: markdown
@@ -25,6 +25,18 @@ body:
         ```
 
         It captures your image, kernel, extensions, hardware, and failed units. You review everything before it uploads. Paste the gist URL below and we likely have everything we need — no follow-up questions.
+
+  - type: markdown
+    attributes:
+      value: |
+        > **How this gets resolved:**
+        > ```
+        > filed ──▶ triage ──▶ approved ──▶ queued ──▶ claimed ──▶ done
+        >        [status/    [status/     [status/   [status/
+        >         triage]     approved]    queued]    claimed]
+        > ```
+        > You filed it. A maintainer sets kind/area/priority and removes `status/triage`.
+        > `/approve` queues it. A contributor or agent `/claim`s it and ships the fix.
 
   - type: checkboxes
     id: checks

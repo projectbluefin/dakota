@@ -35,7 +35,7 @@ index a38e15d02..b2f3a1234 100644
 +    -Dbluez5-codec-ldac-dec=disabled
 +    -Dbluez5-plc-spandsp=disabled
 +    -Donnxruntime=disabled
- 
+
  config:
    install-commands:
      (>):
@@ -45,5 +45,5 @@ index a38e15d02..b2f3a1234 100644
            patchelf --remove-rpath "${module}"
          fi
        done
--- 
+--
 2.54.0

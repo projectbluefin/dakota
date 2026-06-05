@@ -24,5 +24,5 @@ diff --git a/project.conf b/project.conf
  - include/aliases.yml
 -- include/mirrors.yml
  - include/shell.yml
- 
+
  # Options to specify for the project, these provide

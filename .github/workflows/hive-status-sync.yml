@@ -310,8 +310,8 @@ jobs:
                        "--label", label, "--state", "open", "--json", "number")
               return len(json.loads(raw))
 
-          n_ready   = count_label("queue/agent-ready")
-          n_claimed = count_label("queue/claimed")
+          n_ready   = count_label("status/queued")
+          n_claimed = count_label("status/claimed")
           n_p0      = count_label("hive/p0")
           n_p1      = count_label("hive/p1")
 

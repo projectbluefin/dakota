@@ -2,7 +2,7 @@ kind: manual
 description: |
   NVIDIA Container Toolkit: nvidia-ctk + nvidia-cdi-hook for podman GPU
   passthrough via CDI. This is mirrored from and element in gnomeos-deps from
-  gnome-build-meta this is from their master branch, not yet on the gnome-50 
+  gnome-build-meta this is from their master branch, not yet on the gnome-50
   branch we junction. it is vendored inline here until we can pull it directly.
 
   We do not ship nvidia-container-runtime or libnvidia-container.

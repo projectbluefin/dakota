@@ -9,7 +9,7 @@ def generate_sources(cargo_lock_path):
     # Add the local source first
     print("- kind: local")
     print("  path: files/uutils-coreutils")
-    
+
     # Add cargo2 source definition
     print("- kind: cargo2")
     print("  build-args:")
@@ -25,7 +25,7 @@ def generate_sources(cargo_lock_path):
             name = package['name']
             version = package['version']
             checksum = package.get('checksum')
-            
+
             if checksum:
                 print(f"  - kind: registry")
                 print(f"    name: {name}")
@@ -39,5 +39,5 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python3 generate_bst.py <path_to_Cargo.lock>")
         sys.exit(1)
-    
+
     generate_sources(sys.argv[1])

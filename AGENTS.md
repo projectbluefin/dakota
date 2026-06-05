@@ -53,9 +53,9 @@ Non-compliance = automatic rejection.
 | Audience | Entry point | Labels to look for |
 |---|---|---|
 | **Architects / designers** | Features and epics needing design input | `status/discussing` + `type/feature` or `kind/epic` |
-| **Engineers / agents** | Issues ready to build — criteria defined, no open questions | `queue/agent-ready` + no assignee |
+| **Engineers / agents** | Issues ready to build — criteria defined, no open questions | `status/queued` + no assignee |
 
-`status/discussing` is for shaping **what** to build and **why**. It is not a bug triage queue — keep bug reports out of it. Engineers should not be blocked on `status/discussing` issues; they should work from `queue/agent-ready`.
+`status/discussing` is for shaping **what** to build and **why**. It is not a bug triage queue — keep bug reports out of it. Engineers should not be blocked on `status/discussing` issues; they should work from `status/queued`.
 
 ### Triage labels
 
@@ -63,11 +63,11 @@ Non-compliance = automatic rejection.
 |---|---|
 | `status/discussing` | Feature or design question open for architect/designer input. Not ready for implementation. |
 | `status/approved` | Approved for queue preparation — needs acceptance criteria before queue. |
-| `queue/claimed` | Actively being worked by a human or agent. |
+| `status/claimed` | Actively being worked by a human or agent. |
 | `agent/blocked` | Blocked and needs human input before work can continue. |
 | `hold` | Do not touch; intentionally held by humans. |
 | `do-not-merge` | Do not merge or automate this item. |
-| `queue/agent-ready` | Issue is scoped with clear acceptance criteria. Ready for an agent or contributor to pick up and open a PR. |
+| `status/queued` | Issue is scoped with clear acceptance criteria. Ready for an agent or contributor to pick up and open a PR. |
 | `kind/epic` | Groups related issues into a single tracked effort. Never prefix the title with "Epic:" — use this label instead. |
 | `type/feature` | New capability or user-facing improvement. Use for `status/discussing` issues that need design input. |
 | `lgtm` | PR approved by a maintainer. |
@@ -76,7 +76,7 @@ Non-compliance = automatic rejection.
 | `kind:improvement` | Enhancement or cleanup — no spec required for small items. |
 | `kind:tech-debt` | Cleanup with no user-visible change. |
 | `kind:github-action` | CI or automation changes. |
-| `kind:agent-donation` | A donated-agent request to investigate a repo, issue, or PR and return a report instead of code. |
+| `flow/agent-donation` | A donated-agent request to investigate a repo, issue, or PR and return a report instead of code. |
 | `flow/project-report` | Scanner flow for a linked repository, org, roadmap, or docs report. |
 | `flow/issue-review` | Scanner flow for a linked issue review. |
 | `flow/pr-review` | Reviewer flow for a linked PR review. |

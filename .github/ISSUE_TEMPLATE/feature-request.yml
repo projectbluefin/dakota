@@ -1,6 +1,6 @@
 name: "Feature request"
 description: "Propose something new. Specific proposals ship. Vague ones wait."
-labels: ["type/feature", "status/discussing"]
+labels: ["kind/enhancement", "status/discussing"]
 type: "Feature"
 body:
   - type: markdown
@@ -21,6 +21,18 @@ body:
         - Can someone read this and know exactly what file to change? Remember LLMs are non-deterministic
         - Does "done" have a clear finish line — a command to run, a thing to see?
         - Is this specific to Dakota, or would it be better filed upstream (GNOME, fdsdk, bootc)?
+
+  - type: markdown
+    attributes:
+      value: |
+        > **How this gets built:**
+        > ```
+        > filed ──▶ discussing ──▶ approved ──▶ queued ──▶ claimed ──▶ done
+        >        [status/         [status/     [status/   [status/
+        >         discussing]      approved]    queued]    claimed]
+        > ```
+        > Your proposal enters discussion. A maintainer approves it when the spec is clear.
+        > Then a contributor or agent `/claim`s it and builds it.
 
   - type: textarea
     id: problem

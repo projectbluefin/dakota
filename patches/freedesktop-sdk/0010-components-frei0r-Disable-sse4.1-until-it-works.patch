@@ -12,16 +12,16 @@ index af344c8f0..82b9dc5c9 100644
 --- a/elements/components/frei0r.bst
 +++ b/elements/components/frei0r.bst
 @@ -5,15 +5,22 @@ build-depends:
- 
+
  depends:
  - public-stacks/runtime-minimal.bst
  - components/cairo.bst
- 
+
  variables:
    cmake-local: >-
      -DWITHOUT_OPENCV=ON
      -DWITHOUT_GAVL=ON
- 
+
 +  # Disable SSE 4.1 until they fix things
 +  # https://github.com/dyne/frei0r/issues/228
 +  # https://github.com/dyne/frei0r/issues/239
@@ -34,6 +34,5 @@ index af344c8f0..82b9dc5c9 100644
    url: github:dyne/frei0r.git
    track: v*
    ref: v3.1.3-0-g32e91405d2ec5e222f75175b36dc4cc7bc0667ef
--- 
+--
 2.54.0
-

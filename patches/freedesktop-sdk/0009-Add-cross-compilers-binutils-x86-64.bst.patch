@@ -37,7 +37,7 @@ index 3a4b729db..6e10540ae 100644
      --with-zstd
      --enable-deterministic-archives
 +    --program-prefix="%{cross_gcc_triplet}-"
- 
+
  config:
    install-commands:
      (>):
@@ -46,7 +46,7 @@ index 3a4b729db..6e10540ae 100644
          rm "%{install-root}%{prefix}/%{cross_triplet}/bin/ld"
          ln -s ld.bfd "%{install-root}%{prefix}/%{cross_triplet}/bin/ld"
        fi
- 
+
      - |
        for tool in "%{install-root}%{prefix}/%{cross_triplet}/bin"/*; do
          toolbase="$(basename "${tool}")"
@@ -58,10 +58,10 @@ index 3a4b729db..6e10540ae 100644
            fi
          done
        done
- 
+
      - |
        rm "%{install-root}%{infodir}/dir"
- 
+
 diff --git a/elements/cross-compilers/binutils-x86-64.bst b/elements/cross-compilers/binutils-x86-64.bst
 new file mode 100644
 index 000000000..d50ea5ca3
@@ -96,6 +96,5 @@ index 000000000..6d5110c0b
 +  cross_gcc_arch: "x86_64"
 +  cross_arch: "x86_64"
 +  cross_abi: "gnu"
--- 
+--
 2.54.0
-

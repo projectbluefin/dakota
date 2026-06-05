@@ -70,7 +70,7 @@ git push upstream fix/short-description
 gh pr create --repo projectbluefin/dakota ...
 ```
 
-If the issue is still `needs-triage` (not yet `status/approved`), ask the user before claiming — agents don't self-approve issues.
+If the issue is still `status/triage` (not yet `status/approved`), ask the user before claiming — agents don't self-approve issues.
 
 ## Commit Conventions
 
@@ -99,7 +99,7 @@ include/aliases.yml                         URL aliases
 
 If working through a backlog of issues, do not stop after the first fix. Work from the issue backlog in this order:
 
-1. Issues labeled `queue/agent-ready`
+1. Issues labeled `status/queued`
 2. Issues labeled `kind:bug`
 3. Issues explicitly named by the user
 

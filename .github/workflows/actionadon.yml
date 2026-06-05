@@ -7,8 +7,8 @@ name: actionadon
 # Lifecycle:
 #   opened → status/discussing
 #   status/approved (maintainer) → needs spec comment
-#   queue/agent-ready (maintainer) → queue announcement
-#   /claim comment → queue/claimed + assigned
+#   status/queued (maintainer) → queue announcement
+#   /claim comment → status/claimed + assigned
 #   /ready comment (wrangler) → queued for agents
 #   /unclaim comment → back in queue
 #   daily sweep → unclaim issues idle > 7 days
@@ -59,21 +59,21 @@ jobs:
           }
           label "status/discussing" "7c83fd" "Structured issue flow in progress; not ready for the agent queue yet."
           label "status/approved" "2ea44f" "Approved for queue preparation; add acceptance criteria before /ready."
-          label "queue/claimed" "e8b86d" "Actively being worked by a human or agent."
+          label "status/claimed" "e8b86d" "Actively being worked by a human or agent."
           label "agent/blocked" "e74c3c" "Blocked and needs human input before work can continue."
-          label "queue/agent-ready" "a467dc" "Structured issue is ready for a human or agent to claim."
+          label "status/queued" "a467dc" "Structured issue is ready for a human or agent to claim."
           label "needs-human/agent-oops" "f795fe" "Agent mistake or bad automation outcome; Hive must not touch."
-          label "kind:agent-donation" "1b7f83" "Donate agent time for a repo, issue, or PR review/report request."
+          label "flow/agent-donation" "1b7f83" "Donate agent time for a repo, issue, or PR review/report request."
           label "flow/project-report" "0e8a16" "Agent flow: produce a sourced project report."
           label "flow/issue-review" "5319e7" "Agent flow: review a linked issue and produce a sourced report."
           label "flow/pr-review" "fbca04" "Agent flow: review a linked pull request and produce a sourced report."
-          label "needs-triage" "e4e669" "Issue needs maintainer triage."
+          label "status/triage" "e4e669" "Issue needs maintainer triage."
           label "pr/needs-review" "e4e669" "PR needs a maintainer review before it can move forward."
           label "hold" "8b949e" "Do not touch; intentionally held by humans."
           label "do-not-merge" "b60205" "Do not merge or automate this item."
 
   # ── New issue opened ───────────────────────────────────────────────────────
-  # Templates stamp labels directly (e.g. type/bug, kind:agent-donation).
+  # Templates stamp labels directly (e.g. kind/bug, flow/agent-donation).
   # Route by those labels rather than scanning free-text body markers.
   on-issue-opened:
     if: github.event_name == 'issues' && github.event.action == 'opened'
@@ -87,14 +87,14 @@ jobs:
         run: |
           LABELS=$(gh issue view "$ISSUE_URL" --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "")
           # Skip if already has a lifecycle label (template stamped it)
-          if echo "$LABELS" | grep -qE "status/|kind:agent-donation"; then
+          if echo "$LABELS" | grep -qE "status/|flow/agent-donation"; then
             exit 0
           fi
           gh issue edit "$ISSUE_URL" --add-label "status/discussing"
 
       - name: Welcome comment (bug/feature reports)
         if: >-
-          !contains(github.event.issue.labels.*.name, 'kind:agent-donation')
+          !contains(github.event.issue.labels.*.name, 'flow/agent-donation')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
@@ -113,7 +113,7 @@ jobs:
           gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
 
       - name: Fast-track donated agent work
-        if: contains(github.event.issue.labels.*.name, 'kind:agent-donation')
+        if: contains(github.event.issue.labels.*.name, 'flow/agent-donation')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
@@ -127,7 +127,7 @@ jobs:
             FLOW_LABEL="flow/issue-review"
           fi
           gh issue edit "$ISSUE_URL" \
-            --add-label "queue/agent-ready" \
+            --add-label "status/queued" \
             --add-label "$FLOW_LABEL"
 
   # ── Label transitions ──────────────────────────────────────────────────────
@@ -145,20 +145,20 @@ jobs:
           cat << 'EOF' > /tmp/comment.md
           ✅ Approved. The community has found its way here.
 
-          Before this goes to the build queue it needs **acceptance criteria** — the spec a contributor or agent will implement against. Add it to the issue body, then apply `queue/agent-ready` to open it up.
+          Before this goes to the build queue it needs **acceptance criteria** — the spec a contributor or agent will implement against. Add it to the issue body, then apply `status/queued` to open it up.
 
           **Wranglers:** write acceptance criteria, then comment `/ready`.
           EOF
           gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
 
-      - name: Comment on queue/agent-ready
-        if: github.event.label.name == 'queue/agent-ready'
+      - name: Comment on status/queued
+        if: github.event.label.name == 'status/queued'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
         run: |
           LABELS=$(gh issue view "$ISSUE_URL" --json labels --jq '[.labels[].name] | join(",")')
-          if echo "$LABELS" | grep -q "kind:agent-donation"; then
+          if echo "$LABELS" | grep -q "flow/agent-donation"; then
             cat << 'EOF' > /tmp/comment.md
           🐝 In the queue! Hive now has the instructions it needs for this donated agent request.
 
@@ -233,7 +233,7 @@ jobs:
           LABELS=$(gh issue view "$ISSUE_URL" --json labels --jq '[.labels[].name] | join(",")')
 
           # Already claimed
-          if echo "$LABELS" | grep -q "queue/claimed"; then
+          if echo "$LABELS" | grep -q "status/claimed"; then
             ASSIGNEE=$(gh issue view "$ISSUE_URL" --json assignees --jq '.assignees[0].login // "someone"')
             cat << EOF > /tmp/comment.md
           Already claimed by @${ASSIGNEE}. If they've gone quiet, a maintainer can \`/unclaim\` to return it to the queue.
@@ -243,16 +243,16 @@ jobs:
           fi
 
           # Not in queue
-          if ! echo "$LABELS" | grep -q "queue/agent-ready"; then
+          if ! echo "$LABELS" | grep -q "status/queued"; then
             cat << 'EOF' > /tmp/comment.md
-          This issue isn't in the agent queue yet — it needs `queue/agent-ready` before it can be claimed.
+          This issue isn't in the agent queue yet — it needs `status/queued` before it can be claimed.
           EOF
             gh issue comment "$ISSUE_URL" --body-file /tmp/comment.md
             exit 0
           fi
 
-          gh issue edit "$ISSUE_URL" --add-label "queue/claimed" --remove-label "queue/agent-ready" --add-assignee "$COMMENTER"
-          if echo "$LABELS" | grep -q "kind:agent-donation"; then
+          gh issue edit "$ISSUE_URL" --add-label "status/claimed" --remove-label "status/queued" --add-assignee "$COMMENTER"
+          if echo "$LABELS" | grep -q "flow/agent-donation"; then
             cat << EOF > /tmp/comment.md
           🎣 @${COMMENTER} has this one! Follow the workflow embedded in the issue, post a sourced report comment when you're done, and close this issue so Hive can move on.
           EOF
@@ -337,7 +337,7 @@ jobs:
             exit 0
           fi
 
-          if echo "$LABELS" | grep -q "queue/agent-ready"; then
+          if echo "$LABELS" | grep -q "status/queued"; then
             cat << 'EOF' > /tmp/comment.md
           This issue is already in the queue and ready for a human or agent to `/claim`.
           EOF
@@ -345,7 +345,7 @@ jobs:
             exit 0
           fi
 
-          gh issue edit "$ISSUE_URL" --add-label "queue/agent-ready"
+          gh issue edit "$ISSUE_URL" --add-label "status/queued"
           cat << 'EOF' > /tmp/comment.md
           In the queue. Comment `/claim` to take it.
 
@@ -386,7 +386,7 @@ jobs:
             exit 0
           fi
 
-          gh issue edit "$ISSUE_URL" --remove-label "queue/claimed" --add-label "queue/agent-ready"
+          gh issue edit "$ISSUE_URL" --remove-label "status/claimed" --add-label "status/queued"
           if [ -n "$ASSIGNEE" ]; then
             gh issue edit "$ISSUE_URL" --remove-assignee "$ASSIGNEE"
           fi
@@ -410,14 +410,14 @@ jobs:
           CUTOFF=$(date -u -d '7 days ago' '+%Y-%m-%dT%H:%M:%SZ')
 
           gh issue list --repo "$REPO" \
-            --label "queue/claimed" \
+            --label "status/claimed" \
             --json number,url,updatedAt,assignees \
             --jq ".[] | select(.updatedAt < \"$CUTOFF\") | .number" \
           | while read -r NUMBER; do
               ASSIGNEE=$(gh issue view "$NUMBER" --repo "$REPO" \
                 --json assignees --jq '.assignees[0].login // ""')
 
-              gh issue edit "$NUMBER" --repo "$REPO" --remove-label "queue/claimed" --add-label "queue/agent-ready"
+              gh issue edit "$NUMBER" --repo "$REPO" --remove-label "status/claimed" --add-label "status/queued"
               if [ -n "$ASSIGNEE" ]; then
                 gh issue edit "$NUMBER" --repo "$REPO" --remove-assignee "$ASSIGNEE"
                 cat << EOF > /tmp/comment.md

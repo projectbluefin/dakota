@@ -15,7 +15,7 @@ index 1e1a75575..f76f1a05d 100644
        kernel_arch: riscv
    - target_arch == "loongarch64":
        kernel_arch: loongarch
- 
+
  environment:
    ARCH: '%{kernel_arch}'
    # compile.h has hardcoded timestamp, let's seed it
@@ -28,16 +28,15 @@ index 1e1a75575..f76f1a05d 100644
 +  (?):
 +  - x86_64_v3:
 +      KCFLAGS: "-march=x86-64-v3 -mtune=skylake"
- 
+
  environment-nocache:
  - MAXJOBS
- 
+
  config:
    configure-commands:
    - |
      # Generate the default kernel config for the target architecture
      make defconfig
- 
--- 
-2.54.0
 
+--
+2.54.0

@@ -38,16 +38,15 @@ index 5f289a56a..5b24218eb 100644
      --with-usrlibdir=%{libdir}
      --with-usrsbindir=%{sbindir}
 +    --with-default-event-activation=0
- 
+
  config:
    configure-commands:
      (<):
      - |
        rm configure
- 
+
  public:
    bst:
      split-rules:
--- 
+--
 2.54.0
-

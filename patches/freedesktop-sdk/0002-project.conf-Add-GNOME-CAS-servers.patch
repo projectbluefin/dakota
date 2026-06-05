@@ -19,7 +19,7 @@ index 9600a65fd..f04634f94 100644
 @@ -152,28 +152,40 @@ options:
      description: Use production boot keys
      default: False
- 
+
  artifacts:
  - url: https://cache.freedesktop-sdk.io:11001
    connection-config:
@@ -33,7 +33,7 @@ index 9600a65fd..f04634f94 100644
 +    retry-limit: 5
 +    retry-delay: 500
 +    request-timeout: 180
- 
+
  source-caches:
  - url: https://cache.freedesktop-sdk.io:11001
    connection-config:
@@ -47,16 +47,15 @@ index 9600a65fd..f04634f94 100644
 +    retry-limit: 5
 +    retry-delay: 500
 +    request-timeout: 180
- 
+
  sandbox:
    build-arch: '%{target_arch}'
- 
+
  elements:
    autotools:
      (@): include/_private/autotools-conf.yml
    cmake:
      (@): include/_private/cmake-conf.yml
    meson:
--- 
+--
 2.54.0
-

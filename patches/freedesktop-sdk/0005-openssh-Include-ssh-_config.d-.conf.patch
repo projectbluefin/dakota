@@ -22,7 +22,7 @@ index 2ccc03748..d48247cd1 100644
      --with-pid-dir=/run
      --with-security-key-builtin
      %{arch_options}
- 
+
  config:
 +  configure-commands:
 +    (<):
@@ -44,10 +44,9 @@ index 2ccc03748..d48247cd1 100644
        sed 's/#UsePAM.*/UsePAM yes/' -i "%{install-root}%{sysconfdir}/sshd_config"
        install -Dm755 contrib/ssh-copy-id -t "%{install-root}%{bindir}"
        install -Dm644 contrib/ssh-copy-id.1 -t "%{install-root}%{mandir}/man1"
- 
+
  public:
    bst:
      split-rules:
--- 
+--
 2.54.0
-

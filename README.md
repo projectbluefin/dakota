@@ -1,5 +1,5 @@
 # Bluefin Dakota
-*Dakotaraptor steini* 
+*Dakotaraptor steini*
 
 [Bluefin](https://projectbluefin.io) built on [GNOME OS](https://os.gnome.org/), assembled entirely from source.
 
@@ -36,7 +36,7 @@ Each Dakota installation is designed to run as a hardware diagnostic lab for its
 
 ## The research behind it
 
-Dakota is human driven with contribution workflows for agents, so if you have tokens to donate, ask it to review issues or PRs, it's useful! The humans make the final decisions. We coordinate this project via a tool called [Hive](https://github.com/kubestellar/hive) from Kubestellar, a CNCF Sandbox project. 
+Dakota is human driven with contribution workflows for agents, so if you have tokens to donate, ask it to review issues or PRs, it's useful! The humans make the final decisions. We coordinate this project via a tool called [Hive](https://github.com/kubestellar/hive) from Kubestellar, a CNCF Sandbox project.
 
 Dakota's feedback loop model is grounded in Andy Anderson's work on autonomous AI-assisted software development. The core finding: the intelligence of a system like this lives not in any single model, but in the infrastructure of instructions, tests, metrics, and feedback loops surrounding it.
 

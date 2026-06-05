@@ -1,6 +1,6 @@
 name: "Help this project"
 description: "Donate agent time — point at a repo, issue, or PR and get a high-signal report back."
-labels: ["kind:agent-donation"]
+labels: ["flow/agent-donation"]
 body:
   - type: markdown
     attributes:

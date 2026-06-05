@@ -31,10 +31,10 @@ DAKOTA  ·  issue pipeline
 
 | Stage | Widget line | Trigger | Agent action |
 |---|---|---|---|
-| `filed` | `✓ filed` or active `▶ filed` | Issue opened. `needs-triage` applied. | Do not claim. Wait for human triage. If `report: missing`, do not interrogate the reporter. They may not have run `ujust report` yet. If the issue is vague, link them to `ujust report`. |
-| `approved` | `✓ approved` or active `▶ approved` | Maintainer adds `status/approved`. Actionadon also adds `queue/agent-ready`. | Human review is complete. Agent may `/claim` once the issue is actually in queue. |
-| `queued` | `▶ queued` | `queue/agent-ready` present. Issue is in the contributor pool. | Comment `/claim` to take it. Check `confirms:` first. Higher count means broader hardware impact. |
-| `claimed` | `▶ claimed` | `/claim` comment assigns the issue and adds `queue/claimed`. | You own it. Build, test, open the PR. Comment `/unclaim` if blocked. Seven days of inactivity auto-releases it. |
+| `filed` | `✓ filed` or active `▶ filed` | Issue opened. `status/triage` applied. | Do not claim. Wait for human triage. If `report: missing`, do not interrogate the reporter. They may not have run `ujust report` yet. If the issue is vague, link them to `ujust report`. |
+| `approved` | `✓ approved` or active `▶ approved` | Maintainer adds `status/approved`. Actionadon also adds `status/queued`. | Human review is complete. Agent may `/claim` once the issue is actually in queue. |
+| `queued` | `▶ queued` | `status/queued` present. Issue is in the contributor pool. | Comment `/claim` to take it. Check `confirms:` first. Higher count means broader hardware impact. |
+| `claimed` | `▶ claimed` | `/claim` comment assigns the issue and adds `status/claimed`. | You own it. Build, test, open the PR. Comment `/unclaim` if blocked. Seven days of inactivity auto-releases it. |
 | `done` | `▶ done` or closed issue | Issue closed after the fix ships. | Do not reopen. Read `verified: N/3` as post-ship hardware confirmation. If below target, flag for human decision instead of acting unilaterally. |
 
 ## Widget sentinel rule
@@ -60,10 +60,10 @@ The sentinel `<!-- actionadon-pipeline -->` marks the managed block at the top o
 
 | Command | Who | Effect |
 |---------|-----|--------|
-| `/claim` | anyone | Assigns you, adds `queue/claimed`, advances the widget |
+| `/claim` | anyone | Assigns you, adds `status/claimed`, advances the widget |
 | `/unclaim` | assignee or write+ | Returns the issue to the queue |
 | `/approve` or `/lgtm` | write+ | Adds `lgtm`, auto-queues |
 
 ## Hive exempt labels
 
-Do not touch issues with: `hold`, `do-not-merge`, `status/discussing`, `queue/claimed` (if you are not the assignee), `agent/blocked`, `needs-human/agent-oops`.
+Do not touch issues with: `hold`, `do-not-merge`, `status/discussing`, `status/claimed` (if you are not the assignee), `agent/blocked`, `needs-human/agent-oops`.

@@ -62,7 +62,7 @@ meson install -C build
 
 **`BOOTC_DEMO=1`** — clicking Install runs a 5-second fake progress sequence (9 steps). No fisherman launched, no disk touched. Set by default in `run-dev.sh`.
 
-**Debug log:** `~/.cache/tuna-installer/installer-debug.log`  
+**Debug log:** `~/.cache/tuna-installer/installer-debug.log`
 **Run log:** `/tmp/bootc-installer-run.log`
 
 ## Key Customizations vs. Upstream
