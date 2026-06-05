@@ -281,7 +281,7 @@ jobs:
       needs.publish.result == 'success' &&
       (needs.setup.outputs.event == 'schedule' ||
        needs.setup.outputs.event == 'workflow_dispatch')
-    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@main
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@82a233861b343cd71f359cc1e0d7b134fea78e88 # main
     with:
       image: ghcr.io/projectbluefin/dakota:${{ needs.setup.outputs.sha }}
       suites: smoke
