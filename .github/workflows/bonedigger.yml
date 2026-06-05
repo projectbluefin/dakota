@@ -1,0 +1,24 @@
+name: bonedigger
+
+on:
+  issues:
+    types: [opened, labeled, closed]
+  issue_comment:
+    types: [created]
+  schedule:
+    - cron: '0 9 * * *'
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  bonedigger:
+    # @main is intentional: projectbluefin/bonedigger has no versioned releases.
+    # projectbluefin/ refs are managed floating tags, exempt from the
+    # no-floating-action-tags hook. See docs/skills/ci-tooling.md.
+    uses: projectbluefin/bonedigger/.github/workflows/lifecycle.yml@main
+    with:
+      brand_name: "Bluefin"
+      brand_emoji: "🦖"
+    secrets: inherit
