@@ -2,7 +2,7 @@ name: Weekly Testing Promotion
 
 on:
   schedule:
-    - cron: '0 6 * * 0' # Sunday 06:00 UTC
+    - cron: '0 6 * * 2' # Tuesday 06:00 UTC
   workflow_dispatch:
 
 concurrency:
@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       source_sha: ${{ steps.verify.outputs.source_sha }}
+      locked_sha: ${{ steps.lock-sha.outputs.locked_sha }}
       default_digest: ${{ steps.resolve-default.outputs.digest }}
       nvidia_digest: ${{ steps.resolve-nvidia.outputs.digest }}
       has_nvidia: ${{ steps.resolve-nvidia.outputs.found }}
@@ -88,6 +89,16 @@ jobs:
           echo "source_sha=$DEFAULT_SHA" >> "$GITHUB_OUTPUT"
           echo "Source SHA: $DEFAULT_SHA (both variants match)"
 
+      - name: Lock source SHA for TOCTOU guard
+        id: lock-sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq '.object.sha')
+          echo "locked_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Locked main SHA: $SHA"
+
   # ── Check diff — skip if already promoted ────────────────────────────────
   check-diff:
     needs: [resolve]
@@ -121,11 +132,78 @@ jobs:
           echo "has_diff=true" >> "$GITHUB_OUTPUT"
           echo "Promotion needed: :testing differs from :latest"
 
+  # ── Verify cosign signatures ─────────────────────────────────────────────
+  verify-signatures:
+    needs: [resolve, check-diff]
+    if: needs.check-diff.outputs.has_diff == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Install cosign
+        run: |
+          if ! command -v cosign &>/dev/null; then
+            COSIGN_VERSION="v2.5.0"
+            curl -fsSL "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64" \
+              -o /usr/local/bin/cosign
+            chmod +x /usr/local/bin/cosign
+          fi
+
+      - name: Verify signatures for all promoted variants
+        env:
+          DEFAULT_DIGEST: ${{ needs.resolve.outputs.default_digest }}
+          NVIDIA_DIGEST: ${{ needs.resolve.outputs.nvidia_digest }}
+          HAS_NVIDIA: ${{ needs.resolve.outputs.has_nvidia }}
+        run: |
+          set -euo pipefail
+          REGISTRY="ghcr.io/${{ github.repository_owner }}"
+          FAILED=0
+
+          verify_digest() {
+            local image_ref="$1"
+            echo "Verifying signature: ${image_ref}"
+            if ! cosign verify \
+              --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${image_ref}" 2>/dev/null; then
+              echo "::error::Signature verification FAILED for ${image_ref}"
+              return 1
+            fi
+            echo "  ✅ Signature verified: ${image_ref}"
+          }
+
+          verify_digest "${REGISTRY}/dakota@${DEFAULT_DIGEST}" || FAILED=$((FAILED + 1))
+
+          if [ "${HAS_NVIDIA}" = "true" ] && [ -n "${NVIDIA_DIGEST}" ]; then
+            verify_digest "${REGISTRY}/dakota-nvidia@${NVIDIA_DIGEST}" || FAILED=$((FAILED + 1))
+          fi
+
+          if [ "${FAILED}" -gt 0 ]; then
+            echo "::error::${FAILED} image(s) failed signature verification — aborting promotion"
+            exit 1
+          fi
+          echo "✅ All signatures verified — proceeding with promotion"
+
+  # ── Full e2e gate at weekly promotion time ────────────────────────────────
+  e2e:
+    needs: [resolve, check-diff]
+    if: needs.check-diff.outputs.has_diff == 'true'
+    permissions:
+      packages: write
+      contents: read
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@e1c00af3b85513b51f9441a02ce239e231c26e8c # main
+    with:
+      image: ghcr.io/${{ github.repository_owner }}/dakota@${{ needs.resolve.outputs.default_digest }}
+      suites: smoke,common
+
+
   # ── Promote :testing → :latest + :stable ────────────────────────────────
   promote:
     environment: production
-    needs: [resolve, check-diff]
-    if: needs.check-diff.outputs.has_diff == 'true'
+    needs: [resolve, check-diff, verify-signatures, e2e]
+    if: >-
+      needs.check-diff.outputs.has_diff == 'true' &&
+      needs.verify-signatures.result == 'success' &&
+      needs.e2e.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -155,18 +233,40 @@ jobs:
         run: |
           echo "$GH_TOKEN" | sudo podman login ghcr.io --username "$GH_ACTOR" --password-stdin
 
+      - name: Verify source SHA has not advanced
+        env:
+          LOCKED_SHA: ${{ needs.resolve.outputs.locked_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          CURRENT_SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq '.object.sha')
+          if [ "$CURRENT_SHA" != "$LOCKED_SHA" ]; then
+            echo "ERROR: main advanced during promotion ($LOCKED_SHA → $CURRENT_SHA). Aborting."
+            echo "Untested commits would reach latest/stable. Rerun next cycle."
+            exit 1
+          fi
+          echo "✅ SHA unchanged: $CURRENT_SHA"
+
       - name: Promote to :latest and :stable
         env:
           SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
+          DEFAULT_DIGEST: ${{ needs.resolve.outputs.default_digest }}
+          NVIDIA_DIGEST: ${{ needs.resolve.outputs.nvidia_digest }}
         run: |
           set -euo pipefail
           IMAGE="ghcr.io/${{ github.repository_owner }}/dakota${{ matrix.image_suffix }}"
 
-          # Pull the :testing image (already digest-verified in resolve job)
-          sudo podman pull "${IMAGE}:testing"
+          # Use resolved digest directly — prevents TOCTOU tag re-pull race
+          if [ "${{ matrix.variant }}" = "nvidia" ]; then
+            DIGEST="$NVIDIA_DIGEST"
+          else
+            DIGEST="$DEFAULT_DIGEST"
+          fi
+
+          sudo podman pull "${IMAGE}@${DIGEST}"
 
           # Tag and push as :latest
-          sudo podman tag "${IMAGE}:testing" "${IMAGE}:latest"
+          sudo podman tag "${IMAGE}@${DIGEST}" "${IMAGE}:latest"
           PUSH_OK=false
           for attempt in 1 2 3; do
             sudo podman push --compression-format=zstd "${IMAGE}:latest" && { PUSH_OK=true; break; }
@@ -176,7 +276,7 @@ jobs:
           $PUSH_OK || { echo "ERROR: all push attempts failed for :latest"; exit 1; }
 
           # Tag and push as :stable
-          sudo podman tag "${IMAGE}:testing" "${IMAGE}:stable"
+          sudo podman tag "${IMAGE}@${DIGEST}" "${IMAGE}:stable"
           PUSH_OK=false
           for attempt in 1 2 3; do
             sudo podman push --compression-format=zstd "${IMAGE}:stable" && { PUSH_OK=true; break; }
@@ -185,7 +285,8 @@ jobs:
           done
           $PUSH_OK || { echo "ERROR: all push attempts failed for :stable"; exit 1; }
 
-          echo "Promoted ${IMAGE}:testing → :latest + :stable (source SHA: $SOURCE_SHA)"
+          echo "Promoted ${IMAGE}@${DIGEST} → :latest + :stable (source SHA: $SOURCE_SHA)"
+
 
   # ── Fast-forward branches ────────────────────────────────────────────────
   update-branches:
