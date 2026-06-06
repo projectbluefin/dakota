@@ -89,15 +89,23 @@ jobs:
           echo "source_sha=$DEFAULT_SHA" >> "$GITHUB_OUTPUT"
           echo "Source SHA: $DEFAULT_SHA (both variants match)"
 
-      - name: Lock source SHA for TOCTOU guard
+      - name: Lock tested source SHA for TOCTOU guard
         id: lock-sha
         env:
+          SOURCE_SHA: ${{ steps.verify.outputs.source_sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq '.object.sha')
-          echo "locked_sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "Locked main SHA: $SHA"
+          CURRENT_SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq '.object.sha')
+          if [[ "${CURRENT_SHA}" != "${SOURCE_SHA}" ]]; then
+            echo "::error::main has advanced since :testing was built."
+            echo "  Built from: ${SOURCE_SHA}"
+            echo "  Current:    ${CURRENT_SHA}"
+            echo "Aborting promotion — re-run after the next testing build completes."
+            exit 1
+          fi
+          echo "locked_sha=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Locked main SHA: ${SOURCE_SHA} (matches tested source)"
 
   # ── Check diff — skip if already promoted ────────────────────────────────
   check-diff:
@@ -144,8 +152,8 @@ jobs:
           if ! command -v cosign &>/dev/null; then
             COSIGN_VERSION="v2.5.0"
             curl -fsSL "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64" \
-              -o /usr/local/bin/cosign
-            chmod +x /usr/local/bin/cosign
+              -o "$RUNNER_TEMP/cosign"
+            sudo install -m 0755 "$RUNNER_TEMP/cosign" /usr/local/bin/cosign
           fi
 
       - name: Verify signatures for all promoted variants
@@ -162,7 +170,7 @@ jobs:
             local image_ref="$1"
             echo "Verifying signature: ${image_ref}"
             if ! cosign verify \
-              --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/" \
+              --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/publish\\.yml@refs/heads/(main|gh-readonly-queue/main/.+)$" \
               --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
               "${image_ref}" 2>/dev/null; then
               echo "::error::Signature verification FAILED for ${image_ref}"
