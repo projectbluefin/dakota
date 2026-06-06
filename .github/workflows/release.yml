@@ -1,44 +1,67 @@
 name: Release Bluefin dakota
 
-# Fires after every successful Publish run on main or the merge queue.
-# Same branch filter as publish.yml — only real published images trigger a release.
+# Weekly gated release — fires every Tuesday at 06:00 UTC.
+# Maintainers must approve via the production environment gate before the
+# release is created. workflow_dispatch is available for out-of-band cuts.
 on:
-  workflow_run:
-    workflows: ["Publish Bluefin dakota"]
-    types: [completed]
-    branches:
-      - main
-      - 'gh-readonly-queue/main/**'
+  schedule:
+    - cron: '0 6 * * 2'  # Weekly on Tuesday at 6 AM UTC
+  workflow_dispatch:
 
 permissions:
   contents: write   # create GitHub releases
-  actions:  read    # download artifacts from the triggering publish run
+  actions:  read    # download artifacts from the latest publish run
 
 concurrency:
-  group: release-${{ github.event.workflow_run.head_sha }}
+  group: scheduled-release
   cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    if: github.event.workflow_run.conclusion == 'success'
+    environment:
+      name: production
+      url: https://ghcr.io/projectbluefin/dakota
     steps:
+      - name: Find latest publish run
+        id: publish_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUN=$(gh run list \
+            --workflow "Publish Bluefin dakota" \
+            --branch main \
+            --status success \
+            --limit 1 \
+            --json headSha,createdAt,databaseId \
+            --repo ${{ github.repository }} \
+            --jq '.[0]')
+          SHA=$(echo "$RUN" | jq -r '.headSha')
+          CREATED_AT=$(echo "$RUN" | jq -r '.createdAt')
+          RUN_ID=$(echo "$RUN" | jq -r '.databaseId')
+          SHA7="${SHA:0:7}"
+          echo "sha=$SHA"          >> "$GITHUB_OUTPUT"
+          echo "sha7=$SHA7"        >> "$GITHUB_OUTPUT"
+          echo "created_at=$CREATED_AT" >> "$GITHUB_OUTPUT"
+          echo "run_id=$RUN_ID"    >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository at published SHA
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ steps.publish_run.outputs.sha }}
 
       - name: Resolve release metadata
         id: meta
         run: |
           set -euo pipefail
-          SHA="${{ github.event.workflow_run.head_sha }}"
-          SHA7="${SHA:0:7}"
+          SHA="${{ steps.publish_run.outputs.sha }}"
+          SHA7="${{ steps.publish_run.outputs.sha7 }}"
           # Use the publish workflow's start time, not wall-clock now.
           # A publish that starts at 23:45 UTC and completes past midnight
           # would otherwise get tomorrow's date in the tag.
-          DATE="$(date -u -d '${{ github.event.workflow_run.created_at }}' +%Y-%m-%d)"
+          DATE="$(date -u -d '${{ steps.publish_run.outputs.created_at }}' +%Y-%m-%d)"
           {
             echo "sha=$SHA"
             echo "sha7=$SHA7"
@@ -52,16 +75,15 @@ jobs:
       - name: Download current SBOM from publish run
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: sbom-${{ github.event.workflow_run.head_sha }}
-          run-id: ${{ github.event.workflow_run.id }}
+          name: sbom-${{ steps.publish_run.outputs.sha }}
+          run-id: ${{ steps.publish_run.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: sbom-current
 
       - name: Get image digest
         id: digest
         env:
-          TAG: ${{ steps.meta.outputs.tag }}
-          SHA: ${{ steps.meta.outputs.sha }}
+          SHA: ${{ steps.publish_run.outputs.sha }}
         run: |
           set -euo pipefail
           DIGEST=$(skopeo inspect --format '{{.Digest}}' \
