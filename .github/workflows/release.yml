@@ -21,7 +21,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     if: github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Checkout repository at published SHA
@@ -32,6 +32,7 @@ jobs:
       - name: Resolve release metadata
         id: meta
         run: |
+          set -euo pipefail
           SHA="${{ github.event.workflow_run.head_sha }}"
           SHA7="${SHA:0:7}"
           # Use the publish workflow's start time, not wall-clock now.
@@ -46,7 +47,6 @@ jobs:
             echo "title=Bluefin Dakota ${DATE}"
           } >> "$GITHUB_OUTPUT"
 
-      # ── Download current SBOM ─────────────────────────────────────────────
       # publish.yml uploads dakota.spdx.json (default variant) as
       # "sbom-<sha>" with 30-day retention.
       - name: Download current SBOM from publish run
@@ -57,85 +57,46 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: sbom-current
 
-      # ── Fetch previous SBOM for diff ─────────────────────────────────────
-      # Download dakota.spdx.json from the most recent existing GitHub release.
-      # Gracefully skips if no prior release exists (first run).
-      - name: Download previous release SBOM
-        id: prev
+      - name: Get image digest
+        id: digest
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          SHA: ${{ steps.meta.outputs.sha }}
         run: |
-          PREV_TAG=$(gh release list \
-            --repo "${{ github.repository }}" \
-            --limit 1 \
-            --json tagName \
-            --jq '.[0].tagName' 2>/dev/null || true)
-
-          if [ -z "$PREV_TAG" ]; then
-            echo "No previous release found — first release."
-            echo "found=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          set -euo pipefail
+          DIGEST=$(skopeo inspect --format '{{.Digest}}' \
+            docker://ghcr.io/projectbluefin/dakota:"${SHA}" 2>/dev/null || echo "")
+          if [[ -z "${DIGEST}" ]]; then
+            echo "::warning::Could not fetch digest for dakota:${SHA} — using sha as digest"
+            DIGEST="sha256:${SHA}"
           fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
-          mkdir -p sbom-previous
-          if gh release download "$PREV_TAG" \
-              --repo "${{ github.repository }}" \
-              --pattern "dakota.spdx.json" \
-              --dir sbom-previous 2>/dev/null; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "Previous release: $PREV_TAG"
-          else
-            echo "::warning::Could not download SBOM from release $PREV_TAG — skipping diff"
-            echo "found=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # ── Diff SBOMs ────────────────────────────────────────────────────────
-      - name: Parse SBOMs and compute diff
-        run: |
-          PREV_FLAGS=()
-          if [ "${{ steps.prev.outputs.found }}" = "true" ]; then
-            PREV_FLAGS=(--previous sbom-previous/dakota.spdx.json)
-          fi
-          python3 .github/scripts/sbom_diff.py \
-            --current sbom-current/dakota.spdx.json \
-            "${PREV_FLAGS[@]}" \
-            --output versions.json
-
-      # ── Playwright card screenshots ───────────────────────────────────────
-      - name: Install Playwright + Chromium
-        run: |
-          python3 -m pip install playwright --break-system-packages --quiet
-          python3 -m playwright install chromium --with-deps
-
-      - name: Render release card
-        run: |
-          python3 .github/scripts/render_card.py \
-            --versions      versions.json \
-            --sha           "${{ steps.meta.outputs.sha }}" \
-            --sha7          "${{ steps.meta.outputs.sha7 }}" \
-            --date          "${{ steps.meta.outputs.date }}" \
-            --tag           "${{ steps.meta.outputs.tag }}" \
-            --repo          "${{ github.repository }}" \
-            --output        release-card.png \
-            --release-notes release-notes.md
-
-      # ── Create GitHub release ─────────────────────────────────────────────
-      # Uploads card images and SBOM atomically with the release creation so
-      # the image URLs in the release body are valid immediately on publish.
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG:   ${{ steps.meta.outputs.tag }}
-          TITLE: ${{ steps.meta.outputs.title }}
-        run: |
-          # Idempotent: skip if this tag already exists (e.g. re-run or dispatch).
-          if gh release view "$TAG" --repo "${{ github.repository }}" &>/dev/null; then
-            echo "Release $TAG already exists — skipping."
-            exit 0
-          fi
-          gh release create "$TAG" \
-            --repo "${{ github.repository }}" \
-            --title "$TITLE" \
-            --notes-file release-notes.md \
-            release-card.png \
-            sbom-current/dakota.spdx.json
+      - name: Create release
+        uses: projectbluefin/actions/bootc-build/create-release@2b5afcc62336353ac743774ab338a5acaf7e0614
+        with:
+          sbom-path:            sbom-current/dakota.spdx.json
+          tag:                  ${{ steps.meta.outputs.tag }}
+          title:                ${{ steps.meta.outputs.title }}
+          image:                ghcr.io/projectbluefin/dakota
+          digest:               ${{ steps.digest.outputs.digest }}
+          repo:                 ${{ github.repository }}
+          project-name:         "Bluefin Dakota"
+          accent-color:         "#7c3aed"
+          badge-label:          Alpha
+          sbom-filename:        dakota.spdx.json
+          cert-identity-regexp: >-
+            ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml
+          notable-packages: >-
+            [
+              {"sbom_name": "linux",             "label": "Kernel", "spdxid_filter": "components-linux.bst"},
+              {"sbom_name": "gnome-shell",        "label": "GNOME"},
+              {"sbom_name": "mesa",               "label": "Mesa"},
+              {"sbom_name": "podman",             "label": "Podman"},
+              {"sbom_name": "bootc",              "label": "bootc"},
+              {"sbom_name": "ghostty",            "label": "ghostty"},
+              {"sbom_name": "sudo-rs",            "label": "sudo-rs"},
+              {"sbom_name": "uutils-coreutils",   "label": "uutils"}
+            ]
+          docs-url:             https://docs.projectbluefin.io/changelogs
+          github-token:         ${{ secrets.GITHUB_TOKEN }}
