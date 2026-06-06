@@ -73,7 +73,7 @@ jobs:
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Create release
-        uses: projectbluefin/actions/bootc-build/create-release@2b5afcc62336353ac743774ab338a5acaf7e0614
+        uses: projectbluefin/actions/bootc-build/create-release@622073d27a051f1eed7b874b9b71710141a5e60e
         with:
           sbom-path:            sbom-current/dakota.spdx.json
           tag:                  ${{ steps.meta.outputs.tag }}
