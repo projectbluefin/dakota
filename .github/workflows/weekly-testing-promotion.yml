@@ -201,13 +201,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Install cosign
-        run: |
-          if ! command -v cosign &>/dev/null; then
-            COSIGN_VERSION="v2.5.0"
-            curl -fsSL "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64" \
-              -o "$RUNNER_TEMP/cosign"
-            sudo install -m 0755 "$RUNNER_TEMP/cosign" /usr/local/bin/cosign
-          fi
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Verify signatures for all promoted variants
         env:
