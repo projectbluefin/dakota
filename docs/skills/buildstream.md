@@ -130,4 +130,3 @@ The `(>):` syntax appends to the inherited command list from the element kind. I
 ### `kind: stack` elements produce no filesystem output — they are dep aggregators only (2026-06-07)
 
 `deps.bst` is intentionally `kind: stack`. That means it has zero filesystem output. Only `kind: compose` and `kind: script` elements produce filesystem artifacts. If a new layer element is accidentally typed as `kind: stack`, it will build successfully but the image layer will be empty. Always verify with `grep '^kind:' elements/oci/layers/bluefin.bst`.
-

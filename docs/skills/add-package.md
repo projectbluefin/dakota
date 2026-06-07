@@ -138,4 +138,3 @@ install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system-preset/
 # ❌ wrong — ignored at boot
 install -Dm644 /dev/stdin "%{install-root}%{sysconfdir}/systemd/system-preset/80-name.preset"
 ```
-

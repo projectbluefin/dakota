@@ -113,4 +113,3 @@ python3 files/scripts/generate_cargo_sources.py /host/Cargo.lock
 ### `just bst source track` only updates `ref:` — it does not regenerate derived sources (2026-06-07)
 
 `bst source track` updates the `ref:` field of `git_repo` and `tar` sources. It does NOT regenerate `cargo2`, `go_module`, or other derived source blocks. Those must be regenerated manually after tracking. Omitting this step is the most common cause of "build passes locally (from cache) but fails from scratch."
-

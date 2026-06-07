@@ -143,4 +143,3 @@ The OCI assembly script in `elements/oci/bluefin.bst` must run steps in this exa
 4. `build-oci` (assemble image)
 
 Running `ldconfig` after `build-oci` has no effect. Running `build-oci` before `dconf update` produces an image with stale/missing dconf databases.
-

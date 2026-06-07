@@ -3,7 +3,13 @@
   "extends": [
     "config:recommended",
   ],
-  "baseBranchPatterns": ["main"],
+  // Renovate targets the testing branch for dependency updates.
+  // testing is a git pointer fast-forwarded to the last deployed SHA —
+  // action SHA pin PRs merge here, are validated by Renovate's built-in
+  // automerge (no merge queue on testing), and reach main on the next PR.
+  // Note: track-bst-sources.yml manages BuildStream refs directly and
+  // intentionally targets main — it is not Renovate-managed.
+  "baseBranchPatterns": ["testing"],
   "branchPrefix": "renovate/",
   "schedule": ["* 0-3 * * 1"],
 

@@ -147,4 +147,3 @@ The BST export includes `/sysroot/` artifacts (OSTree build tooling leftover). T
 ### Hardware confirmation is required — CI green is not sufficient (2026-06-07)
 
 The validation gate is: `bootc upgrade` on test hardware succeeds + reboot + GDM active. CI passing confirms the image was built and passes `bootc container lint`. It does not confirm the image boots correctly on real hardware. Do not mark issues resolved without hardware evidence, and do not state something is "fixed" based on CI alone.
-
