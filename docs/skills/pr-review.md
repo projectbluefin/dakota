@@ -67,6 +67,27 @@ See `merge-queue.md` for the full retarget/cherry-pick/merge flow.
 
 ## Lessons Learned
 
-Add new lessons below as: `### <pattern name> (YYYY-MM-DD)`
+### Rubber duck CI changes against bluefin/bluefin-lts before merging (2026-06-07)
+
+When making changes to `.github/workflows/` that touch the publish, promote,
+or release pipeline, run a rubber duck comparison against the equivalent
+workflows in `projectbluefin/bluefin` and `projectbluefin/bluefin-lts` before
+opening a PR. This surfaces inconsistencies and cross-repo bugs that pure
+code review misses.
+
+**What to compare:**
+- `cert-identity-regexp` anchoring — must be `^...$` end-anchored (dakoa is correct; bluefin/lts are not)
+- `environment: production` gate placement — should be on image **promotion**, not on release notes creation
+- SBOM handling — artifact-first with Syft fallback is stronger than always regenerating
+- TOCTOU patterns — digest-pinned promotions, single skopeo inspect calls
+
+**Invocation:**
+```
+rubber duck the release pipeline for consistency with projectbluefin/bluefin and bluefin-lts, built on projectbluefin/actions
+```
+
+Then pipe the findings directly into fixes before the PR lands. This session
+caught 4 issues from rubber duck + 1 interaction bug (TOCTOU guard) from
+doublecheck — all fixed before merging.
 
 ---

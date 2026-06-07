@@ -35,7 +35,7 @@ Load when debugging CI failures, understanding the build pipeline, or working wi
 
 | File | Role |
 |---|---|
-| `.github/workflows/build.yml` | BST build + push artifacts to remote CAS. Fires on merge_group/schedule/dispatch. Does NOT push to GHCR directly. |
+| `.github/workflows/build.yml` | BST build + push artifacts to remote CAS. Fires on `merge_group` and `workflow_dispatch` only (no schedule). Does NOT push to GHCR directly. |
 | `.github/workflows/publish.yml` | 3-stage pipeline: setup → publish → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, then immediately promotes to `:testing` on every successful merge. No e2e gate — that lives only in the weekly promotion. |
 | `.github/workflows/release.yml` | Called from `weekly-testing-promotion.yml` after a successful promotion. Creates GitHub Release with card image, SBOM diff, and package changelog. Also available as `workflow_dispatch` for out-of-band cuts. |
 | `.github/workflows/weekly-testing-promotion.yml` | Weekly Tuesday promotion (06:00 UTC): 7-day floor check → verify `:testing` digests → cosign verify → e2e → promote to `:latest`+`:stable` → fast-forward branches → call `release.yml`. Has `environment: production` gate requiring human approval. |
@@ -447,12 +447,13 @@ gh run list \
 non-main branch flows through e2e and promotes to `:testing`, fast-forwarding the
 `testing` branch to an unmerged commit.
 
-**Fix:** Add a branch guard to the `promote` job:
+**Fix:** Add a branch guard to the `promote` job. Since `e2e-gate` no longer
+exists (continuous build model), the guard goes directly on `promote`:
 ```yaml
 promote:
-  needs: [setup, publish, e2e-gate]
+  needs: [setup, publish]
   if: >-
-    needs.e2e-gate.result == 'success' &&
+    needs.publish.result == 'success' &&
     (github.event_name == 'workflow_run' || github.ref_name == 'main')
 ```
 `workflow_run` events are always safe (they trigger from completed `main`/merge-queue
