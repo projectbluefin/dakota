@@ -1,11 +1,9 @@
 name: Release Bluefin dakota
 
-# Weekly gated release — fires every Tuesday at 06:00 UTC.
-# Maintainers must approve via the production environment gate before the
-# release is created. workflow_dispatch is available for out-of-band cuts.
+# Called automatically from weekly-testing-promotion.yml after a successful
+# stable promotion. workflow_dispatch is available for out-of-band cuts.
 on:
-  schedule:
-    - cron: '0 6 * * 2'  # Weekly on Tuesday at 6 AM UTC
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -20,9 +18,6 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    environment:
-      name: production
-      url: https://ghcr.io/projectbluefin/dakota
     steps:
       - name: Find latest publish run
         id: publish_run

@@ -14,9 +14,62 @@ permissions:
   packages: write
 
 jobs:
+  # ── Enforce a minimum 7-day floor between promotions ─────────────────────
+  # Prevents churn when main receives only docs or trivial fixes.
+  # workflow_dispatch bypasses the floor so maintainers can force a promotion
+  # (e.g. after a hotfix or a failed previous run).
+  check-promotion-floor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      should_promote: ${{ steps.floor.outputs.should_promote }}
+    steps:
+      - name: Check days since last stable release
+        id: floor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "Manual dispatch — bypassing promotion floor."
+            echo "should_promote=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LAST_RELEASE=$(gh release list \
+            --repo "${{ github.repository }}" \
+            --limit 1 \
+            --json createdAt \
+            --jq '.[0].createdAt // empty')
+
+          if [[ -z "$LAST_RELEASE" ]]; then
+            echo "No previous release found — first promotion, proceeding."
+            echo "should_promote=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LAST_TS=$(date -d "$LAST_RELEASE" +%s)
+          NOW_TS=$(date +%s)
+          DAYS_SINCE=$(( (NOW_TS - LAST_TS) / 86400 ))
+
+          echo "Last stable release: $LAST_RELEASE (${DAYS_SINCE} days ago)"
+
+          if [[ "$DAYS_SINCE" -lt 7 ]]; then
+            echo "Floor not met (${DAYS_SINCE}/7 days) — skipping promotion this cycle."
+            echo "should_promote=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Floor met (${DAYS_SINCE} days) — proceeding with promotion."
+            echo "should_promote=true" >> "$GITHUB_OUTPUT"
+          fi
+
   # ── Resolve current :testing digests ─────────────────────────────────────
   # Pins the exact digests and verifies both variants share the same source SHA.
   resolve:
+    needs: [check-promotion-floor]
+    if: needs.check-promotion-floor.outputs.should_promote == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
@@ -326,3 +379,86 @@ jobs:
               echo "Fast-forwarded ${BRANCH} to ${SOURCE_SHA}"
             fi
           done
+
+  # ── Generate release notes ────────────────────────────────────────────────
+  generate-release:
+    needs: [update-branches]
+    if: needs.update-branches.result == 'success'
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/release.yml
+
+  # ── Close stale failure issue on success ─────────────────────────────────
+  close-failure-issue:
+    needs: [update-branches]
+    if: needs.update-branches.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Close open failure issue if present
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const title = 'ci: weekly promotion failure';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'area/testing,kind/bug',
+              state: 'open',
+            });
+            const open = existing.data.find(i => i.title === title);
+            if (open) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: open.number,
+                state: 'closed',
+                state_reason: 'completed',
+              });
+              core.info(`Closed stale failure issue #${open.number}`);
+            }
+
+  # ── Open or update failure issue ─────────────────────────────────────────
+  report-failure:
+    needs: [resolve, check-diff, verify-signatures, e2e, promote, update-branches]
+    if: always() && failure()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update failure issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = 'ci: weekly promotion failure';
+            const body = `## Weekly Promotion Failure\n\n**Run:** ${runUrl}\n\n_Automatically opened by weekly-testing-promotion.yml_`;
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'area/testing,kind/bug',
+              state: 'open',
+            });
+            const dup = existing.data.find(i => i.title === title);
+            if (dup) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: dup.number,
+                body,
+              });
+              core.info(`Updated existing failure issue #${dup.number}`);
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['area/testing', 'kind/bug', 'priority/p1'],
+              });
+            }

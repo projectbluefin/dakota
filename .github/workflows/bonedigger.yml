@@ -20,5 +20,4 @@ jobs:
     uses: projectbluefin/common/.github/workflows/lifecycle.yml@c978e1ea5457a605da112b41b5e717b16d06e817
     with:
       brand_name: "Dakota"
-      brand_emoji: "🏔️"
     secrets: inherit

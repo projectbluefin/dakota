@@ -42,6 +42,21 @@ jobs:
     needs: ensure-labels
     runs-on: ubuntu-24.04
     steps:
+      - name: Block PRs not targeting main
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$BASE_REF" != "main" ]; then
+            echo "ERROR: PRs must target 'main', not '$BASE_REF'."
+            echo "Branches like 'stable' and 'latest' are managed by the promotion pipeline — never target them directly."
+            gh pr comment "$PR_URL" --body \
+              "This PR targets \`${BASE_REF}\` instead of \`main\`. Please retarget it to \`main\` — the \`${BASE_REF}\` branch is managed by the promotion pipeline and must not receive direct PRs." \
+              2>/dev/null || true
+            exit 1
+          fi
+
       - name: Add pr/needs-review and post instructions
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
