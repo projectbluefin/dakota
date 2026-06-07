@@ -37,10 +37,12 @@ jobs:
           CREATED_AT=$(echo "$RUN" | jq -r '.createdAt')
           RUN_ID=$(echo "$RUN" | jq -r '.databaseId')
           SHA7="${SHA:0:7}"
-          echo "sha=$SHA"          >> "$GITHUB_OUTPUT"
-          echo "sha7=$SHA7"        >> "$GITHUB_OUTPUT"
-          echo "created_at=$CREATED_AT" >> "$GITHUB_OUTPUT"
-          echo "run_id=$RUN_ID"    >> "$GITHUB_OUTPUT"
+          {
+            echo "sha=$SHA"
+            echo "sha7=$SHA7"
+            echo "created_at=$CREATED_AT"
+            echo "run_id=$RUN_ID"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository at published SHA
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
