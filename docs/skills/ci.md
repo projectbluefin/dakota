@@ -273,6 +273,64 @@ gh run list --repo projectbluefin/dakota --workflow publish.yml --limit 10 \
 If the last successful publish run is >24 hours old, `:testing` is stale.
 Check projectbluefin/testsuite for open issues before filing a new one.
 
+### Remote CAS down = build dies immediately at element loading (2026-06-07)
+
+When `cache.projectbluefin.io:11002` is unreachable, buildbox-casd exits after
+6 connection retries (~18 seconds). BST reports this as a cryptic inner failure:
+
+```
+BUG: Message handling out of sync, unable to retrieve failure message for element plugins/buildstream-plugins-community.bst
+FAILURE Loading elements
+error: recipe `bst` failed with exit code 255
+```
+
+The real root cause is in the CASD log artifact:
+
+```
+[ERROR] Retry limit (5) exceeded for "GetCapabilities()"
+[ERROR] 14: Failed to connect to remote host: Connection refused
+```
+
+**Diagnosis:**
+
+```bash
+gh run download <run-id> --repo projectbluefin/dakota \
+  --name buildstream-logs-x86_64-default -D /tmp/bst-logs
+cat /tmp/bst-logs/_casd/*.log | grep -E "connect|refused|ERROR" | tail -10
+```
+
+**Fix:** The remote CAS is infrastructure — it needs to be restarted on the server.
+If the cache is truly down, the build cannot proceed (without the `cache.storage-service`,
+BST has no local artifact store and cold-rebuilds everything which times out).
+Re-trigger the build once the cache is back up:
+
+```bash
+gh workflow run "Build Bluefin dakota" --repo projectbluefin/dakota --ref main
+```
+
+**Ghost-local workaround:** Does not apply — ghost's userconfig has no remote CAS
+configured, so ghost builds are unaffected by cache outages.
+
+### Ghost-specific build fixes belong in userconfig, NOT elements (2026-06-07)
+
+If a BST element fails to build on ghost but works in CI (remote execution), the
+fix must go in ghost's local config — **never in the element itself**. Putting it
+in the element invalidates the remote CAS artifact (cache-bust), forcing CI to
+rebuild an element it was already handling correctly.
+
+**Wrong:** `elements/bluefin/foo.bst` + `environment: CARGO_PROFILE_RELEASE_LTO: "thin"`
+**Right:** ghost `~/.config/buildstream/userconfig.yaml` project/element environment override
+
+Ghost-specific environment overrides can go in userconfig under:
+```yaml
+projects:
+  dakota:
+    elements:
+      bluefin/uutils-coreutils.bst:
+        environment:
+          CARGO_PROFILE_RELEASE_LTO: "thin"
+```
+
 ### Manual stable promotion flow (2026-06-04)
 
 Full pipeline to promote `testing` → `stable` manually:

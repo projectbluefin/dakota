@@ -174,3 +174,33 @@ access is possible, so `--offline` is redundant (it will succeed either way). `-
 still recommended as best practice but `sudo-rs.bst` omits it without issue. The build will
 still fail with a clear error if cargo2 sources are missing or mismatched — treat that as a
 signal to regenerate cargo2 sources, not a reason to add `--offline`.
+
+### Fat LTO + codegen-units=1 causes SIGABRT in BST btrfs overlay on ghost (2026-06-07)
+
+Upstream Rust crates that set `lto = true` + `codegen-units = 1` in their `[profile.release]`
+emit `-C linker-plugin-lto -C codegen-units=1` to each `rustc` invocation. Inside BST's
+btrfs overlay sandbox on ghost (Podman container + btrfs), LLVM's fat LTO codegen pass
+corrupts its own allocator:
+
+```
+realloc(): invalid next size
+rustc ... -C linker-plugin-lto -C codegen-units=1 (signal: 6, SIGABRT)
+```
+
+This is a ghost-environment issue — CI's remote execution server handles fat LTO fine.
+
+**Do NOT fix in the element.** Put the override in ghost's userconfig to avoid
+invalidating the remote CAS artifact (see `ci.md` → *Ghost-specific build fixes*):
+
+```yaml
+# ~/.config/buildstream/userconfig.yaml on ghost
+projects:
+  dakota:
+    elements:
+      bluefin/uutils-coreutils.bst:
+        environment:
+          CARGO_PROFILE_RELEASE_LTO: "thin"
+```
+
+Thin LTO provides most cross-crate optimization benefits with far less memory per
+codegen unit and does not trigger the allocator corruption.

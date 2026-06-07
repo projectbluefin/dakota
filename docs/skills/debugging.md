@@ -131,3 +131,25 @@ just bst build bluefin/<name>.bst
 
 When two elements install the same file path, `oci/bluefin.bst` fails with an overlap error even though each element builds fine individually. Fix by adding the conflicting path to `overlap-whitelist:` in `project.conf` or in the element's `public: bst:` section. Use `just bst show --format '%{name}: %{overlap-whitelist}' oci/bluefin.bst` to inspect current whitelist state.
 
+
+### meson `dependency("systemd")` fails with systemd-libs in build-depends (2026-06-07)
+
+If a meson element fails with:
+
+```
+meson.build:N: ERROR: Dependency "systemd" not found, tried pkgconfig
+```
+
+The element has `freedesktop-sdk.bst:components/systemd-libs.bst` in `build-depends`
+but the upstream `meson.build` calls `dependency('systemd')`, which needs `systemd.pc`
+— not `libsystemd.pc`. `systemd-libs.bst` only provides the library, not the pkgconfig
+descriptor for the systemd service itself.
+
+**Fix:** Replace `systemd-libs.bst` with `systemd.bst` in `build-depends`:
+
+```yaml
+build-depends:
+- freedesktop-sdk.bst:components/systemd.bst   # was systemd-libs.bst
+```
+
+`systemd.bst` ships `systemd.pc` and is a superset of `systemd-libs.bst`.
