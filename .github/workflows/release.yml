@@ -2,13 +2,32 @@ name: Release Bluefin dakota
 
 # Called automatically from weekly-testing-promotion.yml after a successful
 # stable promotion. workflow_dispatch is available for out-of-band cuts.
+#
+# workflow_call callers MUST pass source_sha + promoted_digest so release.yml
+# doesn't re-discover the publish run independently (race-free).
 on:
   workflow_call:
+    inputs:
+      source_sha:
+        description: "Git SHA of the promoted source (from resolve.outputs.source_sha)"
+        type: string
+        required: true
+      promoted_digest:
+        description: "OCI digest of the promoted image (from resolve.outputs.default_digest)"
+        type: string
+        required: true
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Git SHA to release (leave blank to use latest :stable)"
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: write   # create GitHub releases
-  actions:  read    # download artifacts from the latest publish run
+  actions:  read    # download SBOM artifact from publish run
+  packages: read    # pull image for Syft SBOM fallback
 
 concurrency:
   group: scheduled-release
@@ -18,58 +37,118 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: write
+      actions:  read
+      packages: read
     steps:
-      - name: Find latest publish run
+      # ── Resolve SHA and publish run ───────────────────────────────────────
+      # When called from the promotion pipeline, source_sha is locked to the
+      # exact SHA that was promoted — no re-discovery race possible.
+      # For workflow_dispatch, resolve from :stable if source_sha is not given.
+      - name: Resolve source SHA and publish run
         id: publish_run
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
+
+          if [[ -n "${INPUT_SHA}" ]]; then
+            SHA="${INPUT_SHA}"
+            echo "Using provided source SHA: ${SHA}"
+          else
+            # workflow_dispatch with no sha — resolve from the promoted :stable tag
+            SHA=$(skopeo inspect --format '{{index .Labels "org.opencontainers.image.revision"}}' \
+              docker://ghcr.io/${{ github.repository_owner }}/dakota:stable 2>/dev/null || echo "")
+            if [[ -z "${SHA}" ]]; then
+              echo "::error::Could not resolve source SHA from :stable — pass source_sha explicitly"
+              exit 1
+            fi
+            echo "Resolved source SHA from :stable: ${SHA}"
+          fi
+
+          SHA7="${SHA:0:7}"
+
+          # Find the matching publish run for this exact SHA.
+          # Scanning up to 50 runs ensures we find it even if many builds ran recently.
           RUN=$(gh run list \
             --workflow "Publish Bluefin dakota" \
             --branch main \
             --status success \
-            --limit 1 \
+            --limit 50 \
             --json headSha,createdAt,databaseId \
-            --repo ${{ github.repository }} \
-            --jq '.[0]')
-          SHA=$(echo "$RUN" | jq -r '.headSha')
+            --repo "${{ github.repository }}" \
+            | jq -r --arg sha "$SHA" 'map(select(.headSha == $sha)) | .[0] // empty')
+
+          if [[ -z "${RUN}" || "${RUN}" == "null" ]]; then
+            echo "::error::No successful publish run found for SHA ${SHA}"
+            exit 1
+          fi
+
           CREATED_AT=$(echo "$RUN" | jq -r '.createdAt')
           RUN_ID=$(echo "$RUN" | jq -r '.databaseId')
-          SHA7="${SHA:0:7}"
+
           {
-            echo "sha=$SHA"
-            echo "sha7=$SHA7"
-            echo "created_at=$CREATED_AT"
-            echo "run_id=$RUN_ID"
+            echo "sha=${SHA}"
+            echo "sha7=${SHA7}"
+            echo "created_at=${CREATED_AT}"
+            echo "run_id=${RUN_ID}"
           } >> "$GITHUB_OUTPUT"
+          echo "Found publish run ${RUN_ID} for SHA ${SHA}"
 
-      - name: Checkout repository at published SHA
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          ref: ${{ steps.publish_run.outputs.sha }}
-
-      - name: Resolve release metadata
-        id: meta
+      # ── Resolve image digest ──────────────────────────────────────────────
+      # For workflow_call, the caller passes the exact promoted digest — no
+      # skopeo probe needed. For workflow_dispatch, resolve from :stable.
+      - name: Resolve image digest
+        id: digest
+        env:
+          PROVIDED_DIGEST: ${{ inputs.promoted_digest }}
+          SHA: ${{ steps.publish_run.outputs.sha }}
         run: |
           set -euo pipefail
-          SHA="${{ steps.publish_run.outputs.sha }}"
-          SHA7="${{ steps.publish_run.outputs.sha7 }}"
-          # Use the publish workflow's start time, not wall-clock now.
+
+          if [[ -n "${PROVIDED_DIGEST}" ]]; then
+            DIGEST="${PROVIDED_DIGEST}"
+            echo "Using provided digest: ${DIGEST}"
+          else
+            DIGEST=$(skopeo inspect --format '{{.Digest}}' \
+              docker://ghcr.io/${{ github.repository_owner }}/dakota:stable 2>/dev/null || echo "")
+            if [[ -z "${DIGEST}" ]]; then
+              echo "::error::Could not resolve digest from :stable — cannot create release"
+              exit 1
+            fi
+            echo "Resolved digest from :stable: ${DIGEST}"
+          fi
+
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      # ── Release metadata ──────────────────────────────────────────────────
+      - name: Resolve release metadata
+        id: meta
+        env:
+          SHA: ${{ steps.publish_run.outputs.sha }}
+          SHA7: ${{ steps.publish_run.outputs.sha7 }}
+          CREATED_AT: ${{ steps.publish_run.outputs.created_at }}
+        run: |
+          set -euo pipefail
+          # Use the publish workflow's start time for the date in the tag.
           # A publish that starts at 23:45 UTC and completes past midnight
-          # would otherwise get tomorrow's date in the tag.
-          DATE="$(date -u -d '${{ steps.publish_run.outputs.created_at }}' +%Y-%m-%d)"
+          # would otherwise get tomorrow's date.
+          DATE="$(date -u -d "${CREATED_AT}" +%Y-%m-%d)"
           {
-            echo "sha=$SHA"
-            echo "sha7=$SHA7"
-            echo "date=$DATE"
+            echo "date=${DATE}"
             echo "tag=${DATE}-${SHA7}"
             echo "title=Bluefin Dakota ${DATE}"
           } >> "$GITHUB_OUTPUT"
 
-      # publish.yml uploads dakota.spdx.json (default variant) as
-      # "sbom-<sha>" with 30-day retention.
-      - name: Download current SBOM from publish run
+      # ── SBOM: download artifact, fall back to Syft ───────────────────────
+      # Primary: download BST-generated SBOM from the publish run artifact
+      # (30-day retention). Fallback: generate with Syft from the promoted
+      # image if the artifact has expired (out-of-band manual release).
+      - name: Download SBOM from publish run
+        id: sbom_artifact
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: sbom-${{ steps.publish_run.outputs.sha }}
@@ -77,27 +156,27 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: sbom-current
 
-      - name: Get image digest
-        id: digest
+      - name: Generate SBOM with Syft (fallback — artifact expired or unavailable)
+        if: steps.sbom_artifact.outcome == 'failure'
         env:
-          SHA: ${{ steps.publish_run.outputs.sha }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
           set -euo pipefail
-          DIGEST=$(skopeo inspect --format '{{.Digest}}' \
-            docker://ghcr.io/projectbluefin/dakota:"${SHA}" 2>/dev/null || echo "")
-          if [[ -z "${DIGEST}" ]]; then
-            echo "::warning::Could not fetch digest for dakota:${SHA} — using sha as digest"
-            DIGEST="sha256:${SHA}"
-          fi
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "::warning::Build artifact expired or unavailable — generating SBOM with Syft from promoted image"
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /usr/local/bin v1.44.0
+          mkdir -p sbom-current
+          syft "ghcr.io/${{ github.repository_owner }}/dakota@${DIGEST}" \
+            -o spdx-json=sbom-current/dakota.spdx.json
 
+      # ── Create GitHub Release ─────────────────────────────────────────────
       - name: Create release
         uses: projectbluefin/actions/bootc-build/create-release@622073d27a051f1eed7b874b9b71710141a5e60e
         with:
           sbom-path:            sbom-current/dakota.spdx.json
           tag:                  ${{ steps.meta.outputs.tag }}
           title:                ${{ steps.meta.outputs.title }}
-          image:                ghcr.io/projectbluefin/dakota
+          image:                ghcr.io/${{ github.repository_owner }}/dakota
           digest:               ${{ steps.digest.outputs.digest }}
           repo:                 ${{ github.repository }}
           project-name:         "Bluefin Dakota"
@@ -105,7 +184,7 @@ jobs:
           badge-label:          Alpha
           sbom-filename:        dakota.spdx.json
           cert-identity-regexp: >-
-            ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml
+            ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml@refs/heads/(main|gh-readonly-queue/main/.+)$
           notable-packages: >-
             [
               {"sbom_name": "linux",             "label": "Kernel", "spdxid_filter": "components-linux.bst"},

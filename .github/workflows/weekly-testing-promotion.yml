@@ -382,12 +382,16 @@ jobs:
 
   # ── Generate release notes ────────────────────────────────────────────────
   generate-release:
-    needs: [update-branches]
+    needs: [resolve, update-branches]
     if: needs.update-branches.result == 'success'
     permissions:
       contents: write
       actions: read
+      packages: read
     uses: ./.github/workflows/release.yml
+    with:
+      source_sha:      ${{ needs.resolve.outputs.source_sha }}
+      promoted_digest: ${{ needs.resolve.outputs.default_digest }}
 
   # ── Close stale failure issue on success ─────────────────────────────────
   close-failure-issue:
