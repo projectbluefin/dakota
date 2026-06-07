@@ -202,6 +202,19 @@ The e2e gate at the weekly promotion prevents regressions from reaching `:stable
 **If :testing breaks:** look at the last few merge SHAs and bisect with
 `gh run list --workflow "Publish Bluefin dakota" --limit 10`.
 
+**TOCTOU guard interaction:** the weekly promotion's lock-sha step uses a GitHub
+compare API ancestor check rather than exact equality. With continuous builds,
+main will often be 1–2 commits ahead of `:testing` by Tuesday 06:00 UTC. An
+exact-equality check would cause every promotion to fail. The ancestor check
+allows promotion as long as `:testing` is a valid ancestor of main (i.e.,
+histories have not diverged):
+
+```bash
+COMPARE=$(gh api "repos/${REPO}/compare/${SOURCE_SHA}...${CURRENT_SHA}" --jq '.status')
+# "ahead" = main advanced past :testing = normal and fine
+# anything else = diverged = abort
+```
+
 ### publish.yml startup_failure = :testing is stale (2026-06-04)
 
 `startup_failure` on `publish.yml` nightly runs means the BST artifact or

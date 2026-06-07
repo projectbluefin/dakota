@@ -150,15 +150,33 @@ jobs:
         run: |
           set -euo pipefail
           CURRENT_SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq '.object.sha')
-          if [[ "${CURRENT_SHA}" != "${SOURCE_SHA}" ]]; then
-            echo "::error::main has advanced since :testing was built."
-            echo "  Built from: ${SOURCE_SHA}"
-            echo "  Current:    ${CURRENT_SHA}"
-            echo "Aborting promotion — re-run after the next testing build completes."
+
+          if [[ "${CURRENT_SHA}" == "${SOURCE_SHA}" ]]; then
+            echo "locked_sha=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
+            echo "Locked main SHA: ${SOURCE_SHA} (exact match)"
+            exit 0
+          fi
+
+          # With continuous builds, main may have advanced since :testing was built
+          # (a new PR could have merged whose build hasn't completed yet). That is
+          # expected and fine — the :testing image is still a valid ancestor of main.
+          # Only fail if the histories have diverged (force-push or accidental reset).
+          COMPARE_JSON=$(gh api "repos/${{ github.repository }}/compare/${SOURCE_SHA}...${CURRENT_SHA}")
+          COMPARE=$(echo "${COMPARE_JSON}" | jq -r '.status')
+          AHEAD_BY=$(echo "${COMPARE_JSON}" | jq -r '.ahead_by')
+
+          if [[ "${COMPARE}" == "ahead" ]]; then
+            echo "main is ${AHEAD_BY} commit(s) ahead of :testing source — :testing is a valid ancestor"
+            echo "locked_sha=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
+            echo "Locked source SHA: ${SOURCE_SHA} (${AHEAD_BY} commits behind main HEAD)"
+          else
+            echo "::error::Cannot promote: compare status is '${COMPARE}'"
+            echo "  :testing source: ${SOURCE_SHA}"
+            echo "  main HEAD:       ${CURRENT_SHA}"
+            echo "Expected 'ahead' (main moved forward) or 'identical', got '${COMPARE}'."
+            echo "main may have diverged — manual investigation required."
             exit 1
           fi
-          echo "locked_sha=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
-          echo "Locked main SHA: ${SOURCE_SHA} (matches tested source)"
 
   # ── Check diff — skip if already promoted ────────────────────────────────
   check-diff:
@@ -295,12 +313,26 @@ jobs:
         run: |
           set -euo pipefail
           CURRENT_SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq '.object.sha')
-          if [ "$CURRENT_SHA" != "$LOCKED_SHA" ]; then
-            echo "ERROR: main advanced during promotion ($LOCKED_SHA → $CURRENT_SHA). Aborting."
-            echo "Untested commits would reach latest/stable. Rerun next cycle."
+          if [[ "${CURRENT_SHA}" == "${LOCKED_SHA}" ]]; then
+            echo "✅ SHA unchanged: ${CURRENT_SHA}"
+            exit 0
+          fi
+
+          # main may have advanced during e2e (expected with continuous builds).
+          # The promotion is digest-pinned so the image content cannot change.
+          # Only abort if histories have diverged — that would indicate a force-push.
+          COMPARE=$(gh api "repos/${{ github.repository }}/compare/${LOCKED_SHA}...${CURRENT_SHA}" \
+            --jq '.status')
+          if [[ "${COMPARE}" == "ahead" ]]; then
+            AHEAD_BY=$(gh api "repos/${{ github.repository }}/compare/${LOCKED_SHA}...${CURRENT_SHA}" \
+              --jq '.ahead_by')
+            echo "✅ main is ${AHEAD_BY} commit(s) ahead of locked SHA (continuous build expected)"
+            echo "  Locked: ${LOCKED_SHA}  Current: ${CURRENT_SHA}"
+          else
+            echo "ERROR: unexpected compare status '${COMPARE}' ($LOCKED_SHA → $CURRENT_SHA)"
+            echo "main may have diverged — manual investigation required."
             exit 1
           fi
-          echo "✅ SHA unchanged: $CURRENT_SHA"
 
       - name: Promote to :latest and :stable
         env:
