@@ -13,7 +13,7 @@ variables:
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-meson.bst
 - freedesktop-sdk.bst:components/python3.bst
-- freedesktop-sdk.bst:components/systemd-libs.bst
+- freedesktop-sdk.bst:components/systemd.bst
 
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
