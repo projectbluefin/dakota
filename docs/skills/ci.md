@@ -35,8 +35,8 @@ Load when debugging CI failures, understanding the build pipeline, or working wi
 |---|---|
 | `.github/workflows/build.yml` | BST build + push artifacts to remote CAS. Fires on merge_group/schedule/dispatch. Does NOT push to GHCR directly. |
 | `.github/workflows/publish.yml` | 4-stage pipeline: setup → publish → e2e-gate → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, smoke-tests, then promotes to `:testing`. |
-| `.github/workflows/release.yml` | Auto-fires after every successful publish. Creates GitHub Release with card image, SBOM diff, and package changelog. |
-| `.github/workflows/weekly-testing-promotion.yml` | Weekly promotion (Sun 06:00 UTC): verifies `:testing` digests, re-tags as `:latest` + `:stable`, fast-forwards `latest`/`stable` branches. |
+| `.github/workflows/release.yml` | Called from `weekly-testing-promotion.yml` after a successful promotion. Creates GitHub Release with card image, SBOM diff, and package changelog. Also available as `workflow_dispatch` for out-of-band cuts. |
+| `.github/workflows/weekly-testing-promotion.yml` | Weekly Tuesday promotion (06:00 UTC): 7-day floor check → verify `:testing` digests → cosign verify → e2e → promote to `:latest`+`:stable` → fast-forward branches → call `release.yml`. Has `environment: production` gate requiring human approval. |
 | `.github/workflows/e2e.yml` | Smoke test via projectbluefin/testsuite. Fires on PR; `should-run` job skips the test when no image-affecting paths changed. |
 
 ## Trigger Behavior
@@ -331,7 +331,48 @@ projects:
           CARGO_PROFILE_RELEASE_LTO: "thin"
 ```
 
-### Manual stable promotion flow (2026-06-04)
+### Promotion pipeline hardening — bonedigger and release race (2026-06-07)
+
+**bonedigger "workflow file issue":** The lifecycle caller (`bonedigger.yml`) was
+pinned to a common SHA that pre-dated `lifecycle.yml` existing in that repo. Also,
+the `brand_emoji` input is not declared by the reusable workflow — passing an
+undeclared input causes a GitHub workflow validation failure. Fix: update the SHA
+pin to a commit where the file exists and remove undeclared inputs.
+
+```bash
+# Find commits that contain the target workflow file
+gh api "repos/projectbluefin/common/commits?path=.github/workflows/lifecycle.yml&per_page=3" \
+  --jq '.[].sha'
+```
+
+**release.yml must not re-discover the publish run independently:** If `release.yml`
+queries `gh run list --limit 1` after the promotion pipeline completes, a concurrent
+publish run for a new SHA can land first and be picked up instead. Always pass the
+promoted `source_sha` and `promoted_digest` as `workflow_call` inputs from the
+promotion pipeline so `release.yml` filters by exact headSha.
+
+**Invalid OCI digest fallback:** Never synthesize an OCI digest from a git SHA
+(`sha256:${git_sha}`). If `skopeo inspect` fails, fail the job — a release with
+a fake digest has wrong verification commands in the release notes.
+
+**`cert-identity-regexp` must be fully anchored:** Cosign uses `MatchString` semantics,
+so a regexp without a trailing `$` matches any URL with that prefix. Always anchor:
+```
+^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml@refs/heads/(main|gh-readonly-queue/main/.+)$
+```
+
+**SBOM artifact expiry fallback:** Build artifacts expire after 30 days. For
+`workflow_dispatch` out-of-band cuts, add a Syft fallback:
+```yaml
+- name: Download SBOM
+  id: sbom_artifact
+  continue-on-error: true
+  uses: actions/download-artifact@...
+- name: Generate SBOM with Syft (fallback)
+  if: steps.sbom_artifact.outcome == 'failure'
+  run: syft "ghcr.io/.../dakota@${DIGEST}" -o spdx-json=sbom-current/dakota.spdx.json
+```
+
 
 Full pipeline to promote `testing` → `stable` manually:
 
