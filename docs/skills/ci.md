@@ -368,9 +368,79 @@ so a regexp without a trailing `$` matches any URL with that prefix. Always anch
   id: sbom_artifact
   continue-on-error: true
   uses: actions/download-artifact@...
+- name: Install Syft (fallback)
+  if: steps.sbom_artifact.outcome == 'failure'
+  id: syft
+  uses: anchore/sbom-action/download-syft@<SHA> # v0
+  with:
+    syft-version: v1.44.0
 - name: Generate SBOM with Syft (fallback)
   if: steps.sbom_artifact.outcome == 'failure'
-  run: syft "ghcr.io/.../dakota@${DIGEST}" -o spdx-json=sbom-current/dakota.spdx.json
+  env:
+    SYFT_CMD: ${{ steps.syft.outputs.cmd }}
+  run: "${SYFT_CMD}" "ghcr.io/.../dakota@${DIGEST}" -o spdx-json=sbom-current/dakota.spdx.json
+```
+Use `anchore/sbom-action/download-syft` (SHA-pinned) instead of `curl .../main/install.sh | sh`.
+The `@main` install script is a mutable supply-chain input even when the version flag is pinned.
+
+### release.yml publish run search must include merge-queue branches (2026-06-07)
+
+`gh run list --branch main` only returns runs whose triggering branch was exactly
+`main`. Publish runs triggered by `workflow_run` from `gh-readonly-queue/main/**`
+(i.e., merge queue builds) are associated with the queue branch, not `main`, in
+the GitHub API. If the promoted `:stable` SHA came from a merge-queue run, the
+`--branch main` filter silently misses it and `release.yml` exits with "no
+successful publish run found."
+
+**Fix:** Drop the `--branch filter and filter by `headBranch` in jq instead:
+```bash
+gh run list \
+  --workflow "Publish Bluefin dakota" \
+  --status success \
+  --limit 100 \
+  --json headSha,headBranch,createdAt,databaseId \
+  | jq -r --arg sha "$SHA" '
+      map(select(
+        .headSha == $sha and
+        (.headBranch == "main" or (.headBranch | test("^gh-readonly-queue/main/")))
+      )) | .[0] // empty'
+```
+
+### workflow_dispatch on publish.yml can promote non-main refs to :testing (2026-06-07)
+
+`publish.yml` has no branch guard on the `promote` job. A manual dispatch from a
+non-main branch flows through e2e and promotes to `:testing`, fast-forwarding the
+`testing` branch to an unmerged commit.
+
+**Fix:** Add a branch guard to the `promote` job:
+```yaml
+promote:
+  needs: [setup, publish, e2e-gate]
+  if: >-
+    needs.e2e-gate.result == 'success' &&
+    (github.event_name == 'workflow_run' || github.ref_name == 'main')
+```
+`workflow_run` events are always safe (they trigger from completed `main`/merge-queue
+builds per the trigger filter in `publish.yml`). Only manual dispatches need the
+`github.ref_name == 'main'` guard.
+
+### release.yml manual dispatch TOCTOU (2026-06-07)
+
+In `workflow_dispatch` mode with no `source_sha`, the original code resolved SHA
+and digest in two separate `skopeo inspect` calls. If `:stable` moved between
+them, the release would pair a wrong SHA with a wrong digest.
+
+**Fix:** One `skopeo inspect --format '{{index .Labels "org.opencontainers.image.revision"}} {{.Digest}}'`
+call extracts both values atomically. Write the digest to `$GITHUB_ENV` and read
+it in the next step — no second skopeo call.
+
+```bash
+INSPECT=$(skopeo inspect --format \
+  '{{index .Labels "org.opencontainers.image.revision"}} {{.Digest}}' \
+  docker://ghcr.io/.../dakota:stable)
+SHA=$(echo "${INSPECT}" | awk '{print $1}')
+STABLE_DIGEST=$(echo "${INSPECT}" | awk '{print $2}')
+echo "STABLE_DIGEST=${STABLE_DIGEST}" >> "$GITHUB_ENV"
 ```
 
 

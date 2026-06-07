@@ -58,31 +58,41 @@ jobs:
             SHA="${INPUT_SHA}"
             echo "Using provided source SHA: ${SHA}"
           else
-            # workflow_dispatch with no sha — resolve from the promoted :stable tag
-            SHA=$(skopeo inspect --format '{{index .Labels "org.opencontainers.image.revision"}}' \
+            # workflow_dispatch with no sha — resolve from the promoted :stable tag.
+            # One skopeo call extracts both SHA and digest atomically to avoid a
+            # TOCTOU window if :stable is re-tagged between two separate lookups.
+            INSPECT=$(skopeo inspect --format '{{index .Labels "org.opencontainers.image.revision"}} {{.Digest}}' \
               docker://ghcr.io/${{ github.repository_owner }}/dakota:stable 2>/dev/null || echo "")
-            if [[ -z "${SHA}" ]]; then
-              echo "::error::Could not resolve source SHA from :stable — pass source_sha explicitly"
+            SHA=$(echo "${INSPECT}" | awk '{print $1}')
+            STABLE_DIGEST=$(echo "${INSPECT}" | awk '{print $2}')
+            if [[ -z "${SHA}" || -z "${STABLE_DIGEST}" ]]; then
+              echo "::error::Could not resolve source SHA/digest from :stable — pass source_sha explicitly"
               exit 1
             fi
-            echo "Resolved source SHA from :stable: ${SHA}"
+            echo "STABLE_DIGEST=${STABLE_DIGEST}" >> "$GITHUB_ENV"
+            echo "Resolved source SHA from :stable: ${SHA}, digest: ${STABLE_DIGEST}"
           fi
 
           SHA7="${SHA:0:7}"
 
           # Find the matching publish run for this exact SHA.
-          # Scanning up to 50 runs ensures we find it even if many builds ran recently.
+          # No --branch filter: publish.yml accepts both main and gh-readonly-queue/main/**
+          # branches, so filtering by branch would miss merge-queue-triggered runs whose
+          # promoted SHA later lands on :stable.
           RUN=$(gh run list \
             --workflow "Publish Bluefin dakota" \
-            --branch main \
             --status success \
-            --limit 50 \
-            --json headSha,createdAt,databaseId \
+            --limit 100 \
+            --json headSha,headBranch,createdAt,databaseId \
             --repo "${{ github.repository }}" \
-            | jq -r --arg sha "$SHA" 'map(select(.headSha == $sha)) | .[0] // empty')
+            | jq -r --arg sha "$SHA" '
+                map(select(
+                  .headSha == $sha and
+                  (.headBranch == "main" or (.headBranch | test("^gh-readonly-queue/main/")))
+                )) | .[0] // empty')
 
           if [[ -z "${RUN}" || "${RUN}" == "null" ]]; then
-            echo "::error::No successful publish run found for SHA ${SHA}"
+            echo "::error::No successful publish run found for SHA ${SHA} on main or merge-queue"
             exit 1
           fi
 
@@ -99,7 +109,8 @@ jobs:
 
       # ── Resolve image digest ──────────────────────────────────────────────
       # For workflow_call, the caller passes the exact promoted digest — no
-      # skopeo probe needed. For workflow_dispatch, resolve from :stable.
+      # skopeo probe needed. For workflow_dispatch, reuse the digest captured
+      # atomically alongside SHA in the step above (no second skopeo call).
       - name: Resolve image digest
         id: digest
         env:
@@ -111,14 +122,20 @@ jobs:
           if [[ -n "${PROVIDED_DIGEST}" ]]; then
             DIGEST="${PROVIDED_DIGEST}"
             echo "Using provided digest: ${DIGEST}"
+          elif [[ -n "${STABLE_DIGEST:-}" ]]; then
+            # Captured atomically with SHA in the previous step — no TOCTOU risk.
+            DIGEST="${STABLE_DIGEST}"
+            echo "Using atomically resolved digest: ${DIGEST}"
           else
+            # workflow_dispatch with explicit source_sha but no digest —
+            # inspect the SHA-tagged image directly.
             DIGEST=$(skopeo inspect --format '{{.Digest}}' \
-              docker://ghcr.io/${{ github.repository_owner }}/dakota:stable 2>/dev/null || echo "")
+              docker://ghcr.io/${{ github.repository_owner }}/dakota:"${SHA}" 2>/dev/null || echo "")
             if [[ -z "${DIGEST}" ]]; then
-              echo "::error::Could not resolve digest from :stable — cannot create release"
+              echo "::error::Could not resolve digest for :${SHA} — the SHA-tagged image may have expired"
               exit 1
             fi
-            echo "Resolved digest from :stable: ${DIGEST}"
+            echo "Resolved digest from :${SHA}: ${DIGEST}"
           fi
 
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
@@ -156,17 +173,23 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: sbom-current
 
+      - name: Install Syft (fallback — artifact expired or unavailable)
+        if: steps.sbom_artifact.outcome == 'failure'
+        id: syft
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          syft-version: v1.44.0
+
       - name: Generate SBOM with Syft (fallback — artifact expired or unavailable)
         if: steps.sbom_artifact.outcome == 'failure'
         env:
           DIGEST: ${{ steps.digest.outputs.digest }}
+          SYFT_CMD: ${{ steps.syft.outputs.cmd }}
         run: |
           set -euo pipefail
           echo "::warning::Build artifact expired or unavailable — generating SBOM with Syft from promoted image"
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-            | sh -s -- -b /usr/local/bin v1.44.0
           mkdir -p sbom-current
-          syft "ghcr.io/${{ github.repository_owner }}/dakota@${DIGEST}" \
+          "${SYFT_CMD}" "ghcr.io/${{ github.repository_owner }}/dakota@${DIGEST}" \
             -o spdx-json=sbom-current/dakota.spdx.json
 
       # ── Create GitHub Release ─────────────────────────────────────────────
