@@ -26,27 +26,29 @@ Load when debugging CI failures, understanding the build pipeline, or working wi
 | Published image | `ghcr.io/projectbluefin/dakota:{testing,latest,stable}` and `:$SHA` |
 | Build logs artifact | `buildstream-logs-x86_64-<variant>` (7-day retention) |
 | Trigger (validate) | `pull_request` — `bst show --deps all`, no CAS |
-| Trigger (build) | `merge_group`, `schedule` (13:00 UTC), `workflow_dispatch` |
-| Nightly schedule rationale | gnome-build-meta nightly finishes ~08:00–11:30 UTC; 13:00 UTC picks up fresh artifacts |
+| Trigger (build) | `merge_group`, `workflow_dispatch` (no daily schedule) |
+**Nightly schedule rationale** — no longer applicable; schedule trigger was removed in favour of continuous builds on every merge.
+
+**Merge queue path:** `build` fires on `merge_group` — full OCI build, real CI gate before merge. On success, `publish.yml` immediately promotes the new image to `:testing`.
 
 ## Workflow Files
 
 | File | Role |
 |---|---|
 | `.github/workflows/build.yml` | BST build + push artifacts to remote CAS. Fires on merge_group/schedule/dispatch. Does NOT push to GHCR directly. |
-| `.github/workflows/publish.yml` | 4-stage pipeline: setup → publish → e2e-gate → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, smoke-tests, then promotes to `:testing`. |
+| `.github/workflows/publish.yml` | 3-stage pipeline: setup → publish → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, then immediately promotes to `:testing` on every successful merge. No e2e gate — that lives only in the weekly promotion. |
 | `.github/workflows/release.yml` | Called from `weekly-testing-promotion.yml` after a successful promotion. Creates GitHub Release with card image, SBOM diff, and package changelog. Also available as `workflow_dispatch` for out-of-band cuts. |
 | `.github/workflows/weekly-testing-promotion.yml` | Weekly Tuesday promotion (06:00 UTC): 7-day floor check → verify `:testing` digests → cosign verify → e2e → promote to `:latest`+`:stable` → fast-forward branches → call `release.yml`. Has `environment: production` gate requiring human approval. |
 | `.github/workflows/e2e.yml` | Smoke test via projectbluefin/testsuite. Fires on PR; `should-run` job skips the test when no image-affecting paths changed. |
 
 ## Trigger Behavior
 
-| Behavior | pull_request | merge_group | schedule | workflow_dispatch |
-|---|---|---|---|---|
-| `validate` job | Yes | No | No | No |
-| `e2e` job | Yes (change-detected) | No | No | Yes |
-| `build` job | No | Yes | Yes | Yes |
-| Push to GHCR? | No | Via publish.yml | Via publish.yml | Via publish.yml |
+| Behavior | pull_request | merge_group | workflow_dispatch |
+|---|---|---|---|
+| `validate` job | Yes | No | No |
+| `e2e` job | Yes (change-detected) | No | Yes |
+| `build` job | No | Yes | Yes |
+| Push to GHCR? | No | Via publish.yml | Via publish.yml |
 
 **PR path:** `validate` + `e2e` (change-detected) — zero remote execution. ~15 min cached, ~30 min cold.
 
@@ -179,6 +181,26 @@ gh run list --repo projectbluefin/dakota --limit 5
 | `update-refs.md` | Understanding the source tracking workflow |
 
 ## Lessons Learned
+
+### Continuous :testing model — every merge ships immediately (2026-06-07)
+
+The pipeline was redesigned so every PR merge produces a new `:testing` image
+without any e2e gate in the publish path. The schedule trigger was removed from
+`build.yml`; builds now only fire on `merge_group` and `workflow_dispatch`.
+
+**New flow:**
+```
+PR merge_group → build.yml → publish.yml → :$sha → :testing  (no e2e)
+                                                           │
+                     weekly-testing-promotion.yml ─────────┘
+                     (e2e gate here, then :stable)
+```
+
+**Implication:** `:testing` may briefly be broken if a PR introduces a regression.
+The e2e gate at the weekly promotion prevents regressions from reaching `:stable`.
+
+**If :testing breaks:** look at the last few merge SHAs and bisect with
+`gh run list --workflow "Publish Bluefin dakota" --limit 10`.
 
 ### publish.yml startup_failure = :testing is stale (2026-06-04)
 

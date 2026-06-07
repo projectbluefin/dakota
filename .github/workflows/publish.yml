@@ -216,32 +216,17 @@ jobs:
           cosign sign -y \
             "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}@${SBOM_DIGEST}"
 
-  # ── E2E gate ─────────────────────────────────────────────────────────────
-  # Smoke-tests the freshly pushed :$sha before promoting to :testing.
-  # Only runs on schedule and workflow_dispatch — merge_group does not
-  # produce :testing so there is nothing to gate.
-  e2e-gate:
-    needs: [setup, publish]
-    if: >-
-      needs.publish.result == 'success' &&
-      (needs.setup.outputs.event == 'schedule' ||
-       needs.setup.outputs.event == 'workflow_dispatch')
-    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@e7f9c65095a0cbf62689a8cd64a471ee4824630c # main
-    with:
-      image: ghcr.io/projectbluefin/dakota:${{ needs.setup.outputs.sha }}
-      suites: smoke
-    secrets: inherit
-
   # ── Promote :testing ──────────────────────────────────────────────────────
-  # Re-tags :$sha as :testing once e2e passes.
-  # Weekly promotion (weekly-testing-promotion.yml) later promotes :testing
-  # to :latest and :stable via digest-pinned re-tagging.
+  # Re-tags :$sha as :testing immediately after a successful publish on any
+  # main or merge-queue build. No e2e gate here — every merged PR ships to
+  # :testing so users always get the latest code.
+  # e2e only gates the weekly :testing → :stable promotion.
   # NVIDIA is continue-on-error so a failing NVIDIA promote does not
   # prevent the default :testing from landing.
   promote:
-    needs: [setup, publish, e2e-gate]
+    needs: [setup, publish]
     if: >-
-      needs.e2e-gate.result == 'success' &&
+      needs.publish.result == 'success' &&
       (github.event_name == 'workflow_run' || github.ref_name == 'main')
     runs-on: ubuntu-24.04
     strategy:

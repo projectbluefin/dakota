@@ -1,11 +1,6 @@
 name: Build Bluefin dakota
 
 on:
-  schedule:
-    # 13:00 UTC daily — gnome-build-meta nightly starts ~02:00 UTC and typically
-    # finishes by ~08:00 UTC (worst-case ~11:30). The 2-hour buffer here handles
-    # normal build-time fluctuations so dakota always picks up the freshest artifacts.
-    - cron: '0 13 * * *'
   pull_request:
     branches: [main]
   merge_group:
@@ -13,8 +8,8 @@ on:
   workflow_dispatch:
     # WARNING: Do not manually dispatch immediately after auto/track-* ref bumps
     # (e.g. Renovate PRs updating gnome-build-meta.bst). Cold builds of GNOME
-    # require gbm.gnome.org to have built the new ref first. The 13:00 UTC
-    # schedule above provides this buffer. Early dispatch = cold build = timeout.
+    # require gbm.gnome.org to have built the new ref first — dispatch too early
+    # and you get a cold build that times out.
 
 permissions: read-all
 
