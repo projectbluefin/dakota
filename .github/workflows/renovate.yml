@@ -14,23 +14,14 @@ concurrency:
   group: renovate
   cancel-in-progress: false
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   renovate:
-    name: Renovate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          persist-credentials: false
-
-      - name: Run Renovate
-        uses: renovatebot/github-action@693b9ef15eec82123529a37c782242f091365961 # v46.1.14
-        with:
-          token: ${{ secrets.RENOVATE_TOKEN }}
-        env:
-          LOG_LEVEL: ${{ inputs.dry_run == true && 'debug' || 'info' }}
-          RENOVATE_DRY_RUN: ${{ inputs.dry_run == true && 'full' || '' }}
+    # BST note: Renovate targets the testing branch (see renovate.json5).
+    # The testing → main promotion follows the BST build-order discipline.
+    uses: projectbluefin/actions/.github/workflows/reusable-renovate.yml@fcd2a6bac15f2037df2e62572eef7a70fd25759f # v1
+    with:
+      dry_run: ${{ inputs.dry_run == true }}
+    secrets:
+      renovate_token: ${{ secrets.RENOVATE_TOKEN }}
