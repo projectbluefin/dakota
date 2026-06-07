@@ -353,6 +353,10 @@ fix must go in ghost's local config — **never in the element itself**. Putting
 in the element invalidates the remote CAS artifact (cache-bust), forcing CI to
 rebuild an element it was already handling correctly.
 
+**Real example (2026-06-07):** Adding `CARGO_PROFILE_RELEASE_LTO: "thin"` to
+`uutils-coreutils.bst` to fix a SIGABRT on ghost caused a 626-element cold rebuild
+in CI. The build ran for 5h31m and timed out without completing (330-minute limit).
+
 **Wrong:** `elements/bluefin/foo.bst` + `environment: CARGO_PROFILE_RELEASE_LTO: "thin"`
 **Right:** ghost `~/.config/buildstream/userconfig.yaml` project/element environment override
 
@@ -365,6 +369,41 @@ projects:
         environment:
           CARGO_PROFILE_RELEASE_LTO: "thin"
 ```
+
+### Diagnosing a build timeout (330-minute limit) (2026-06-07)
+
+A build that hits the 330-minute GitHub Actions timeout shows:
+```
+The action 'Build OCI image with BuildStream' has timed out after 330 minutes.
+```
+
+No element "failed" — the build was still running. Download the logs to find what
+was active at timeout:
+
+```bash
+gh run download <run-id> --repo projectbluefin/dakota \
+  --name buildstream-logs-x86_64-default -D /tmp/bst-logs
+
+# Find elements that were waiting for remote execution when the timeout hit:
+grep -rl "Waiting for the remote build to complete" /tmp/bst-logs/ | while read f; do
+  tail -1 "$f" | grep -q "Waiting" && echo "$f"
+done
+
+# Find the latest-timestamped log files (actively building at timeout):
+find /tmp/bst-logs -name "*.log" | grep -oP '\d{8}-\d{6}' | sort | tail -10
+```
+
+**Root causes of timeouts:**
+
+| Cause | Signal | Fix |
+|---|---|---|
+| Element change invalidated CAS artifact | Many elements building from scratch (600+), cold build of all dependents | Revert the element change; put machine-local workarounds in userconfig |
+| CAS server slow / degraded | Elements stuck "Waiting for the remote build to complete" for hours | Check CAS health; re-trigger after recovery |
+| Single very slow element (e.g. webkitgtk) is a bottleneck | One element dominates build time | Normal; just needs a warm cache hit |
+
+**After fixing the root cause**, the re-triggered build will use the existing CAS
+artifacts for all elements whose cache keys are unchanged — typically a warm build
+completes in under 90 minutes.
 
 ### Promotion pipeline hardening — bonedigger and release race (2026-06-07)
 
