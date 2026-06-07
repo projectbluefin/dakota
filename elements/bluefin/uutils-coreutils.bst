@@ -1,13 +1,5 @@
 kind: make
 
-environment:
-  # uutils Cargo.toml sets lto=true (fat LTO) + codegen-units=1 in the release
-  # profile. Fat LTO with codegen-units=1 causes heap corruption in rustc's LLVM
-  # codegen pass when building inside BST's btrfs overlay sandbox on ghost
-  # (realloc(): invalid next size / SIGABRT). Override to thin LTO which uses far
-  # less memory per compilation unit and is stable in this environment.
-  CARGO_PROFILE_RELEASE_LTO: "thin"
-
 config:
   build-commands:
   - cargo build --release --features feat_os_unix --no-default-features
