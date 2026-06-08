@@ -7,8 +7,17 @@ changelog, switch/pin).
 
 ## Status
 
-**Draft.** Scaffolding only — does not build yet. See the unchecked
-boxes in `elements/bluefin/finupdate.bst` for the gating work.
+Patches proven end-to-end in a fedora-toolbox loop in the finupdate
+repo (`just toolbox-test-cc-panel`); a patched gnome-control-center
+launches cleanly on the new panel. The two .patch files under
+`patches/gnome-build-meta/finupdate-cc-panel-*.patch` were generated
+by that loop and apply cleanly against both `gnome-49` and `gnome-50`
+branches of cc.
+
+Still gating:
+- libfinupdate cargo2 deps lock in `elements/bluefin/finupdate.bst`
+- the override-element wiring that pulls the panel sources + the two
+  patches into `core/gnome-control-center.bst` (see "Approach" below).
 
 ## Shape of the integration
 

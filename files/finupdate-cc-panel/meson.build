@@ -10,7 +10,7 @@ i18n.merge_file(
       output: 'gnome-@0@-panel.desktop'.format(panel_name),
   po_dir: po_dir,
      install: true,
-  install_dir: desktopdir,
+  install_dir: control_center_desktopdir,
 )
 
 resource_files = files('updates.gresource.xml')
