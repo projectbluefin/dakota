@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/gnome/control-center/updates">
+    <file preprocess="xml-stripblanks">cc-updates-panel.ui</file>
+  </gresource>
+</gresources>
