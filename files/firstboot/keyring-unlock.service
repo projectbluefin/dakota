@@ -1,0 +1,12 @@
+[Unit]
+Description=Unlock login keyring on boot
+After=local-fs.target
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/gnome-keyring-daemon --daemon --launch-app
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
