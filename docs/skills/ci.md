@@ -182,6 +182,49 @@ gh run list --repo projectbluefin/dakota --limit 5
 
 ## Lessons Learned
 
+### crun 1.21 (resolute) breaks just sbom on GHA — use --runtime runc (2026-06-08)
+
+`update-podman: true` in `setup-runner` installs crun 1.21 from Ubuntu 26.04
+(resolute). This version has two new failure modes that break `just sbom` on
+GHA runners:
+
+1. **seccomp BPF linkat EPERM** — crun caches compiled seccomp BPF programs
+   via `linkat()`. The GHA runner kernel's `fs.protected_hardlinks` or user-
+   namespace restrictions block the hard-link from `.cache/seccomp/` to the
+   container bundle path:
+   ```
+   crun: linkat `.cache/seccomp/<hash>` to `<container-id>/seccomp.bpf`: Permission denied
+   ```
+
+2. **systemd probe EACCES** — crun probes systemd presence and caches the result
+   in `$XDG_RUNTIME_DIR/crun/.cache/systemd-missing-properties`. On GHA the
+   runtime dir is either uninitialised or was created by root in a prior privileged
+   step, causing user 1001 to get EACCES:
+   ```
+   crun: opendir `/run/user/1001/crun/.cache/systemd-missing-properties`: Permission denied
+   ```
+
+**Fix:** add `--runtime runc` to both `podman run` calls in `just sbom`. runc is
+always available on ubuntu-24.04 GHA runners (Docker installs it). runc has
+neither the seccomp BPF caching nor the systemd probing.
+
+**Wrong partial fixes (both insufficient alone):**
+- Dropping `--privileged` (#745) — doesn't prevent either error
+- Adding `--security-opt seccomp=unconfined` (#747) — fixes error 1 but not error 2
+
+**Do not** add `seccomp=unconfined` as a workaround; use `--runtime runc` instead.
+`bst show` and `buildstream-sbom` are read-only BST operations; runc is fully
+sufficient.
+
+```justfile
+# ✅ correct
+podman run --rm --network=host --runtime runc ...
+
+# ❌ wrong — triggers crun 1.21 failure modes
+podman run --rm --network=host ...
+podman run --rm --network=host --security-opt seccomp=unconfined ...
+```
+
 ### Continuous :testing model — every merge ships immediately (2026-06-07)
 
 The pipeline was redesigned so every PR merge produces a new `:testing` image
