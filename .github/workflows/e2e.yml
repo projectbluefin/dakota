@@ -5,13 +5,12 @@
 # handled there — see:
 #   https://github.com/projectbluefin/testsuite/tree/main/.github/actions/gnome-e2e
 #
-# PRs run 'smoke'. workflow_dispatch can run any supported GUI suite.
+# Only runs on workflow_dispatch — PRs do not publish a testing build first,
+# so running smoke here would test a stale :testing image, not the PR's code.
 
 name: E2E Tests — GNOME 50
 
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       image:
@@ -32,27 +31,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  should-run:
-    runs-on: ubuntu-latest
-    outputs:
-      result: ${{ steps.check.outputs.result }}
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          fetch-depth: 0
-      - id: check
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "result=true" >> "$GITHUB_OUTPUT"
-          else
-            changed=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- \
-              elements/ files/ patches/ Justfile project.conf | wc -l)
-            echo "result=$([[ $changed -gt 0 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          fi
-
   e2e:
-    needs: should-run
-    if: needs.should-run.outputs.result == 'true'
     uses: projectbluefin/testsuite/.github/workflows/e2e.yml@e7f9c65095a0cbf62689a8cd64a471ee4824630c # main
     with:
       image: ${{ github.event.inputs.image || 'ghcr.io/projectbluefin/dakota:testing' }}
