@@ -17,7 +17,7 @@ jobs:
     # @main is intentional: projectbluefin/bonedigger has no versioned releases.
     # projectbluefin/ refs are managed floating tags, exempt from the
     # no-floating-action-tags hook. See docs/skills/ci-tooling.md.
-    uses: projectbluefin/bonedigger/.github/workflows/lifecycle.yml@main
+    uses: projectbluefin/bonedigger/.github/workflows/lifecycle.yml@af62628cb964b7529fbd869ff7eac60bcf35713a # main
     with:
       brand_name: "Bluefin"
       brand_emoji: "🦖"
