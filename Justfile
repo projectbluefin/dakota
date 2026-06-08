@@ -944,7 +944,7 @@ sbom variant="default":
     echo "==> Priming BST generated source cache (${ELEMENT})..."
     podman run --rm \
         --network=host \
-        --security-opt seccomp=unconfined \
+        --runtime runc \
         -v "{{justfile_directory()}}:/src:rw" \
         -v "${HOME}/.cache/buildstream:/root/.cache/buildstream:rw" \
         -v "${HOME}/.config/buildstream-generate:/root/.config/buildstream-generate:rw" \
@@ -959,7 +959,7 @@ sbom variant="default":
     # once the project publishes one.
     podman run --rm \
         --network=host \
-        --security-opt seccomp=unconfined \
+        --runtime runc \
         -v "{{justfile_directory()}}:/src:rw" \
         -v "${HOME}/.cache/buildstream:/root/.cache/buildstream:rw" \
         -v "${HOME}/.config/buildstream-generate:/root/.config/buildstream-generate:rw" \
