@@ -370,6 +370,79 @@ projects:
           CARGO_PROFILE_RELEASE_LTO: "thin"
 ```
 
+### Diagnosing a slow in-progress build via GitHub API (2026-06-07)
+
+When a build has been running for 2–3+ hours and you want to know what's being
+compiled without waiting for a timeout:
+
+```bash
+# 1. Find the in-progress build and its job IDs
+gh api repos/projectbluefin/dakota/actions/runs/<run-id>/jobs | python3 -c "
+import json, sys
+from datetime import datetime, timezone
+d = json.load(sys.stdin)
+now = datetime.now(timezone.utc)
+for job in d.get('jobs', []):
+    if job.get('started_at'):
+        s = datetime.fromisoformat(job['started_at'].replace('Z','+00:00'))
+        mins = int((now - s).total_seconds() / 60)
+        print(f\"{job['id']} | {job['status']} | {mins}m | {job['name'][:60]}\")
+"
+
+# 2. Fetch the live log (note: truncated at ~23K lines for long builds)
+gh api repos/projectbluefin/dakota/actions/jobs/<job-id>/logs > /tmp/bst-live.log
+
+# 3. Count cache hits vs elements being compiled
+grep -c "SKIPPED" /tmp/bst-live.log          # cache hits
+grep "Running commands" /tmp/bst-live.log | tail -20  # what's actively building
+
+# 4. See which upstream elements are being compiled (indicates junction drift)
+grep "START.*Running commands" /tmp/bst-live.log | grep -oE "\[.*\]" | sort -u
+```
+
+**Important:** The live log endpoint is a snapshot, not a stream. For builds
+running > ~90 minutes, the log may be stale by 60–90 minutes relative to current
+wall-clock time. If the last log timestamp is behind by > 1 hour, the build is
+still running but log data is not being returned. Use `gh api
+repos/.../actions/runs/<id>/jobs` to confirm `status: in_progress`.
+
+**Deciding whether to re-trigger:** A build making steady progress on
+gnome-build-meta `core-deps/` elements is normal cache-warming after a GNOME
+nightly — let it run. Only re-trigger if:
+- The run hits a timeout error
+- Elements are stuck "Waiting for the remote build to complete" for > 30 min (CAS issue)
+- The build failed with a compilation error
+
+### gnome-build-meta nightly delta builds (2026-06-07)
+
+The GNOME upstream nightly (~08:00 UTC) updates a batch of `core-deps/` elements
+in gnome-build-meta. The first build that runs after a nightly must recompile
+those elements from scratch. This is **expected and not a problem.**
+
+**Typical pattern:**
+- 1,000+ elements: SKIPPED (cache hits from the previous build)
+- 10–30 `core-deps/` elements: recompiled (changed in nightly)
+- Each element compiles in 1–5 minutes; total extra time: ~60–120 minutes
+- Build completes well within the 330-minute timeout
+
+**Elements commonly rebuilt after a nightly:** `protobuf`, `folks`, `sofia-sip`,
+`procps`, `containers-common`, `libvirt-glib`, `spice-gtk`, `foundry`, `feedbackd`,
+`jsonrpc-glib`, `libgit2-glib`.
+
+**How to confirm it's a nightly delta (not a cache bust):**
+```bash
+# Check which junction commit the failing build used:
+grep "Fetching from.*gnome-build-meta" /tmp/bst-live.log
+
+# Compare to the junction ref pinned in the element:
+grep "ref:" elements/gnome-build-meta.bst
+```
+If the junction ref in `elements/gnome-build-meta.bst` matches what the build
+fetched, the cache miss is upstream drift, not a local element change.
+
+**After a nightly delta completes**, subsequent builds are fast again (< 90 min)
+because all newly-compiled elements land in the remote CAS.
+
 ### Diagnosing a build timeout (330-minute limit) (2026-06-07)
 
 A build that hits the 330-minute GitHub Actions timeout shows:
