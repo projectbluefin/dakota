@@ -1,0 +1,20 @@
+name: Release Reminder
+
+on:
+  schedule:
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  reminder:
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    uses: projectbluefin/actions/.github/workflows/reusable-release-reminder.yml@main
+    with:
+      days_warn: 7
+      days_escalate: 14
+    secrets: inherit

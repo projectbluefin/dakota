@@ -1,0 +1,60 @@
+name: Execute Release
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions: {}
+
+jobs:
+  execute:
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'auto/promote-testing-to-main'
+    permissions:
+      actions: read
+      contents: write
+      issues: write
+      packages: write
+      pull-requests: write
+    uses: projectbluefin/actions/.github/workflows/reusable-execute-release.yml@main
+    with:
+      registry: ghcr.io/projectbluefin
+      variants: >-
+        [
+          {"image":"dakota","source_tag":"testing","target_tag":"stable"},
+          {"image":"dakota-nvidia","source_tag":"testing","target_tag":"stable"}
+        ]
+      cosign_identity_regexp: ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
+    secrets: inherit
+
+  release-notes:
+    needs: [execute]
+    if: always() && needs.execute.result == 'success'
+    permissions:
+      contents: write
+      id-token: write
+      packages: read
+    uses: projectbluefin/actions/.github/workflows/reusable-release.yml@main
+    with:
+      stream_name: stable
+      image: ghcr.io/projectbluefin/dakota
+      generate_sbom_inline: true
+      checkout_ref: main
+      project_name: Bluefin dakota
+      badge_label: Stable
+      accent_color: "#0ea5e9"
+      cert_identity_regexp: >-
+        ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
+      notable_packages: >-
+        [
+          {"sbom_name": "kernel", "label": "Kernel"},
+          {"sbom_name": "gnome-shell", "label": "GNOME Shell"},
+          {"sbom_name": "flatpak", "label": "Flatpak"},
+          {"sbom_name": "bootc", "label": "bootc"}
+        ]
+      docs_url: https://docs.projectbluefin.io/changelogs
+    secrets: inherit
