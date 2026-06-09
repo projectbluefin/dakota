@@ -2,9 +2,9 @@ name: Build Bluefin dakota
 
 on:
   pull_request:
-    branches: [main, next]
+    branches: [main, next, testing]
   merge_group:
-    branches: [main, next]
+    branches: [main, next, testing]
   workflow_dispatch:
     # WARNING: Do not manually dispatch immediately after auto/track-* ref bumps
     # (e.g. Renovate PRs updating gnome-build-meta.bst). Cold builds of GNOME
