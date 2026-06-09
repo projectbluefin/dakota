@@ -311,11 +311,19 @@ jobs:
         run: |
           # Fast-forward the testing branch to the promoted SHA.
           # Creates the branch if it doesn't exist yet (first run after setup).
-          gh api repos/${{ github.repository }}/git/refs/heads/testing \
-            --method PATCH \
-            --field sha="$BUILD_SHA" \
-            --field force=false 2>/dev/null || \
-          gh api repos/${{ github.repository }}/git/refs \
-            --method POST \
-            --field ref="refs/heads/testing" \
-            --field sha="$BUILD_SHA"
+          # No-op if testing is already at BUILD_SHA (idempotent re-runs).
+          CURRENT_SHA=$(gh api repos/${{ github.repository }}/git/refs/heads/testing \
+            --jq .object.sha 2>/dev/null || echo "")
+          if [ "$CURRENT_SHA" = "$BUILD_SHA" ]; then
+            echo "testing branch already at $BUILD_SHA — nothing to do"
+          elif [ -z "$CURRENT_SHA" ]; then
+            gh api repos/${{ github.repository }}/git/refs \
+              --method POST \
+              --field ref="refs/heads/testing" \
+              --field sha="$BUILD_SHA"
+          else
+            gh api repos/${{ github.repository }}/git/refs/heads/testing \
+              --method PATCH \
+              --field sha="$BUILD_SHA" \
+              --field force=false
+          fi
