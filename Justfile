@@ -546,10 +546,11 @@ show-me-the-future:
     fi
 
 # ── Chunkah ──────────────────────────────────────────────────────────
-# Use the pre-built chunkah image from quay.io
-# TODO: once coreos/chunkah#113 lands (libc fallback for xattr reads),
-# the overlay + xattr-apply step can be removed. chunkah can then be run
-# with LD_PRELOAD=fakecap.so FAKECAP_MANIFEST=.../fakecap-manifest.tsv.
+# Use the pre-built chunkah image from quay.io (v0.6.0).
+# coreos/chunkah#113 is closed — the resolution is this physical overlay+xattr
+# approach, not a libc fallback in chunkah. The overlay+fakecap-restore path
+# remains required because chunkah's rustix xattr backend uses raw syscalls that
+# bypass LD_PRELOAD, so xattrs must be physically applied to a writable overlay.
 # See also: projectbluefin/dakota#231.
 chunkify image_ref:
     #!/usr/bin/env bash
@@ -605,9 +606,11 @@ chunkify image_ref:
     # Run chunkah against the overlay (bind-mounted read-only).
     # --max-layers 120 balances layer granularity with registry storage space.
     # CHUNKAH_CONFIG_STR preserves OCI labels (containers.bootc=1).
-    # chunkah image pinned by tag+digest for reproducibility
+    # chunkah image pinned by tag+digest for reproducibility.
     # Pre-pull with retries so transient registry 5xx errors don't abort the run.
-    CHUNKAH_REF="quay.io/coreos/chunkah:v0.5.0@sha256:352097f3d32186ac11082f8b74cd544678b00388b50c96ba5c8e79503a454fe3"
+    # Note: coreos/chunkah#113 was closed — the resolution is this overlay+xattr approach,
+    # not a libc fallback in chunkah. The overlay+fakecap path stays required.
+    CHUNKAH_REF="quay.io/coreos/chunkah:v0.6.0@sha256:ff8b8b466a942ec6000445d4001fc661e2fc5a952ad9ee29b4de9ab09d1d1708"
     for attempt in 1 2 3; do
         $SUDO_CMD podman pull "$CHUNKAH_REF" && break
         echo "==> chunkah pull attempt $attempt failed, retrying in 10s..."
