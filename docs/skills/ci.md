@@ -585,3 +585,43 @@ Step 4 requires approval at: https://github.com/projectbluefin/dakota/deployment
 
 The GitHub release (notes + card + SBOM) is created automatically by
 `release.yml` after every successful `publish.yml` run — no manual step needed.
+
+### check-diff skip silently skips missing variant :stable tags (2026-06-08)
+
+`check-diff` compares `dakota:testing` vs `dakota:latest` only. If they match,
+`has_diff=false` and the entire `promote` matrix is skipped — including the
+nvidia variant. This means if `dakota-nvidia:stable` was never created (e.g.,
+nvidia `:testing` didn't exist during the first promotion that set `:latest`),
+it will silently never get set on subsequent runs where the default image hasn't
+changed.
+
+**How it breaks:**
+
+1. First promotion: NVIDIA `:testing` not found → `has_nvidia=false` → nvidia skipped
+2. Next promotion: NVIDIA `:testing` now exists, but `dakota:testing == dakota:latest`
+   → `has_diff=false` → entire promote job skipped → `dakota-nvidia:stable` never set
+
+**Fix (manual):** Copy from the matching `:testing` digest directly:
+
+```bash
+# Confirm revision matches dakota:stable
+skopeo inspect docker://ghcr.io/projectbluefin/dakota:stable \
+  | jq '.Labels["org.opencontainers.image.revision"]'
+skopeo inspect docker://ghcr.io/projectbluefin/dakota-nvidia:testing \
+  | jq '.Labels["org.opencontainers.image.revision"]'
+
+# Get the testing digest
+DIGEST=$(skopeo inspect docker://ghcr.io/projectbluefin/dakota-nvidia:testing \
+  | jq -r '.Digest')
+
+# Copy to :stable (login with gh auth token first)
+GH_TOKEN=$(gh auth token)
+skopeo login ghcr.io --username <your-user> --password "$GH_TOKEN"
+skopeo copy \
+  "docker://ghcr.io/projectbluefin/dakota-nvidia@${DIGEST}" \
+  "docker://ghcr.io/projectbluefin/dakota-nvidia:stable"
+```
+
+**Underlying bug:** `check-diff` should also detect missing variant stable tags
+and set `has_diff=true` in that case, forcing the promote job to run even when
+the default image hasn't changed.
