@@ -44,7 +44,7 @@ jobs:
       image: ghcr.io/projectbluefin/dakota
       generate_sbom_inline: true
       checkout_ref: main
-      project_name: Bluefin dakota
+      project_name: Dakota
       badge_label: Stable
       accent_color: "#0ea5e9"
       cert_identity_regexp: >-
