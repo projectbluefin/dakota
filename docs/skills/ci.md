@@ -830,3 +830,4 @@ on `main` that touch `Justfile` or `.github/`.
 On days where gnome-build-meta `master` does not advance, **no build fires**.
 For a guaranteed nightly, a `schedule:` trigger on `next` is needed in
 `build.yml`. This is a known gap — track it if builds go stale.
+
