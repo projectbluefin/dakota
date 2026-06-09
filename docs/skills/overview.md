@@ -31,6 +31,7 @@ Load when you need context on what dakota is, how it differs from production Blu
 
 **Production image = `ghcr.io/projectbluefin/dakota:stable`.**
 - Streams: `:testing` (nightly, e2e-gated), `:latest` + `:stable` (weekly promotion)
+- Rolling nightly stream: `:next` / `:btw` (GNOME 51 master — see below)
 - When someone says "is X in the image", check the GHCR image via `skopeo inspect` or `podman run --rm` — not a local machine unless explicitly asked.
 
 **Verify hypothesis before stating root cause.**
@@ -44,7 +45,44 @@ freedesktop-sdk provides glibc/systemd/kernel, gnome-build-meta provides GNOME S
 
 **Key positioning:** Dakota is a **curated subset** of production Bluefin, not a 1:1 clone. It intentionally includes things production Bluefin doesn't have (sudo-rs, uutils-coreutils, GNOME nightly) and intentionally omits things that don't make sense for a from-source build (Nvidia drivers, ZFS, enterprise AD/Kerberos).
 
-Published image: `ghcr.io/projectbluefin/dakota:{testing,latest,stable}`
+Published image: `ghcr.io/projectbluefin/dakota:{testing,latest,stable,:next,:btw}`
+
+## Image Streams
+
+| Tag | Branch | GNOME | Cadence | Stability |
+|-----|--------|-------|---------|-----------|
+| `:testing` | `main` | GNOME 50 (stable) | Every merged PR | e2e-gated |
+| `:latest` / `:stable` | `main` | GNOME 50 (stable) | Weekly promotion | Production |
+| `:next` | `next` | GNOME 51 (master) | On junction bump (~nightly) | Experimental |
+| `:btw` | `next` | GNOME 51 (master) | Same as `:next`, nvidia variant | Experimental |
+
+### `:next` / `:btw` — Rolling GNOME 51 stream
+
+`:next` is dakota's fastest variant — tracks gnome-build-meta `master` (GNOME 51
+development branch). It is positioned as the arch-competitor stream: newest
+GNOME Shell, newest GTK, newest everything.
+
+**Key differences from `main`:**
+- `gnome-build-meta.bst` tracks `master` (not `gnome-50`)
+- No bootc override (GNOME 51 master ships current bootc)
+- Junction bumps are **fully automated** — `track-next-junctions.yml` at 20:00
+  UTC opens auto-merge PRs; no human review required
+- **No promotion to `:stable`** — ever. This stream does not feed the weekly
+  release pipeline.
+- Fixes from `main` (sbom, CI) must be **manually cherry-picked** to `next` —
+  they do not land automatically.
+
+**When working on `next`:**
+```bash
+git checkout upstream/next -b fix/my-next-fix
+git push upstream fix/my-next-fix:next   # push directly, no PR needed for fixes
+```
+
+**Sync fixes from main:**
+```bash
+git log upstream/next..upstream/main --oneline -- Justfile .github/
+git cherry-pick <shas>
+```
 
 **Historical path note:** the repo still uses `bluefin` in key filenames such as
 `elements/bluefin/*` and `oci/bluefin.bst`. Those are Dakota paths, not proof

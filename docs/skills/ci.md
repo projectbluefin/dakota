@@ -682,3 +682,78 @@ required. This is intentional and differs from core junction bumps on `main`
 
 `track-next-junctions.yml` schedules nightly junction tracking on the `next`
 branch. PRs it opens get auto-merged once required checks pass.
+
+### export/publish jobs must skip storage-service — remote CAS quota too small for GNOME 51 (2026-06-09)
+
+**Symptom:** `bst export` in the publish job fails with:
+```
+OutOfSpaceException: Insufficient storage quota
+errMsg = "Insufficient storage quota" (buildboxcommon_lrulocalcas.cpp:383)
+```
+The blob is `~8.5 GB` (GNOME 51 root artifact is significantly larger than GNOME 50).
+
+**Root cause:** `cache.storage-service` in the BST config routes the local casd
+through `cache.projectbluefin.io`. The remote server's per-client storage quota
+is exceeded when materialising the full artifact for export. Build jobs are fine
+because they write blobs incrementally as they are built; export pulls the entire
+artifact at once.
+
+**Fix (already in `generate-bst-ci-config/action.yml`):**
+`cache.storage-service` is only written when `enable-push: true` (build jobs).
+Export/publish jobs (`enable-push: false`) use local disk for the casd.
+The runner's BTRFS volume has sufficient space for export.
+
+**Do not revert this.** Any future regression will show this same symptom on
+the `next`/`:btw` stream, which produces the largest artifacts.
+
+### First cold build of next branch will timeout — retrigger until cache warms (2026-06-09)
+
+The `next` branch tracks gnome-build-meta `master` (GNOME 51+). The first build
+after branching or a major gnome-build-meta ref bump is a **full cold build** of
+the entire GNOME stack — ~700+ elements. This exceeds the 330-minute GHA timeout.
+
+**This is expected and normal.** Each run pushes built artifacts to
+`cache.projectbluefin.io`. Simply retrigger the build — each run picks up from
+where the previous one left off:
+
+```bash
+gh workflow run build.yml --repo projectbluefin/dakota --ref next
+```
+
+Typically takes 2–3 runs to warm the full cache. Subsequent builds (after
+junction bumps) are incremental (~3–25 min).
+
+**Indicator that cache is warm:** build jobs complete in <5 minutes — all
+artifacts are cache hits and no compilation occurs.
+
+### next branch needs manual cherry-picks of main fixes (2026-06-09)
+
+`next` is a long-lived parallel branch. Bug fixes merged to `main`
+(e.g., sbom crun fixes, CI improvements) do **not** automatically land on `next`.
+
+Before debugging a failure on `next`, check if the same fix is already on `main`:
+
+```bash
+git log upstream/next..upstream/main --oneline -- Justfile .github/
+```
+
+Cherry-pick selectively:
+```bash
+git checkout upstream/next -b fix/next-sync
+git cherry-pick <sha1> <sha2> <sha3>
+git push upstream fix/next-sync:next
+```
+
+Commits to watch for: any `fix(sbom):`, `fix(ci):`, or `fix(publish):` commits
+on `main` that touch `Justfile` or `.github/`.
+
+### :next build only fires on junction bumps — not a guaranteed nightly (2026-06-09)
+
+`build.yml` has no `schedule:` trigger. The `next` branch builds when:
+1. `track-next-junctions.yml` bumps gnome-build-meta master (20:00 UTC nightly,
+   only if upstream advanced that day) → auto-merge PR → merge_group build
+2. Manual `workflow_dispatch`
+
+On days where gnome-build-meta `master` does not advance, **no build fires**.
+For a guaranteed nightly, a `schedule:` trigger on `next` is needed in
+`build.yml`. This is a known gap — track it if builds go stale.
