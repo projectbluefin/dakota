@@ -304,7 +304,7 @@ jobs:
           $PUSH_OK || { echo "ERROR: all push attempts failed for :btw"; exit 1; }
 
       - name: Fast-forward testing branch
-        if: matrix.image_suffix == '' && needs.setup.outputs.branch == 'main'
+        if: matrix.image_suffix == '' && (needs.setup.outputs.branch == 'main' || startsWith(needs.setup.outputs.branch, 'gh-readonly-queue/main/'))
         env:
           BUILD_SHA: ${{ needs.setup.outputs.sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -15,8 +15,8 @@ env:
 jobs:
   # ── Track core junctions for next (btw stream) ─────────────────
   # Bumps gnome-build-meta.bst (master) and freedesktop-sdk.bst atomically on
-  # the next branch. Opens a PR against next — no auto-merge, junction
-  # bumps require human review.
+  # the next branch. Opens a PR against next with auto-merge enabled —
+  # next is a fully automated rolling nightly stream, no human gate required.
   #
   # When gnome-build-meta cuts a stable branch (e.g. gnome-51 ~Sep 2026), update
   # track: master → track: gnome-51 in elements/gnome-build-meta.bst on next.
