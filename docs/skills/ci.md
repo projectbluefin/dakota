@@ -625,3 +625,60 @@ skopeo copy \
 **Underlying bug:** `check-diff` should also detect missing variant stable tags
 and set `has_diff=true` in that case, forcing the promote job to run even when
 the default image hasn't changed.
+
+### Testing branch fast-forward is idempotent — GitHub API 422 on same SHA (2026-06-08)
+
+**Symptom:** `publish.yml` promote job fails with:
+```
+{"message":"Update is not a fast forward",...}
+{"message":"Reference already exists",...}
+```
+Exit code 1 even though the image was published successfully.
+
+**Root cause:** The original fast-forward step used a PATCH-then-POST fallback:
+1. PATCH `refs/heads/testing` → GitHub returns 422 "Update is not a fast forward" when
+   the ref is already at the target SHA (no-op case)
+2. POST fallback → GitHub returns 422 "Reference already exists"
+
+Both fail, causing the step to fail even though nothing needed updating.
+
+**Fix:** Check the current SHA first; only PATCH or POST when actually needed:
+```yaml
+CURRENT_SHA=$(gh api repos/${{ github.repository }}/git/refs/heads/testing \
+  --jq .object.sha 2>/dev/null || echo "")
+if [ "$CURRENT_SHA" = "$BUILD_SHA" ]; then
+  echo "testing branch already at $BUILD_SHA — nothing to do"
+elif [ -z "$CURRENT_SHA" ]; then
+  gh api repos/${{ github.repository }}/git/refs --method POST \
+    --field ref="refs/heads/testing" --field sha="$BUILD_SHA"
+else
+  gh api repos/${{ github.repository }}/git/refs/heads/testing \
+    --method PATCH --field sha="$BUILD_SHA" --field force=false
+fi
+```
+
+### Merge-queue head_branch is never 'main' — use startsWith guard (2026-06-08)
+
+When a PR merges via GitHub's merge queue, `github.event.workflow_run.head_branch`
+(and `needs.setup.outputs.branch`) is `gh-readonly-queue/main/pr-N`, **never** `main`.
+
+Any `if:` condition that checks `branch == 'main'` will silently skip for all
+merge-queue merges (i.e., every normal PR merge).
+
+**Correct pattern:**
+```yaml
+if: >-
+  matrix.image_suffix == '' &&
+  (needs.setup.outputs.branch == 'main' ||
+   startsWith(needs.setup.outputs.branch, 'gh-readonly-queue/main/'))
+```
+
+### :next/:btw stream — fully automated, no human gate (2026-06-08)
+
+The `next` branch (`:next`/`:btw` tags) is a continuously rolling GNOME OS
+nightly stream. Junction bumps on `next` use auto-merge — no human review
+required. This is intentional and differs from core junction bumps on `main`
+(which require human review per `track-bst-sources.yml`).
+
+`track-next-junctions.yml` schedules nightly junction tracking on the `next`
+branch. PRs it opens get auto-merged once required checks pass.
