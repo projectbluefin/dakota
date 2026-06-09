@@ -89,6 +89,14 @@ runs:
               client-key: /src/client.key
               client-cert: /src/client.crt
 
+        BSTCONFCACHE
+
+          # storage-service routes the local casd through the remote server.
+          # Export/publish jobs skip this — the remote server's per-client quota
+          # is too small to materialise large (GNOME 51+) artifacts during export.
+          # Build jobs use it so artifacts are pushed directly to the remote CAS.
+          if [[ "${ENABLE_PUSH:-true}" == "true" ]]; then
+            cat >> buildstream-ci.conf <<'BSTCONFSTORAGE'
         cache:
           storage-service:
             url: https://cache.projectbluefin.io:11002
@@ -100,7 +108,8 @@ runs:
             auth:
               client-key: /src/client.key
               client-cert: /src/client.crt
-        BSTCONFCACHE
+        BSTCONFSTORAGE
+          fi
 
           if [[ "$ENABLE_REMOTE_EXECUTION" == "true" ]]; then
             cat >> buildstream-ci.conf <<'BSTCONFREMOTE'
