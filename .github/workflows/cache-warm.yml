@@ -27,7 +27,7 @@ jobs:
   warm-cache:
     name: Build to warm cache
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: 420
     steps:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -53,11 +53,11 @@ jobs:
             bst-warm-
 
       - name: Build default variant (cache mode)
-        env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive
         run: |
           set -euo pipefail
-          just bst build elements/layers/top.bst ${BST_FLAGS} || true
+          # Build the default (non-nvidia) variant to warm the shared layer cache.
+          # || true makes the step non-fatal — warming is best-effort.
+          just bst build oci/bluefin.bst || true
           echo "Cache warm complete — artifacts pushed to remote CAS"
 
       - name: Save BST cache
