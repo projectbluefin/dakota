@@ -43,18 +43,21 @@ Load when debugging CI failures, understanding the build pipeline, or working wi
 
 ## Trigger Behavior
 
-| Behavior | pull_request | merge_group | workflow_dispatch |
-|---|---|---|---|
-| `validate` job | Yes | No | No |
-| `e2e` job | Yes (change-detected) | No | Yes |
-| `build` job | No | Yes | Yes |
-| Push to GHCR? | No | Via publish.yml | Via publish.yml |
+| Behavior | pull_request | merge_group | workflow_dispatch | schedule |
+|---|---|---|---|---|
+| `validate` job | Yes | No | No | No |
+| `e2e` job | Yes (change-detected) | No | Yes | No |
+| `build` job | No | Yes | Yes | No |
+| `cache-warm` job | No | No | Yes | Yes (Mon/Thu 06:00 UTC) |
+| Push to GHCR? | No | Via publish.yml | Via publish.yml | No |
 
 **PR path:** `validate` + `e2e` (change-detected) — zero remote execution. ~15 min cached, ~30 min cold.
 
 **e2e change detection:** `e2e` uses a `should-run` job that diffs the PR branch against its base. It runs when `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf` change; otherwise the `e2e` job is skipped. Skipped satisfies the required status check.
 
 **Merge queue path:** `build` fires on `merge_group` — full OCI build, real CI gate before merge.
+
+**Cache-warm path:** `cache-warm.yml` runs Monday and Thursday at 06:00 UTC and on manual dispatch. Builds the default variant against the remote CAS so merge-queue builds land on cache hits even after junction ref bumps or upstream `gnome-build-meta` rebuilds. Failures are non-blocking — the warm build is best-effort. Addresses the cold-start non-determinism documented in [common automation-audit ND1](https://github.com/projectbluefin/common/blob/main/docs/factory/automation-audit/non-deterministic-steps.md).
 
 ## Remote Cache Architecture
 
