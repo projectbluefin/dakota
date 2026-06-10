@@ -6,7 +6,7 @@ on:
   merge_group:
     branches: [main, next, testing]
   push:
-    branches: [testing]
+    branches: [main, next]
   workflow_dispatch:
     # WARNING: Do not manually dispatch immediately after auto/track-* ref bumps
     # (e.g. Renovate PRs updating gnome-build-meta.bst). Cold builds of GNOME

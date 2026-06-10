@@ -341,5 +341,5 @@ jobs:
             gh api repos/${{ github.repository }}/git/refs/heads/testing \
               --method PATCH \
               --field sha="$BUILD_SHA" \
-              --field force=false
+              --field force=true
           fi
