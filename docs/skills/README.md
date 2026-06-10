@@ -38,6 +38,7 @@ Every agent session produces two outputs: **the work** (the PR) and **the learni
 | Actionadon lifecycle, issue queue, data donation | [`actionadon.md`](actionadon.md) |
 | Project overview and what Dakota is | [`overview.md`](overview.md) |
 | ujust recipes in `files/just-overrides/` | [`.github/skills/ujust-recipes.md`](../../.github/skills/ujust-recipes.md) |
+| VM stack (virt-manager + QEMU flatpaks) | [`vm-stack.md`](vm-stack.md) |
 | Installer (bootc-installer) | [`installer.md`](installer.md) |
 | Merging dep-update PRs into testing | [`merge-queue.md`](merge-queue.md) |
 | PR review workflow | [`pr-review.md`](pr-review.md) |
