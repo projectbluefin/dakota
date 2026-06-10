@@ -6,7 +6,7 @@ on:
   issue_comment:
     types: [created]
   pull_request:
-    types: [opened]
+    types: [opened, labeled]
   schedule:
     - cron: '0 9 * * *'
 
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   lifecycle:
-    uses: projectbluefin/common/.github/workflows/lifecycle.yml@233102e81ce425839dc5dcf00f830f14b9631d71
+    uses: projectbluefin/actions/.github/workflows/lifecycle.yml@7df3176a8449ba1db2c2b38ea18c0d9b3687a4f0 # chore/lifecycle-from-common — update SHA after actions PR merges
     with:
       brand_name: "Dakota"
     secrets: inherit
