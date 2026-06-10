@@ -8,6 +8,8 @@ on:
     branches:
       - main
       - 'gh-readonly-queue/main/**'
+      - next
+      - 'gh-readonly-queue/next/**'
 
 env:
   IMAGE_NAME: dakota
@@ -21,7 +23,8 @@ permissions:
   actions: read
 
 concurrency:
-  group: publish-main
+  # Separate publish queues per branch so next and main don't collide.
+  group: publish-${{ github.event.workflow_run.head_branch || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -32,12 +35,16 @@ jobs:
     outputs:
       sha: ${{ steps.context.outputs.sha }}
       event: ${{ steps.context.outputs.event }}
+      branch: ${{ steps.context.outputs.branch }}
+      testing_tag: ${{ steps.context.outputs.testing_tag }}
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event != 'pull_request' &&
        (github.event.workflow_run.head_branch == 'main' ||
-        startsWith(github.event.workflow_run.head_branch, 'gh-readonly-queue/main/')))
+        startsWith(github.event.workflow_run.head_branch, 'gh-readonly-queue/main/') ||
+        github.event.workflow_run.head_branch == 'next' ||
+        startsWith(github.event.workflow_run.head_branch, 'gh-readonly-queue/next/')))
     steps:
       - name: Resolve build SHA and trigger event
         id: context
@@ -45,9 +52,25 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
             echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
             echo "event=${{ github.event.workflow_run.event }}" >> "$GITHUB_OUTPUT"
+            BRANCH="${{ github.event.workflow_run.head_branch }}"
           else
             echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
             echo "event=${{ github.event_name }}" >> "$GITHUB_OUTPUT"
+            BRANCH="${{ github.ref_name }}"
+          fi
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          # Derive the :testing tag from the branch name.
+          # main     → :testing  (stable dev stream)
+          # next     → :next     (rolling GNOME master / bleeding edge)
+          if [[ "$BRANCH" == "main" || "$BRANCH" == gh-readonly-queue/main/* ]]; then
+            echo "testing_tag=testing" >> "$GITHUB_OUTPUT"
+          elif [[ "$BRANCH" == "next" || "$BRANCH" == gh-readonly-queue/next/* ]]; then
+            echo "testing_tag=next" >> "$GITHUB_OUTPUT"
+          else
+            # Fallback for any future branches: strip merge-queue prefix
+            CLEAN="${BRANCH#gh-readonly-queue/}"
+            CLEAN="${CLEAN%%/*}"
+            echo "testing_tag=${CLEAN}-testing" >> "$GITHUB_OUTPUT"
           fi
 
   # ── Export, sign, attest ─────────────────────────────────────────────────
@@ -249,34 +272,58 @@ jobs:
         run: |
           echo "$GH_TOKEN" | sudo podman login ghcr.io --username "$GH_ACTOR" --password-stdin
 
-      - name: Promote :${{ needs.setup.outputs.sha }} to :testing
+      - name: Promote :${{ needs.setup.outputs.sha }} to :${{ needs.setup.outputs.testing_tag }}
+        env:
+          BUILD_SHA: ${{ needs.setup.outputs.sha }}
+          TESTING_TAG: ${{ needs.setup.outputs.testing_tag }}
+        run: |
+          IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
+          sudo podman pull "${IMAGE}:${BUILD_SHA}"
+          sudo podman tag "${IMAGE}:${BUILD_SHA}" "${IMAGE}:${TESTING_TAG}"
+          PUSH_OK=false
+          for attempt in 1 2 3; do
+            sudo podman push --compression-format=zstd "${IMAGE}:${TESTING_TAG}" && { PUSH_OK=true; break; }
+            echo "Push attempt ${attempt} failed for :${TESTING_TAG}, retrying in 5s..."
+            [ "$attempt" -lt 3 ] && sleep 5
+          done
+          $PUSH_OK || { echo "ERROR: all push attempts failed for :${TESTING_TAG}"; exit 1; }
+
+      - name: Push :btw alias (next stream only)
+        if: needs.setup.outputs.testing_tag == 'next'
         env:
           BUILD_SHA: ${{ needs.setup.outputs.sha }}
         run: |
           IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
-          sudo podman pull "${IMAGE}:${BUILD_SHA}"
-          sudo podman tag "${IMAGE}:${BUILD_SHA}" "${IMAGE}:testing"
+          sudo podman tag "${IMAGE}:${BUILD_SHA}" "${IMAGE}:btw"
           PUSH_OK=false
           for attempt in 1 2 3; do
-            sudo podman push --compression-format=zstd "${IMAGE}:testing" && { PUSH_OK=true; break; }
-            echo "Push attempt ${attempt} failed for :testing, retrying in 5s..."
+            sudo podman push --compression-format=zstd "${IMAGE}:btw" && { PUSH_OK=true; break; }
+            echo "Push attempt ${attempt} failed for :btw, retrying in 5s..."
             [ "$attempt" -lt 3 ] && sleep 5
           done
-          $PUSH_OK || { echo "ERROR: all push attempts failed for :testing"; exit 1; }
+          $PUSH_OK || { echo "ERROR: all push attempts failed for :btw"; exit 1; }
 
       - name: Fast-forward testing branch
-        if: matrix.image_suffix == ''
+        if: matrix.image_suffix == '' && (needs.setup.outputs.branch == 'main' || startsWith(needs.setup.outputs.branch, 'gh-readonly-queue/main/'))
         env:
           BUILD_SHA: ${{ needs.setup.outputs.sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Fast-forward the testing branch to the promoted SHA.
           # Creates the branch if it doesn't exist yet (first run after setup).
-          gh api repos/${{ github.repository }}/git/refs/heads/testing \
-            --method PATCH \
-            --field sha="$BUILD_SHA" \
-            --field force=false 2>/dev/null || \
-          gh api repos/${{ github.repository }}/git/refs \
-            --method POST \
-            --field ref="refs/heads/testing" \
-            --field sha="$BUILD_SHA"
+          # No-op if testing is already at BUILD_SHA (idempotent re-runs).
+          CURRENT_SHA=$(gh api repos/${{ github.repository }}/git/refs/heads/testing \
+            --jq .object.sha 2>/dev/null || echo "")
+          if [ "$CURRENT_SHA" = "$BUILD_SHA" ]; then
+            echo "testing branch already at $BUILD_SHA — nothing to do"
+          elif [ -z "$CURRENT_SHA" ]; then
+            gh api repos/${{ github.repository }}/git/refs \
+              --method POST \
+              --field ref="refs/heads/testing" \
+              --field sha="$BUILD_SHA"
+          else
+            gh api repos/${{ github.repository }}/git/refs/heads/testing \
+              --method PATCH \
+              --field sha="$BUILD_SHA" \
+              --field force=false
+          fi

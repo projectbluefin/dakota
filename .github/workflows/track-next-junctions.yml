@@ -1,0 +1,88 @@
+name: Track next branch junctions
+
+# Runs at 20:00 UTC daily — offset from the main tracker (06:00 UTC) to avoid
+# saturating runners when stable-branch builds are active. gnome-build-meta
+# master nightly finishes ~08:00 UTC, so 20:00 UTC ensures new artifacts are
+# in the CAS before we open a junction-bump PR.
+on:
+  schedule:
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+
+env:
+  BST2_IMAGE: registry.gitlab.com/freedesktop-sdk/infrastructure/freedesktop-sdk-docker-images/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d
+
+jobs:
+  # ── Track core junctions for next (btw stream) ─────────────────
+  # Bumps gnome-build-meta.bst (master) and freedesktop-sdk.bst atomically on
+  # the next branch. Opens a PR against next with auto-merge enabled —
+  # next is a fully automated rolling nightly stream, no human gate required.
+  #
+  # When gnome-build-meta cuts a stable branch (e.g. gnome-51 ~Sep 2026), update
+  # track: master → track: gnome-51 in elements/gnome-build-meta.bst on next.
+  track-core-junctions-next:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Get mergeraptor token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.MERGERAPTOR_APP_ID }}
+          private-key: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}
+
+      - name: Checkout next branch
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: next
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Just
+        uses: taiki-e/install-action@25435dc8dd3baed7417e0c96d3fe89013a5b2e09 # v2
+        with:
+          tool: just
+
+      - name: Pull BuildStream container image
+        run: podman pull "$BST2_IMAGE"
+
+      - name: Track core junctions (gnome-build-meta master + freedesktop-sdk)
+        run: |
+          just bst --no-interactive source track gnome-build-meta.bst
+          just bst --no-interactive source track freedesktop-sdk.bst
+
+      - name: Create or update PR against next (auto-merge)
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          git diff --quiet && { echo "No junction updates"; exit 0; }
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B auto/track-next-junction origin/next
+          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst
+          git commit -m "chore(deps): update core junctions (next branch)"
+          git push --force-with-lease origin auto/track-next-junction
+
+          EXISTING=$(gh pr list --head auto/track-next-junction --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$EXISTING" ]; then
+            PR_NUMBER="$EXISTING"
+            echo "Existing PR #${PR_NUMBER} — re-enabling auto-merge"
+          else
+            PR_BODY=$(printf '%s\n\n%s' \
+            "Bumps \`gnome-build-meta.bst\` (master) and \`freedesktop-sdk.bst\` atomically on the \`next\` branch. Auto-merges once \`bst show\` validation passes." \
+            "> **Note:** When gnome-build-meta cuts a stable branch (e.g. \`gnome-51\`), update \`track: master\` → \`track: <branch>\` in \`elements/gnome-build-meta.bst\` on \`next\`. No CI changes needed.")
+          PR_NUMBER=$(gh pr create \
+            --base next \
+            --head auto/track-next-junction \
+            --title "chore(deps): update core junctions (next branch)" \
+            --body "$PR_BODY" \
+            --json number --jq '.number')
+            echo "Created PR #${PR_NUMBER}"
+          fi
+
+          # Enable auto-merge — merges automatically once required checks pass.
+          gh pr merge "$PR_NUMBER" --auto --squash

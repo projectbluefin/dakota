@@ -15,6 +15,7 @@ common ────────────────────────�
 bluefin  (main→stable)       ←── images ──→ testsuite (e2e gate)
 bluefin-lts (main→lts)       ←── images ──→ testsuite (e2e gate)
 dakota  (main→testing→latest/stable) ←── images ──→ testsuite (e2e gate)
+dakota  (next→:next/:btw, rolling nightly, no stable promotion)
                                  │
                                  ▼
                                 iso (installation media)
@@ -22,6 +23,10 @@ dakota  (main→testing→latest/stable) ←── images ──→ testsuite (e
 
 Each image repo pulls `ghcr.io/projectbluefin/common:latest` as a base layer.
 testsuite gates `:testing` promotion nightly and `:latest`/`:stable` promotion weekly.
+
+**Dakota image streams:**
+- `:testing` / `:latest` / `:stable` — `main` branch, GNOME 50 stable, e2e-gated weekly promotion
+- `:next` / `:btw` — `next` branch, GNOME 51 master, fully automated rolling nightly, **no promotion to stable ever**
 
 **`elements/bluefin/common.bst` strips bluefin-only content from common.** Any file added to `common/system_files/shared/` that does not apply to a fresh dakota install must be explicitly `rm -f`'d in the `install-commands` block of that element. Current stripped files: `rechunker-group-fix` script, service, and preset (chunka migration aid — not needed on fresh dakota).
 

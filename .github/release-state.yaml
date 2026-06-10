@@ -1,0 +1,6 @@
+# Managed by promote-testing-to-main.yml. Do not edit manually.
+# Merging the PR that updates this file promotes these digests to :stable.
+testing:
+  dakota: ""
+  dakota-nvidia: ""
+updated_at: ""

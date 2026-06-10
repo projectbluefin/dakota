@@ -182,6 +182,49 @@ gh run list --repo projectbluefin/dakota --limit 5
 
 ## Lessons Learned
 
+### crun 1.21 (resolute) breaks just sbom on GHA — use --runtime runc (2026-06-08)
+
+`update-podman: true` in `setup-runner` installs crun 1.21 from Ubuntu 26.04
+(resolute). This version has two new failure modes that break `just sbom` on
+GHA runners:
+
+1. **seccomp BPF linkat EPERM** — crun caches compiled seccomp BPF programs
+   via `linkat()`. The GHA runner kernel's `fs.protected_hardlinks` or user-
+   namespace restrictions block the hard-link from `.cache/seccomp/` to the
+   container bundle path:
+   ```
+   crun: linkat `.cache/seccomp/<hash>` to `<container-id>/seccomp.bpf`: Permission denied
+   ```
+
+2. **systemd probe EACCES** — crun probes systemd presence and caches the result
+   in `$XDG_RUNTIME_DIR/crun/.cache/systemd-missing-properties`. On GHA the
+   runtime dir is either uninitialised or was created by root in a prior privileged
+   step, causing user 1001 to get EACCES:
+   ```
+   crun: opendir `/run/user/1001/crun/.cache/systemd-missing-properties`: Permission denied
+   ```
+
+**Fix:** add `--runtime runc` to both `podman run` calls in `just sbom`. runc is
+always available on ubuntu-24.04 GHA runners (Docker installs it). runc has
+neither the seccomp BPF caching nor the systemd probing.
+
+**Wrong partial fixes (both insufficient alone):**
+- Dropping `--privileged` (#745) — doesn't prevent either error
+- Adding `--security-opt seccomp=unconfined` (#747) — fixes error 1 but not error 2
+
+**Do not** add `seccomp=unconfined` as a workaround; use `--runtime runc` instead.
+`bst show` and `buildstream-sbom` are read-only BST operations; runc is fully
+sufficient.
+
+```justfile
+# ✅ correct
+podman run --rm --network=host --runtime runc ...
+
+# ❌ wrong — triggers crun 1.21 failure modes
+podman run --rm --network=host ...
+podman run --rm --network=host --security-opt seccomp=unconfined ...
+```
+
 ### Continuous :testing model — every merge ships immediately (2026-06-07)
 
 The pipeline was redesigned so every PR merge produces a new `:testing` image
@@ -370,6 +413,79 @@ projects:
           CARGO_PROFILE_RELEASE_LTO: "thin"
 ```
 
+### Diagnosing a slow in-progress build via GitHub API (2026-06-07)
+
+When a build has been running for 2–3+ hours and you want to know what's being
+compiled without waiting for a timeout:
+
+```bash
+# 1. Find the in-progress build and its job IDs
+gh api repos/projectbluefin/dakota/actions/runs/<run-id>/jobs | python3 -c "
+import json, sys
+from datetime import datetime, timezone
+d = json.load(sys.stdin)
+now = datetime.now(timezone.utc)
+for job in d.get('jobs', []):
+    if job.get('started_at'):
+        s = datetime.fromisoformat(job['started_at'].replace('Z','+00:00'))
+        mins = int((now - s).total_seconds() / 60)
+        print(f\"{job['id']} | {job['status']} | {mins}m | {job['name'][:60]}\")
+"
+
+# 2. Fetch the live log (note: truncated at ~23K lines for long builds)
+gh api repos/projectbluefin/dakota/actions/jobs/<job-id>/logs > /tmp/bst-live.log
+
+# 3. Count cache hits vs elements being compiled
+grep -c "SKIPPED" /tmp/bst-live.log          # cache hits
+grep "Running commands" /tmp/bst-live.log | tail -20  # what's actively building
+
+# 4. See which upstream elements are being compiled (indicates junction drift)
+grep "START.*Running commands" /tmp/bst-live.log | grep -oE "\[.*\]" | sort -u
+```
+
+**Important:** The live log endpoint is a snapshot, not a stream. For builds
+running > ~90 minutes, the log may be stale by 60–90 minutes relative to current
+wall-clock time. If the last log timestamp is behind by > 1 hour, the build is
+still running but log data is not being returned. Use `gh api
+repos/.../actions/runs/<id>/jobs` to confirm `status: in_progress`.
+
+**Deciding whether to re-trigger:** A build making steady progress on
+gnome-build-meta `core-deps/` elements is normal cache-warming after a GNOME
+nightly — let it run. Only re-trigger if:
+- The run hits a timeout error
+- Elements are stuck "Waiting for the remote build to complete" for > 30 min (CAS issue)
+- The build failed with a compilation error
+
+### gnome-build-meta nightly delta builds (2026-06-07)
+
+The GNOME upstream nightly (~08:00 UTC) updates a batch of `core-deps/` elements
+in gnome-build-meta. The first build that runs after a nightly must recompile
+those elements from scratch. This is **expected and not a problem.**
+
+**Typical pattern:**
+- 1,000+ elements: SKIPPED (cache hits from the previous build)
+- 10–30 `core-deps/` elements: recompiled (changed in nightly)
+- Each element compiles in 1–5 minutes; total extra time: ~60–120 minutes
+- Build completes well within the 330-minute timeout
+
+**Elements commonly rebuilt after a nightly:** `protobuf`, `folks`, `sofia-sip`,
+`procps`, `containers-common`, `libvirt-glib`, `spice-gtk`, `foundry`, `feedbackd`,
+`jsonrpc-glib`, `libgit2-glib`.
+
+**How to confirm it's a nightly delta (not a cache bust):**
+```bash
+# Check which junction commit the failing build used:
+grep "Fetching from.*gnome-build-meta" /tmp/bst-live.log
+
+# Compare to the junction ref pinned in the element:
+grep "ref:" elements/gnome-build-meta.bst
+```
+If the junction ref in `elements/gnome-build-meta.bst` matches what the build
+fetched, the cache miss is upstream drift, not a local element change.
+
+**After a nightly delta completes**, subsequent builds are fast again (< 90 min)
+because all newly-compiled elements land in the remote CAS.
+
 ### Diagnosing a build timeout (330-minute limit) (2026-06-07)
 
 A build that hits the 330-minute GitHub Actions timeout shows:
@@ -542,3 +658,176 @@ Step 4 requires approval at: https://github.com/projectbluefin/dakota/deployment
 
 The GitHub release (notes + card + SBOM) is created automatically by
 `release.yml` after every successful `publish.yml` run — no manual step needed.
+
+### check-diff skip silently skips missing variant :stable tags (2026-06-08)
+
+`check-diff` compares `dakota:testing` vs `dakota:latest` only. If they match,
+`has_diff=false` and the entire `promote` matrix is skipped — including the
+nvidia variant. This means if `dakota-nvidia:stable` was never created (e.g.,
+nvidia `:testing` didn't exist during the first promotion that set `:latest`),
+it will silently never get set on subsequent runs where the default image hasn't
+changed.
+
+**How it breaks:**
+
+1. First promotion: NVIDIA `:testing` not found → `has_nvidia=false` → nvidia skipped
+2. Next promotion: NVIDIA `:testing` now exists, but `dakota:testing == dakota:latest`
+   → `has_diff=false` → entire promote job skipped → `dakota-nvidia:stable` never set
+
+**Fix (manual):** Copy from the matching `:testing` digest directly:
+
+```bash
+# Confirm revision matches dakota:stable
+skopeo inspect docker://ghcr.io/projectbluefin/dakota:stable \
+  | jq '.Labels["org.opencontainers.image.revision"]'
+skopeo inspect docker://ghcr.io/projectbluefin/dakota-nvidia:testing \
+  | jq '.Labels["org.opencontainers.image.revision"]'
+
+# Get the testing digest
+DIGEST=$(skopeo inspect docker://ghcr.io/projectbluefin/dakota-nvidia:testing \
+  | jq -r '.Digest')
+
+# Copy to :stable (login with gh auth token first)
+GH_TOKEN=$(gh auth token)
+skopeo login ghcr.io --username <your-user> --password "$GH_TOKEN"
+skopeo copy \
+  "docker://ghcr.io/projectbluefin/dakota-nvidia@${DIGEST}" \
+  "docker://ghcr.io/projectbluefin/dakota-nvidia:stable"
+```
+
+**Underlying bug:** `check-diff` should also detect missing variant stable tags
+and set `has_diff=true` in that case, forcing the promote job to run even when
+the default image hasn't changed.
+
+### Testing branch fast-forward is idempotent — GitHub API 422 on same SHA (2026-06-08)
+
+**Symptom:** `publish.yml` promote job fails with:
+```
+{"message":"Update is not a fast forward",...}
+{"message":"Reference already exists",...}
+```
+Exit code 1 even though the image was published successfully.
+
+**Root cause:** The original fast-forward step used a PATCH-then-POST fallback:
+1. PATCH `refs/heads/testing` → GitHub returns 422 "Update is not a fast forward" when
+   the ref is already at the target SHA (no-op case)
+2. POST fallback → GitHub returns 422 "Reference already exists"
+
+Both fail, causing the step to fail even though nothing needed updating.
+
+**Fix:** Check the current SHA first; only PATCH or POST when actually needed:
+```yaml
+CURRENT_SHA=$(gh api repos/${{ github.repository }}/git/refs/heads/testing \
+  --jq .object.sha 2>/dev/null || echo "")
+if [ "$CURRENT_SHA" = "$BUILD_SHA" ]; then
+  echo "testing branch already at $BUILD_SHA — nothing to do"
+elif [ -z "$CURRENT_SHA" ]; then
+  gh api repos/${{ github.repository }}/git/refs --method POST \
+    --field ref="refs/heads/testing" --field sha="$BUILD_SHA"
+else
+  gh api repos/${{ github.repository }}/git/refs/heads/testing \
+    --method PATCH --field sha="$BUILD_SHA" --field force=false
+fi
+```
+
+### Merge-queue head_branch is never 'main' — use startsWith guard (2026-06-08)
+
+When a PR merges via GitHub's merge queue, `github.event.workflow_run.head_branch`
+(and `needs.setup.outputs.branch`) is `gh-readonly-queue/main/pr-N`, **never** `main`.
+
+Any `if:` condition that checks `branch == 'main'` will silently skip for all
+merge-queue merges (i.e., every normal PR merge).
+
+**Correct pattern:**
+```yaml
+if: >-
+  matrix.image_suffix == '' &&
+  (needs.setup.outputs.branch == 'main' ||
+   startsWith(needs.setup.outputs.branch, 'gh-readonly-queue/main/'))
+```
+
+### :next/:btw stream — fully automated, no human gate (2026-06-08)
+
+The `next` branch (`:next`/`:btw` tags) is a continuously rolling GNOME OS
+nightly stream. Junction bumps on `next` use auto-merge — no human review
+required. This is intentional and differs from core junction bumps on `main`
+(which require human review per `track-bst-sources.yml`).
+
+`track-next-junctions.yml` schedules nightly junction tracking on the `next`
+branch. PRs it opens get auto-merged once required checks pass.
+
+### export/publish jobs must skip storage-service — remote CAS quota too small for GNOME 51 (2026-06-09)
+
+**Symptom:** `bst export` in the publish job fails with:
+```
+OutOfSpaceException: Insufficient storage quota
+errMsg = "Insufficient storage quota" (buildboxcommon_lrulocalcas.cpp:383)
+```
+The blob is `~8.5 GB` (GNOME 51 root artifact is significantly larger than GNOME 50).
+
+**Root cause:** `cache.storage-service` in the BST config routes the local casd
+through `cache.projectbluefin.io`. The remote server's per-client storage quota
+is exceeded when materialising the full artifact for export. Build jobs are fine
+because they write blobs incrementally as they are built; export pulls the entire
+artifact at once.
+
+**Fix (already in `generate-bst-ci-config/action.yml`):**
+`cache.storage-service` is only written when `enable-push: true` (build jobs).
+Export/publish jobs (`enable-push: false`) use local disk for the casd.
+The runner's BTRFS volume has sufficient space for export.
+
+**Do not revert this.** Any future regression will show this same symptom on
+the `next`/`:btw` stream, which produces the largest artifacts.
+
+### First cold build of next branch will timeout — retrigger until cache warms (2026-06-09)
+
+The `next` branch tracks gnome-build-meta `master` (GNOME 51+). The first build
+after branching or a major gnome-build-meta ref bump is a **full cold build** of
+the entire GNOME stack — ~700+ elements. This exceeds the 330-minute GHA timeout.
+
+**This is expected and normal.** Each run pushes built artifacts to
+`cache.projectbluefin.io`. Simply retrigger the build — each run picks up from
+where the previous one left off:
+
+```bash
+gh workflow run build.yml --repo projectbluefin/dakota --ref next
+```
+
+Typically takes 2–3 runs to warm the full cache. Subsequent builds (after
+junction bumps) are incremental (~3–25 min).
+
+**Indicator that cache is warm:** build jobs complete in <5 minutes — all
+artifacts are cache hits and no compilation occurs.
+
+### next branch needs manual cherry-picks of main fixes (2026-06-09)
+
+`next` is a long-lived parallel branch. Bug fixes merged to `main`
+(e.g., sbom crun fixes, CI improvements) do **not** automatically land on `next`.
+
+Before debugging a failure on `next`, check if the same fix is already on `main`:
+
+```bash
+git log upstream/next..upstream/main --oneline -- Justfile .github/
+```
+
+Cherry-pick selectively:
+```bash
+git checkout upstream/next -b fix/next-sync
+git cherry-pick <sha1> <sha2> <sha3>
+git push upstream fix/next-sync:next
+```
+
+Commits to watch for: any `fix(sbom):`, `fix(ci):`, or `fix(publish):` commits
+on `main` that touch `Justfile` or `.github/`.
+
+### :next build only fires on junction bumps — not a guaranteed nightly (2026-06-09)
+
+`build.yml` has no `schedule:` trigger. The `next` branch builds when:
+1. `track-next-junctions.yml` bumps gnome-build-meta master (20:00 UTC nightly,
+   only if upstream advanced that day) → auto-merge PR → merge_group build
+2. Manual `workflow_dispatch`
+
+On days where gnome-build-meta `master` does not advance, **no build fires**.
+For a guaranteed nightly, a `schedule:` trigger on `next` is needed in
+`build.yml`. This is a known gap — track it if builds go stale.
+

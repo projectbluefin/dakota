@@ -1,0 +1,28 @@
+name: PR Release Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions: {}
+
+jobs:
+  gate:
+    if: github.event.pull_request.head.ref == 'auto/promote-testing-to-main'
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      packages: read
+      pull-requests: write
+    uses: projectbluefin/actions/.github/workflows/reusable-release-gate.yml@main
+    with:
+      repo: ${{ github.repository }}
+      registry: ghcr.io/projectbluefin
+      variants: >-
+        [{"image":"dakota"},{"image":"dakota-nvidia"}]
+      cosign_identity_regexp: ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
+      target_tag: testing
+      run_e2e: false
+    secrets: inherit

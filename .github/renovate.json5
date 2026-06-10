@@ -3,13 +3,11 @@
   "extends": [
     "config:recommended",
   ],
-  // Renovate targets the testing branch for dependency updates.
-  // testing is a git pointer fast-forwarded to the last deployed SHA —
-  // action SHA pin PRs merge here, are validated by Renovate's built-in
-  // automerge (no merge queue on testing), and reach main on the next PR.
+  // Renovate targets main. All PRs must target main — the CI gate
+  // (on-pr-opened-or-updated) blocks any PR not targeting main.
   // Note: track-bst-sources.yml manages BuildStream refs directly and
   // intentionally targets main — it is not Renovate-managed.
-  "baseBranchPatterns": ["testing"],
+  "baseBranchPatterns": ["main"],
   "branchPrefix": "renovate/",
   "schedule": ["* 0-3 * * 1"],
 
@@ -25,6 +23,12 @@
       "matchManagers": ["github-actions"],
       "matchDepTypes": ["action"],
       "pinDigests": true
+    },
+    {
+      // projectbluefin/bonedigger has no versioned releases; @main is intentional.
+      // See .github/workflows/bonedigger.yml and docs/skills/ci-tooling.md.
+      "matchPackageNames": ["projectbluefin/bonedigger"],
+      "enabled": false
     },
     {
       "automerge": true,
