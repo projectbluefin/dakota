@@ -1,12 +1,7 @@
 name: Promote testing to main
 
-# Runs after the testing branch advances (publish.yml fast-forwards it on each
-# successful build). Resolves the current :testing image digests, writes them to
-# .github/release-state.yaml on the auto/promote-testing-to-main branch, and opens
-# or updates the always-open PR against main.
-#
-# Merging that PR (requires 2 projectbluefin/maintainers) triggers execute-release.yml
-# which promotes :testing -> :stable.
+# Thin caller — logic lives in projectbluefin/actions/reusable-promote.yml
+# Replaces the previous 183-line promote-testing-to-main.yml.
 
 on:
   push:
@@ -25,159 +20,10 @@ permissions:
 
 jobs:
   promote:
-    name: Open or update testing to main PR
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-      packages: read
-      pull-requests: write
-    outputs:
-      changed: ${{ steps.branch.outputs.changed }}
-      pr_number: ${{ steps.pr.outputs.pr_number }}
-      testing_sha: ${{ steps.digests.outputs.dakota_digest }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          fetch-depth: 0
-          ref: main
-
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Authenticate to GHCR for skopeo reads
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          echo "$GH_TOKEN" | skopeo login ghcr.io --username "${{ github.actor }}" --password-stdin
-
-      - name: Resolve current testing image digests
-        id: digests
-        env:
-          REGISTRY: ghcr.io/${{ github.repository_owner }}
-        run: |
-          set -euo pipefail
-          dakota_digest=$(skopeo inspect --format '{{.Digest}}' "docker://${REGISTRY}/dakota:testing")
-          nvidia_digest=$(skopeo inspect --format '{{.Digest}}' "docker://${REGISTRY}/dakota-nvidia:testing" 2>/dev/null || echo "")
-          {
-            echo "dakota_digest=${dakota_digest}"
-            echo "nvidia_digest=${nvidia_digest}"
-          } >> "$GITHUB_OUTPUT"
-          echo "dakota:testing -> ${dakota_digest}"
-          echo "dakota-nvidia:testing -> ${nvidia_digest:-not available}"
-
-      - name: Create or update promotion branch
-        id: branch
-        env:
-          DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota_digest }}
-          NVIDIA_DIGEST: ${{ steps.digests.outputs.nvidia_digest }}
-          PROMOTION_BRANCH: auto/promote-testing-to-main
-        run: |
-          set -euo pipefail
-          git fetch origin "$PROMOTION_BRANCH" 2>/dev/null || true
-
-          git checkout -B "$PROMOTION_BRANCH" origin/main
-
-          mkdir -p .github
-          {
-            printf '# Managed by promote-testing-to-main.yml. Do not edit manually.\n'
-            printf '# Merging the PR that updates this file promotes these digests to :stable.\n'
-            printf 'testing:\n'
-            printf '  dakota: "%s"\n' "${DAKOTA_DIGEST}"
-            printf '  dakota-nvidia: "%s"\n' "${NVIDIA_DIGEST}"
-            printf 'updated_at: "%s"\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } > .github/release-state.yaml
-
-          git add .github/release-state.yaml
-          if git diff --cached --quiet; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No digest changes since last promotion PR update. No push needed."
-            exit 0
-          fi
-
-          git commit -m "ci: update testing image digests for stable promotion"
-          git push origin "$PROMOTION_BRANCH" --force-with-lease
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-
-      - name: Open or update promotion PR
-        id: pr
-        if: steps.branch.outputs.changed == 'true'
-        env:
-          DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota_digest }}
-          GH_TOKEN: ${{ github.token }}
-          NVIDIA_DIGEST: ${{ steps.digests.outputs.nvidia_digest }}
-        run: |
-          set -euo pipefail
-          PROMOTION_BRANCH="auto/promote-testing-to-main"
-          SHORT="${DAKOTA_DIGEST:7:16}"
-          PR_TITLE="ci: promote testing images to stable (${SHORT})"
-
-          PR_BODY=$(cat <<EOF
-          Promote the current :testing images to :stable.
-
-          Merge this PR (requires 2 projectbluefin/maintainers) to publish a stable release.
-
-          Source digests
-          | Image | Digest |
-          |---|---|
-          | dakota:testing | ${DAKOTA_DIGEST} |
-          | dakota-nvidia:testing | ${NVIDIA_DIGEST} |
-
-          When merged, execute-release.yml will re-verify cosign signatures on
-          the above digests, copy each to :stable, and create a GitHub release.
-          EOF
-          )
-
-          existing=$(gh pr list \
-            --repo "${{ github.repository }}" \
-            --head "$PROMOTION_BRANCH" \
-            --base main \
-            --state open \
-            --json number \
-            --jq '.[0].number // empty')
-
-          if [ -n "$existing" ]; then
-            gh pr edit "$existing" \
-              --repo "${{ github.repository }}" \
-              --title "$PR_TITLE" \
-              --body "$PR_BODY"
-            echo "Updated PR #${existing}"
-            PR_NUMBER="$existing"
-          else
-            PR_URL=$(gh pr create \
-              --repo "${{ github.repository }}" \
-              --head "$PROMOTION_BRANCH" \
-              --base main \
-              --title "$PR_TITLE" \
-              --body "$PR_BODY")
-            PR_NUMBER="${PR_URL##*/}"
-            echo "Created new promotion PR #${PR_NUMBER}"
-          fi
-
-          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
-
-  gate:
-    name: Release gate checks
-    needs: [promote]
-    if: needs.promote.outputs.changed == 'true'
-    permissions:
-      actions: read
-      contents: read
-      issues: write
-      packages: read
-      pull-requests: write
-    uses: projectbluefin/actions/.github/workflows/reusable-release-gate.yml@7f79969c2ff74c51ac7f385cb0a86414975308d7 # v1
+    uses: projectbluefin/actions/.github/workflows/reusable-promote.yml@8487dff61267ca80486164379fcfc21901d2021e # v1
     with:
-      repo: ${{ github.repository }}
-      pr_number: ${{ needs.promote.outputs.pr_number }}
-      head_sha: ${{ needs.promote.outputs.testing_sha }}
-      registry: ghcr.io/projectbluefin
-      variants: >-
-        [{"image":"dakota"},{"image":"dakota-nvidia"}]
-      cosign_identity_regexp: ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
-      target_tag: testing
+      variants: '["dakota","dakota-nvidia"]'
+      cosign_identity_regexp: >-
+        ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
       run_e2e: false
     secrets: inherit
