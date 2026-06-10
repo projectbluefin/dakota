@@ -831,3 +831,46 @@ On days where gnome-build-meta `master` does not advance, **no build fires**.
 For a guaranteed nightly, a `schedule:` trigger on `next` is needed in
 `build.yml`. This is a known gap — track it if builds go stale.
 
+### publish.yml must include testing branch in workflow_run.branches (2026-06-10)
+
+`publish.yml` originally only listed `main`, `gh-readonly-queue/main/**`, `next`,
+and `gh-readonly-queue/next/**` in `workflow_run.branches`. Auto-merge tracking
+PRs target `testing` — their builds completed successfully but no image was ever
+published. `promote-testing-to-main.yml` fires on `push: branches: [testing]` and
+immediately does `skopeo inspect dakota:testing`, which silently failed every time
+testing advanced without a prior main publish.
+
+**Fix (PR 766):** add `testing` and `gh-readonly-queue/testing/**` to the
+`workflow_run.branches` filter, extend the `setup` job `if` condition, and map
+`testing` branch → `testing_tag=testing`. Match bluefin/bluefin-lts: every merge
+to testing publishes `:testing` immediately.
+
+### track-bst-sources: branch from origin/$BASE_BRANCH, not origin/main (2026-06-10)
+
+`track-bst-sources.yml` created auto-merge tracking branches from `origin/main`
+but targeted `testing`. When main and testing had diverged on workflow files, the
+PR diff included those CI changes in reverse — the PR appeared to be deleting
+them. PR 764 had 18 commits and would have removed `testing` from `build.yml`
+triggers and deleted `renovate-automerge.yml`. It was closed as a corrupted PR.
+
+**Corrupted auto-track PR anatomy:** CONFLICTING state, 10+ commits, diff shows
+CI workflow regressions (removes triggers, deletes workflows). The element file
+contents match the base branch — no real update present.
+
+**Fix (PR 766):** determine `BASE_BRANCH` before `git checkout`, stash the
+BST-tracked element changes, `git checkout -B "$BRANCH" "origin/$BASE_BRANCH"`,
+then `git stash pop`. The PR diff is now relative to the target branch only.
+
+### track-bst-sources: auto-merge silently never set — use --squash not --merge (2026-06-10)
+
+The repo has `allowMergeCommit=false` (only squash merges permitted). The
+workflow called `gh pr merge --auto --merge` which hit the `|| echo ::warning::`
+fallback — auto-merge was never set on any tracking PR. They sat unmerged
+indefinitely with no visible error.
+
+**Fix (PR 767):** `--merge` → `--squash`. The `renovate-automerge.yml` already
+used `--squash` correctly; `track-bst-sources` was the gap.
+
+**Diagnostic:** if a tracking PR has auto-merge null and validate passed, check
+`allowMergeCommit` on the repo before assuming a workflow bug.
+
