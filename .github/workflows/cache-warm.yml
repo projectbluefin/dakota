@@ -1,0 +1,68 @@
+# Dakota BuildStream Cache Warm — scheduled workflow
+#
+# Prevents cold-start timeouts by keeping the BST remote cache hot.
+# Runs Monday and Thursday mornings, well before typical PR merge windows.
+#
+# Context: Dakota BST builds have a 360-min timeout. When cache misses
+# (after junction ref bumps or gbm upstream rebuilds), the full GNOME
+# stack must rebuild from scratch, which can exceed 6h. This workflow
+# runs the build on schedule to ensure cache artifacts stay fresh.
+
+name: Warm BuildStream Cache
+
+on:
+  schedule:
+    # Monday and Thursday at 06:00 UTC — before European/US work hours
+    - cron: '0 6 * * 1,4'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dakota-cache-warm
+  cancel-in-progress: false
+
+jobs:
+  warm-cache:
+    name: Build to warm cache
+    runs-on: ubuntu-24.04
+    timeout-minutes: 420
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: testing
+
+      - name: Check bst2 image pin consistency
+        uses: ./.github/actions/check-bst2-pin
+
+      - name: Setup runner
+        uses: projectbluefin/actions/bootc-build/setup-runner@7f79969c2ff74c51ac7f385cb0a86414975308d7 # v1
+        with:
+          storage-backend: btrfs
+          update-podman: true
+          install-tools: '["just"]'
+
+      - name: Restore BST cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.cache/buildstream
+          key: bst-warm-${{ hashFiles('elements/gnome-build-meta.bst', 'elements/freedesktop-sdk.bst') }}
+          restore-keys: |
+            bst-warm-
+
+      - name: Build default variant (cache mode)
+        run: |
+          set -euo pipefail
+          # Build the default (non-nvidia) variant to warm the shared layer cache.
+          # || true makes the step non-fatal — warming is best-effort.
+          just bst build oci/bluefin.bst || true
+          echo "Cache warm complete — artifacts pushed to remote CAS"
+
+      - name: Save BST cache
+        if: always()
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.cache/buildstream
+          key: bst-warm-${{ hashFiles('elements/gnome-build-meta.bst', 'elements/freedesktop-sdk.bst') }}
