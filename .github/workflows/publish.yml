@@ -10,6 +10,8 @@ on:
       - 'gh-readonly-queue/main/**'
       - next
       - 'gh-readonly-queue/next/**'
+      - testing
+      - 'gh-readonly-queue/testing/**'
 
 env:
   IMAGE_NAME: dakota
@@ -44,7 +46,9 @@ jobs:
        (github.event.workflow_run.head_branch == 'main' ||
         startsWith(github.event.workflow_run.head_branch, 'gh-readonly-queue/main/') ||
         github.event.workflow_run.head_branch == 'next' ||
-        startsWith(github.event.workflow_run.head_branch, 'gh-readonly-queue/next/')))
+        startsWith(github.event.workflow_run.head_branch, 'gh-readonly-queue/next/') ||
+        github.event.workflow_run.head_branch == 'testing' ||
+        startsWith(github.event.workflow_run.head_branch, 'gh-readonly-queue/testing/')))
     steps:
       - name: Resolve build SHA and trigger event
         id: context
@@ -60,12 +64,17 @@ jobs:
           fi
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
           # Derive the :testing tag from the branch name.
-          # main     → :testing  (stable dev stream)
+          # main     → :testing  (from main via promote job)
+          # testing  → :testing  (direct: every merge to testing publishes immediately)
           # next     → :next     (rolling GNOME master / bleeding edge)
           if [[ "$BRANCH" == "main" || "$BRANCH" == gh-readonly-queue/main/* ]]; then
             echo "testing_tag=testing" >> "$GITHUB_OUTPUT"
           elif [[ "$BRANCH" == "next" || "$BRANCH" == gh-readonly-queue/next/* ]]; then
             echo "testing_tag=next" >> "$GITHUB_OUTPUT"
+          elif [[ "$BRANCH" == "testing" || "$BRANCH" == gh-readonly-queue/testing/* ]]; then
+            # testing branch builds publish :testing directly so every merge to
+            # testing produces a fresh image. Matches bluefin/bluefin-lts behaviour.
+            echo "testing_tag=testing" >> "$GITHUB_OUTPUT"
           else
             # Fallback for any future branches: strip merge-queue prefix
             CLEAN="${BRANCH#gh-readonly-queue/}"
@@ -241,8 +250,8 @@ jobs:
 
   # ── Promote :testing ──────────────────────────────────────────────────────
   # Re-tags :$sha as :testing immediately after a successful publish on any
-  # main or merge-queue build. No e2e gate here — every merged PR ships to
-  # :testing so users always get the latest code.
+  # main, testing, or merge-queue build. No e2e gate here — every merged PR
+  # ships to :testing so users always get the latest code.
   # e2e only gates the weekly :testing → :stable promotion.
   # NVIDIA is continue-on-error so a failing NVIDIA promote does not
   # prevent the default :testing from landing.
