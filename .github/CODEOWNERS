@@ -6,6 +6,7 @@
 Justfile            @projectbluefin/maintainers
 build_files/        @projectbluefin/maintainers
 elements/           @projectbluefin/maintainers
+elements/bluefin/common.bst  # auto-updated; no review required
 
 # BEGIN TRIAGERS — managed by projectbluefin/common, do not edit manually
 # docs/**  @handle1 @handle2
