@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Prune old GHCR images
-        uses: projectbluefin/actions/bootc-build/ghcr-cleanup@3025b5d31f34ce44c19eab41a7fa5d4d5c5b688e # v1.1.0
+        uses: projectbluefin/actions/bootc-build/ghcr-cleanup@2a09e72e9be15b137392dde15f8587f35587e8eb # v1.1.0
         with:
           packages: dakota,dakota-nvidia
           older-than: 90 days

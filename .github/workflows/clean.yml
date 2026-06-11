@@ -14,7 +14,7 @@ jobs:
       packages: write
     steps:
       - name: Delete Images Older Than 90 Days
-        uses: projectbluefin/actions/bootc-build/ghcr-cleanup@3025b5d31f34ce44c19eab41a7fa5d4d5c5b688e # feat/ghcr-cleanup-orphaned-images
+        uses: projectbluefin/actions/bootc-build/ghcr-cleanup@2a09e72e9be15b137392dde15f8587f35587e8eb # feat/ghcr-cleanup-orphaned-images
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           packages: dakota,dakota-nvidia
