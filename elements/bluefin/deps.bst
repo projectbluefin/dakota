@@ -21,6 +21,7 @@ depends:
   - bluefin/gum.bst
   - bluefin/fzf.bst
   - bluefin/tealdeer.bst
+  - bluefin/umotd.bst
 
   - bluefin/common.bst
   - bluefin/just-overrides.bst

@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   promote:
-    uses: projectbluefin/actions/.github/workflows/reusable-promote.yml@8487dff61267ca80486164379fcfc21901d2021e # v1
+    uses: projectbluefin/actions/.github/workflows/reusable-promote.yml@v1
     with:
       variants: '["dakota","dakota-nvidia"]'
       cosign_identity_regexp: >-
