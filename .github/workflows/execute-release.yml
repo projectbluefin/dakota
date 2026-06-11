@@ -1,9 +1,7 @@
 name: Execute Release
 
 on:
-  pull_request:
-    types:
-      - closed
+  push:
     branches:
       - main
   workflow_dispatch:
@@ -17,11 +15,27 @@ permissions:
   pull-requests: write
 
 jobs:
+  check-trigger:
+    runs-on: ubuntu-latest
+    outputs:
+      is-promotion: ${{ steps.check.outputs.is-promotion }}
+    steps:
+      - id: check
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "is-promotion=true" >> "$GITHUB_OUTPUT"
+          elif echo "$COMMIT_MSG" | grep -q "^ci: promote testing images to stable"; then
+            echo "is-promotion=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is-promotion=false" >> "$GITHUB_OUTPUT"
+          fi
+
   execute:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.merged == true &&
-      github.event.pull_request.head.ref == 'auto/promote-testing-to-main')
+    needs: [check-trigger]
+    if: needs.check-trigger.outputs.is-promotion == 'true'
     permissions:
       actions: read
       contents: write
@@ -43,6 +57,7 @@ jobs:
     needs: [execute]
     if: always() && needs.execute.result == 'success'
     permissions:
+      actions: read
       contents: write
       id-token: write
       packages: read
