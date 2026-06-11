@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   lifecycle:
-    uses: projectbluefin/common/.github/workflows/lifecycle.yml@025ec29f68aa919d1d90a3d4bb04b3e5e4777158 # main
+    uses: projectbluefin/bonedigger/.github/workflows/lifecycle.yml@30a240ea9163790fe9c1f24b2c6ce65af4a71798 # main
     with:
       brand_name: "Dakota"
     secrets: inherit
