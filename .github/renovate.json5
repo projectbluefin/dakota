@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
+    "local>projectbluefin/renovate-config:org-inherited-config"
   ],
   // Renovate targets main. All PRs must target main — the CI gate
   // (on-pr-opened-or-updated) blocks any PR not targeting main.
@@ -9,17 +9,31 @@
   // intentionally targets main — it is not Renovate-managed.
   "baseBranchPatterns": ["main"],
   "branchPrefix": "renovate/",
-  "schedule": ["* 0-3 * * 1"],
 
   // Limit Renovate to GitHub Actions and workflow image refs.
   // BuildStream sources are tracked separately by track-bst-sources.yml.
   "enabledManagers": ["github-actions"],
 
-  // Do not rebase when the default branch is updated
-  "rebaseWhen": "never",
-
   "packageRules": [
     {
+      "description": "Automerge digest/pin/patch/minor when CI passes",
+      "matchUpdateTypes": ["digest", "pin", "patch", "minor"],
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash"
+    },
+    {
+      "description": "Group all projectbluefin/actions SHA updates into one atomic PR",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["/projectbluefin\/actions/"],
+      "groupName": "projectbluefin/actions",
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash",
+      "labels": ["chore/deps", "automerge"]
+    },
+    {
+      "description": "Pin all GitHub Actions to full SHA digests",
       "matchManagers": ["github-actions"],
       "matchDepTypes": ["action"],
       "pinDigests": true
@@ -29,12 +43,6 @@
       // See .github/workflows/bonedigger.yml and docs/skills/ci-tooling.md.
       "matchPackageNames": ["projectbluefin/bonedigger"],
       "enabled": false
-    },
-    {
-      "automerge": true,
-      "matchManagers": ["github-actions"],
-      "matchDepTypes": ["action"],
-      "matchUpdateTypes": ["minor", "patch"]
     }
   ]
 }
