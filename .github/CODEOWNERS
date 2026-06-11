@@ -1,11 +1,11 @@
 # Default: any one maintainer approves
-* @castrojo @p5 @m2Giles @tulilirockz
+* @projectbluefin/maintainers
 
 # Sensitive paths — require maintainer review
-.github/workflows/  @castrojo @p5 @m2Giles @tulilirockz
-Justfile            @castrojo @p5 @m2Giles @tulilirockz
-build_files/        @castrojo @p5 @m2Giles @tulilirockz
-elements/           @castrojo @p5 @m2Giles @tulilirockz
+.github/workflows/  @projectbluefin/maintainers
+Justfile            @projectbluefin/maintainers
+build_files/        @projectbluefin/maintainers
+elements/           @projectbluefin/maintainers
 
 # BEGIN TRIAGERS — managed by projectbluefin/common, do not edit manually
 # docs/**  @handle1 @handle2
