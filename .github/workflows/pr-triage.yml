@@ -45,9 +45,15 @@ jobs:
       - name: Block PRs not targeting main
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Allow mergeraptor's automated next-branch junction bumps.
+          if [ "$BASE_REF" = "next" ] && [ "$HEAD_REF" = "auto/track-next-junction" ]; then
+            echo "Automated next-branch junction update — skipping main-target gate."
+            exit 0
+          fi
           if [ "$BASE_REF" != "main" ]; then
             echo "ERROR: PRs must target 'main', not '$BASE_REF'."
             echo "Branches like 'stable' and 'latest' are managed by the promotion pipeline — never target them directly."
@@ -58,6 +64,7 @@ jobs:
           fi
 
       - name: Add pr/needs-review and post instructions
+        if: github.event.pull_request.head.ref != 'auto/track-next-junction'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
