@@ -6,6 +6,7 @@ on:
       - closed
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   actions: read
@@ -18,8 +19,9 @@ permissions:
 jobs:
   execute:
     if: >-
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.head.ref == 'auto/promote-testing-to-main'
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'auto/promote-testing-to-main')
     permissions:
       actions: read
       contents: write
