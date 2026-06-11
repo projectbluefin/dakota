@@ -874,3 +874,164 @@ used `--squash` correctly; `track-bst-sources` was the gap.
 **Diagnostic:** if a tracking PR has auto-merge null and validate passed, check
 `allowMergeCommit` on the repo before assuming a workflow bug.
 
+
+### `permissions: {}` at workflow level starves GITHUB_TOKEN for reusable job calls (2026-06-11)
+
+Setting `permissions: {}` at the **workflow** level and then specifying
+permissions at the **job** level does NOT work when the job uses `uses:` to
+call a reusable workflow. GitHub mints the `GITHUB_TOKEN` at the calling
+workflow's top-level scope — job-level `permissions:` can only restrict, not
+expand beyond that ceiling.
+
+**Symptom:** `startup_failure` with `jobs: []` (zero jobs started) on every
+run of a thin caller that uses `uses:` with its own `permissions:` block.
+
+**Fix:** Set the top-level `permissions:` to the superset of everything any job
+in the workflow needs:
+
+```yaml
+# WRONG — starves the token; jobs cannot escalate beyond {}
+permissions: {}
+
+jobs:
+  promote:
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: org/actions/.github/workflows/reusable.yml@SHA
+
+# CORRECT — top-level is the budget; job-level can reduce but not expand
+permissions:
+  contents: write
+  packages: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  promote:
+    uses: org/actions/.github/workflows/reusable.yml@SHA
+```
+
+**Affected workflows fixed 2026-06-11:** `promote-testing-to-main.yml` (#796),
+`execute-release.yml` (#798).
+
+### `pull_request: closed` trigger causes `startup_failure` for all non-promotion merges (2026-06-11)
+
+When a workflow uses `on: pull_request: types: [closed]` and ALL jobs have
+`if:` conditions that evaluate to `false` for non-promotion PRs, GitHub reports
+the workflow run as `startup_failure` instead of a clean skip. This produces
+alarming noise in every PR merge and masks real failures.
+
+**Symptom:** `execute-release.yml` showed `startup_failure` on every single PR
+merged to `main` from the day it was introduced — 25+ runs, none successful,
+all with `jobs: []`.
+
+**Correct pattern (from bluefin-lts):** Use `push: branches: main` +
+`workflow_dispatch`, then add a lightweight `check-trigger` job that reads
+the squash-merge commit message:
+
+```yaml
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  check-trigger:
+    runs-on: ubuntu-latest
+    outputs:
+      is-promotion: ${{ steps.check.outputs.is-promotion }}
+    steps:
+      - id: check
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "is-promotion=true" >> "$GITHUB_OUTPUT"
+          elif echo "$COMMIT_MSG" | grep -q "^ci: promote testing images to stable"; then
+            echo "is-promotion=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is-promotion=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  execute:
+    needs: [check-trigger]
+    if: needs.check-trigger.outputs.is-promotion == 'true'
+    uses: ...
+```
+
+When `is-promotion=false`, `check-trigger` succeeds cleanly and subsequent
+jobs are skipped — no `startup_failure`.
+
+**Fixed:** `execute-release.yml` PR #800, 2026-06-11.
+
+### CODEOWNERS: use team slugs, not individual handles (2026-06-11)
+
+Individual `@handle` entries in CODEOWNERS mean:
+- New team members are never auto-requested for review
+- Departed maintainers keep getting pinged
+- Team membership changes require a CODEOWNERS PR
+
+**Fix:** Use `@org/team-slug` instead:
+
+```
+# WRONG
+* @castrojo @p5 @m2Giles @tulilirockz
+
+# CORRECT
+* @projectbluefin/maintainers
+```
+
+**Fixed:** PR #796, 2026-06-11.
+
+### Promotion PR noise: suppress CodeRabbit with `@coderabbitai ignore` (2026-06-11)
+
+CodeRabbit posts review summaries on every PR, including automated promotion
+PRs that only touch `.github/release-state.yaml`. To suppress it, add this
+HTML comment as the **first line** of the PR body:
+
+```markdown
+<!-- @coderabbitai ignore -->
+```
+
+Added to `reusable-promote.yml` in `projectbluefin/actions` (commit f5cd16ce).
+
+### Promotion PR body: include release context for maintainer decision-making (2026-06-11)
+
+The old promotion PR body was a raw YAML dump. Maintainers had no context for
+deciding whether to merge. The rich body template now includes:
+
+| Field | Source |
+|---|---|
+| Days since last stable | `gh release list --limit 1 --json publishedAt` |
+| Commits since last stable | `git rev-list --count $LAST_PROMOTE_SHA..origin/main` |
+| Component old→new refs | `git show $LAST_SHA:elements/gnome-build-meta.bst` vs current |
+| Images table | Parsed from `.github/release-state.yaml` |
+
+Change indicator `⬆` appears when a junction ref changed since the last
+promotion.
+
+**Location:** `reusable-promote.yml` "Open or update promotion PR" step in
+`projectbluefin/actions`.
+
+### GitHub Release body limit: 125k characters (2026-06-11)
+
+`gh release create --notes-file release-notes.md` fails with HTTP 422 if the
+body exceeds GitHub's hard limit of 125,000 characters:
+
+```
+HTTP 422: Validation Failed
+body is too long (maximum is 125000 characters)
+```
+
+The release notes generator in `reusable-release.yml` can produce bodies larger
+than this limit when the SBOM diff or changelog is long (e.g. after 12+ days
+between stable releases).
+
+**Workaround:** Re-run with a manually truncated notes file, or wait for the
+fix tracked in `projectbluefin/actions#190`.
+
+**Fix options** (tracked in #190):
+- Hard-truncate `release-notes.md` to ~120k chars with a `…` trailer
+- Move SBOM diff to a release asset instead of the body

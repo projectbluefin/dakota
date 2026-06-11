@@ -32,7 +32,8 @@ Every agent session produces two outputs: **the work** (the PR) and **the learni
 | GNOME Shell extension packaging | [`packaging-gnome-extensions.md`](packaging-gnome-extensions.md) |
 | Local OTA testing (QEMU or physical hardware) | [`local-ota.md`](local-ota.md) |
 | CI pipeline, remote cache, GHCR | [`ci.md`](ci.md) |
-| Manual promotion (testing → stable) and release | [`ci.md`](ci.md) — *Manual stable promotion flow* |
+| Manual promotion (testing → stable) and release | [`ci.md`](ci.md) — *Manual stable promotion flow* and *`permissions: {}` startup_failure pattern* |
+| Reusable workflow `startup_failure` debugging | [`ci.md`](ci.md) — *`permissions: {}` at workflow level starves GITHUB_TOKEN* and *`pull_request: closed` trigger* |
 | `:next`/`:btw` rolling GNOME 51 stream | [`overview.md`](overview.md) — *Image Streams* + [`ci.md`](ci.md) |
 | Clearing stuck merge queue | [`merge-queue.md`](merge-queue.md) |
 | Actionadon lifecycle, issue queue, data donation | [`actionadon.md`](actionadon.md) |
