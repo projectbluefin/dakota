@@ -37,9 +37,10 @@ Load when debugging CI failures, understanding the build pipeline, or working wi
 |---|---|
 | `.github/workflows/build.yml` | BST build + push artifacts to remote CAS. Fires on `merge_group` and `workflow_dispatch` only (no schedule). Does NOT push to GHCR directly. |
 | `.github/workflows/publish.yml` | 3-stage pipeline: setup → publish → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, then immediately promotes to `:testing` on every successful merge. No e2e gate — that lives only in the weekly promotion. |
-| `.github/workflows/release.yml` | Called from `weekly-testing-promotion.yml` after a successful promotion. Creates GitHub Release with card image, SBOM diff, and package changelog. Also available as `workflow_dispatch` for out-of-band cuts. |
-| `.github/workflows/weekly-testing-promotion.yml` | Weekly Tuesday promotion (06:00 UTC): 7-day floor check → verify `:testing` digests → cosign verify → e2e → promote to `:latest`+`:stable` → fast-forward branches → call `release.yml`. Has `environment: production` gate requiring human approval. |
+| `.github/workflows/promote-testing-to-main.yml` | Thin caller for `reusable-promote.yml` in `projectbluefin/actions`. Fires on `push: testing`, nightly schedule (23:00 UTC), and `workflow_dispatch`. Opens or updates the promotion PR that gates `:testing` → `:stable`. |
+| `.github/workflows/execute-release.yml` | Fires on `push: main` + `workflow_dispatch`. A `check-trigger` job reads the squash-merge commit message — only proceeds when it starts with `ci: promote testing images to stable`. Calls `reusable-execute-release.yml` (copies image tags) then `reusable-release.yml` (generates GitHub Release + SBOM diff). |
 | `.github/workflows/e2e.yml` | Smoke test via projectbluefin/testsuite. Fires on PR; `should-run` job skips the test when no image-affecting paths changed. |
+| `.github/workflows/vulnerability-scan.yml` | Weekly Monday 08:00 UTC CVE scan via `reusable-vulnerability-scan.yml`. Also available as `workflow_dispatch` with optional `image_ref` input. Results surface in the GitHub Security tab. |
 
 ## Trigger Behavior
 
@@ -969,6 +970,27 @@ jobs are skipped — no `startup_failure`.
 
 **Fixed:** `execute-release.yml` PR #800, 2026-06-11.
 
+### CODEOWNERS: no-owner override for auto-managed files (2026-06-11)
+
+Files auto-managed by a bot (e.g. `elements/bluefin/common.bst` bumped by
+mergeraptor on every common release) should not trigger code-owner review
+requests. Add a no-owner line for the specific file **above** the catch-all
+path rule — CODEOWNERS is evaluated top-to-bottom and the first match wins:
+
+```
+# Auto-managed by mergeraptor — no review required
+elements/bluefin/common.bst
+
+# Everything else in elements/ needs a maintainer review
+elements/ @projectbluefin/maintainers
+```
+
+Also add the bot to `bypass_pull_request_allowances` in the repo's branch
+protection ruleset so it can satisfy the `required_approving_review_count`
+without a human approval. Without this, auto-merge is set but never clears.
+
+**Fixed:** PR #807, 2026-06-11.
+
 ### CODEOWNERS: use team slugs, not individual handles (2026-06-11)
 
 Individual `@handle` entries in CODEOWNERS mean:
@@ -1032,9 +1054,61 @@ The release notes generator in `reusable-release.yml` can produce bodies larger
 than this limit when the SBOM diff or changelog is long (e.g. after 12+ days
 between stable releases).
 
-**Workaround:** Re-run with a manually truncated notes file, or wait for the
-fix tracked in `projectbluefin/actions#190`.
+**Fixed in `projectbluefin/actions#191`:** `reusable-release.yml` now hard-caps
+the release body at 120,000 characters with a `…` trailer before calling
+`gh release create`. No manual intervention needed.
 
-**Fix options** (tracked in #190):
-- Hard-truncate `release-notes.md` to ~120k chars with a `…` trailer
-- Move SBOM diff to a release asset instead of the body
+### `sign-and-publish` reusable action: cert identity regexp must include consuming repo (2026-06-11)
+
+The `sign-and-publish` action in `projectbluefin/actions` has a default
+`certificate-identity-regexp` that is repo-specific. If the pinned SHA
+pre-dates when `dakota` was added to that regexp, every `publish.yml` run
+fails at the cosign verification step — 100% failure rate.
+
+**Symptom:** publish run fails at cosign verify with a cert identity mismatch.
+All `:testing` builds stop. May appear as "65%" failure rate if some older
+cached `:testing` images still serve.
+
+**Fix:** Bump the `projectbluefin/actions` SHA to a commit that includes
+the repo name in the default regexp. Or pass an explicit input:
+
+```yaml
+- uses: projectbluefin/actions/.github/actions/sign-and-publish@<SHA>
+  with:
+    cosign_identity_regexp: >-
+      ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
+```
+
+**Root cause (PR #792, 2026-06-11):** Actions SHA `3025b5d31f34` excluded
+`dakota`; bumping to `2a09e72e9be1` (actions#166) fixed it.
+
+**Rule:** after bumping any `projectbluefin/actions` SHA, verify the first
+publish run succeeds before assuming the bump is clean.
+
+### `cliff.toml` required at repo root for structured release notes (2026-06-11)
+
+`reusable-release.yml` calls `git-cliff` via the `generate-release-notes`
+step. Without `cliff.toml` at the repo root, it falls back to a raw
+`git log` heredoc — no commit grouping, no filtering, no section headers.
+
+**Add `cliff.toml`** adapted from `projectbluefin/common/cliff.toml` with
+Conventional Commits parser. Dakota-specific note: **omit** the
+`chore: promote` skip rule. Dakota uses OCI digest promotion via the
+`execute-release.yml` commit-message gate — there are no squash promotion
+commits in the git history that need filtering out.
+
+**Key sections in `cliff.toml`:**
+
+```toml
+[git]
+conventional_commits = true
+filter_unconventional = false
+tag_pattern = "v[0-9].*"
+skip_tags = ""
+
+[git.commit_parsers]
+# do NOT add: { message = "^chore: promote", skip = true }
+# Dakota promotions don't produce commits like this
+```
+
+**Added in PR #793, 2026-06-11.** Closes projectbluefin/common#609.
