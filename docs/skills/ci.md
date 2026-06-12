@@ -1200,3 +1200,61 @@ than pinned SHAs for inner dependencies.
 **Rule:** when picking a SHA to pin for a reusable workflow, verify that its
 own nested `uses:` references are either `@v1`/managed-tags or still-live
 SHAs. Prefer the version that uses managed tags internally — those age better.
+
+---
+
+## Testing→main promotion pipeline — full cycle and failure modes (2026-06-12)
+
+### How the cycle works (bluefin model)
+
+```
+Renovate PR → testing branch (automerges when build CI passes)
+    → push to testing → promote-testing-to-main fires
+    → squash PR: auto/promote-testing-to-main → main
+    → maintainer merges
+    → execute-release fires (commit msg "ci: promote testing images to stable")
+    → :testing retagged as :stable
+    → push to main → sync-main-to-testing fires
+    → main fast-forwarded into testing (testing == main again)
+    → next Renovate cycle begins
+```
+
+### Three invariants that must all hold
+
+1. **`baseBranchPatterns: ["testing"]`** in `renovate.json5` — Renovate must target
+   `testing`, not `main`. With `baseBranchPatterns: ["main"]`, `testing` is a dead
+   branch: nothing ever lands there, the promote workflow finds nothing to squash,
+   and `:stable` never updates.
+
+2. **`sync-main-to-testing.yml`** must exist — after each squash-merge promotion, the
+   squash commit lands on `main` but not `testing`. Without this workflow, `testing`
+   falls permanently behind `main`. The next promote run finds diverged trees (so
+   `sync_needed=true`), but the squash produces nothing staged → `git commit` exits 1.
+
+3. **`pr-triage.yml` must exempt `renovate/*` PRs targeting `testing`** — the triage
+   workflow blocks all PRs not targeting `main`. Without an exemption, Renovate PRs
+   to `testing` are immediately blocked and cannot automerge.
+
+### The empty-squash crash (known bug in reusable-promote-squash)
+
+When `testing` is behind `main` with no unique content:
+- `git merge --squash origin/testing` says "Already up to date"
+- Nothing is staged
+- `git commit` exits 1 → job fails with misleading error
+
+This is fixed by `projectbluefin/actions#218` (adds `git diff --cached --quiet` guard
+before `git commit`). In steady state (sync-main-to-testing present), this edge case
+doesn't occur because `testing == main` after each sync, and the next promote run gets
+`sync_needed=false` cleanly. The fix is defence-in-depth.
+
+### Root cause of 2026-06-11/12 breakage
+
+PR #741 changed `baseBranchPatterns` from `["testing"]` to `["main"]` to work around
+the triage gate — but without also adding `sync-main-to-testing.yml` or exempting
+Renovate from the gate. After promotion #797 (June 10), the cycle broke permanently:
+- `testing` fell 20+ commits behind `main` (no sync workflow)
+- Renovate stopped feeding `testing` (wrong base branch)
+- Promote workflow crashed nightly (empty squash)
+- `:stable` stopped updating
+
+**Fix: PR #822** (dakota) + **PR #218** (actions).
