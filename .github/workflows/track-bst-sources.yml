@@ -264,10 +264,11 @@ jobs:
           echo "PR: $PR_URL"
 
           if [ "${{ matrix.group }}" = "auto-merge" ]; then
-            echo "Enabling auto-merge..."
-            # Use --squash: the repo only allows squash merges (allowMergeCommit=false).
-            # --merge would silently fail via the '|| echo ::warning::' fallback.
-            gh pr merge "$PR_URL" --auto --squash || echo "::warning::Could not enable auto-merge"
+            # Direct merge via mergeraptor bypass. --auto uses GitHub's auto-merge
+            # queue which does NOT honour bypass_pull_request_allowances — only
+            # direct merges do. With no required status checks and mergeraptor in
+            # bypass_pull_request_allowances, this merges immediately.
+            gh pr merge "$PR_URL" --squash || echo "::warning::Could not merge PR"
           fi
 
   track-tarballs:
