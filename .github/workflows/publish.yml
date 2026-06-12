@@ -128,7 +128,7 @@ jobs:
       # Note: setup-runner btrfs does not expose loopback-free; watch for disk
       # pressure and upstream the option if needed.
       - name: Setup runner
-        uses: projectbluefin/actions/bootc-build/setup-runner@c4e9e5511a984cc88623be152e140d96740185f5 # v1.1.0
+        uses: projectbluefin/actions/bootc-build/setup-runner@95dc404b7c69ad65889e3f3bf49ecba5cd3018e6 # v1.1.0
         with:
           storage-backend: btrfs
           update-podman: true
@@ -223,7 +223,7 @@ jobs:
         # generate-sbom: false — dakota uses just sbom (BST-native provenance via
         # bst artifact list). Syft post-build scan is less accurate for BST builds.
         # SBOM attachment and SBOM signing are handled in the steps below.
-        uses: projectbluefin/actions/bootc-build/sign-and-publish@c4e9e5511a984cc88623be152e140d96740185f5 # v1.1.0
+        uses: projectbluefin/actions/bootc-build/sign-and-publish@95dc404b7c69ad65889e3f3bf49ecba5cd3018e6 # v1.1.0
         with:
           image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
           digest: ${{ steps.push.outputs.digest }}
