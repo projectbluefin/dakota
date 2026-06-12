@@ -1,7 +1,9 @@
 name: Promote testing to main
-
-# Thin caller — logic lives in projectbluefin/actions/reusable-promote.yml
-# Replaces the previous 183-line promote-testing-to-main.yml.
+# Thin caller — logic lives in projectbluefin/actions/reusable-promote-squash.yml
+#
+# Migrated from reusable-promote.yml which is now deleted.
+# Key improvement: squash branch is always rebuilt fresh on every run —
+# no staleness, no conflict drift, no merge friction.
 
 on:
   push:
@@ -16,13 +18,15 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
+  issues: write
 
 jobs:
   promote:
-    uses: projectbluefin/actions/.github/workflows/reusable-promote.yml@v1
+    uses: projectbluefin/actions/.github/workflows/reusable-promote-squash.yml@6c2278adfcde0818079173b40f6c0f07a68c7198 # v1
     with:
-      variants: '["dakota","dakota-nvidia"]'
+      variants: '[{"image":"dakota"},{"image":"dakota-nvidia"}]'
       cosign_identity_regexp: >-
         ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
       run_e2e: false
