@@ -54,6 +54,12 @@ jobs:
             echo "Automated next-branch junction update — skipping main-target gate."
             exit 0
           fi
+          # Allow Renovate PRs targeting testing — testing is the staging branch
+          # for the testing→main promotion pipeline (parity with bluefin).
+          if [ "$BASE_REF" = "testing" ] && [[ "$HEAD_REF" == renovate/* ]]; then
+            echo "Renovate update targeting testing staging branch — skipping main-target gate."
+            exit 0
+          fi
           if [ "$BASE_REF" != "main" ]; then
             echo "ERROR: PRs must target 'main', not '$BASE_REF'."
             echo "Branches like 'stable' and 'latest' are managed by the promotion pipeline — never target them directly."

@@ -3,11 +3,14 @@
   "extends": [
     "local>projectbluefin/renovate-config:org-inherited-config"
   ],
-  // Renovate targets main. All PRs must target main — the CI gate
-  // (on-pr-opened-or-updated) blocks any PR not targeting main.
+  // Renovate targets the testing staging branch. PRs land on testing first,
+  // are built and validated, then the promote-testing-to-main workflow opens a
+  // squash PR to advance main (triggering :stable promotion). This matches the
+  // bluefin/bluefin-lts model. Renovate PRs targeting testing are explicitly
+  // exempted from the "must target main" gate in pr-triage.yml.
   // Note: track-bst-sources.yml manages BuildStream refs directly and
   // intentionally targets main — it is not Renovate-managed.
-  "baseBranchPatterns": ["main"],
+  "baseBranchPatterns": ["testing"],
   "branchPrefix": "renovate/",
 
   // Limit Renovate to GitHub Actions and workflow image refs.

@@ -1,0 +1,40 @@
+name: Sync main → testing
+
+# After each squash-merge promotion (testing→main), the squash commit lands
+# on main but not in testing, leaving testing BEHIND. This workflow merges
+# main back into testing automatically so the next promotion PR is not blocked.
+# Reusable logic lives in projectbluefin/actions. This is a thin caller.
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: sync-main-to-testing
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Keep testing up-to-date with main
+    uses: projectbluefin/actions/.github/workflows/reusable-sync-branches.yml@3025b5d31f34ce44c19eab41a7fa5d4d5c5b688e # v1
+    permissions:
+      contents: write
+
+  cleanup-squash-branch:
+    name: Delete squash promotion branch
+    needs: [sync]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Delete auto/promote-testing-to-main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/${{ github.repository }}/git/refs/heads/auto/promote-testing-to-main \
+            -X DELETE 2>/dev/null \
+            && echo "✅ Deleted squash promotion branch" \
+            || echo "Branch already deleted or does not exist — nothing to do"
