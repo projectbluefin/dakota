@@ -1,7 +1,8 @@
 name: Promote testing to main
+
 # Thin caller — logic lives in projectbluefin/actions/reusable-promote-squash.yml
+# Replaces the previous 183-line promote-testing-to-main.yml.
 #
-# Migrated from reusable-promote.yml which is now deleted.
 # Key improvement: squash branch is always rebuilt fresh on every run —
 # no staleness, no conflict drift, no merge friction.
 
@@ -17,16 +18,22 @@ concurrency:
   group: promote-testing-to-main
   cancel-in-progress: false
 
+# The called reusable workflow needs write access to push the squash branch,
+# open/update PRs, and write issues. Caller-level permissions set the maximum
+# grants available to the called workflow's jobs.
 permissions:
-  contents: write
-  pull-requests: write
-  issues: write
+  contents: write       # push squash promotion branch
+  pull-requests: write  # create / update / auto-merge the promotion PR
+  issues: write         # open / close failure-tracking issues
+  packages: read        # read image digests in release-gate checks
+  actions: read         # inspect workflow-run statuses in release-gate
 
 jobs:
   promote:
-    uses: projectbluefin/actions/.github/workflows/reusable-promote-squash.yml@6c2278adfcde0818079173b40f6c0f07a68c7198 # v1
+    uses: projectbluefin/actions/.github/workflows/reusable-promote-squash.yml@5f3cabacecd1a7b95b7f64b03aa4c298ff73f918 # v1
     with:
-      variants: '[{"image":"dakota"},{"image":"dakota-nvidia"}]'
+      variants: >-
+        [{"image":"dakota"},{"image":"dakota-nvidia"}]
       cosign_identity_regexp: >-
         ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
       run_e2e: false
