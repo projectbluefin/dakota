@@ -1478,3 +1478,27 @@ content to review.
 
 **Both fixes are in `reusable-promote-squash.yml@v1`** and apply automatically
 to bluefin, bluefin-lts, and dakota.
+
+## buildah in export recipe — do not use without confirming availability
+
+**Context:** `f8b80d4` switched the `just export` recipe from `podman build --squash-all` to
+`buildah from + buildah mount + buildah commit` to save ~35–50 min by avoiding full image re-encode.
+
+**Bug (dakota#841):** This broke two things:
+1. **Boot failure on real hardware** — the multi-layer `buildah commit` output differs from the
+   single flat layer produced by `--squash-all`. chunka's composefs xattr injection expects to
+   rechunk a flat image; multi-layer input produces a different composefs tree that fails to mount
+   at boot.
+2. **Local/Argo builds broken** — `quay.io/podman/stable` (used by `just build` and the Argo
+   `dakota-bst` WorkflowTemplate) does not include `buildah`. GitHub Actions ubuntu-24.04 has
+   buildah pre-installed, so GHCR builds succeeded while local/Argo builds errored with
+   `buildah: command not found` (exit 127).
+
+**Fix:** Reverted to `podman build --squash-all` in PR fixing #841.
+
+**Rule:** Any `just export` change that introduces a tool dependency beyond `podman` must be
+verified in both environments:
+- `quay.io/podman/stable:latest` (Argo pipeline image)
+- `ubuntu-24.04` GitHub Actions runner
+If the tool is only available on ubuntu-24.04, the Justfile recipe must install it explicitly
+(e.g. `dnf install -y buildah`) or the approach must avoid it entirely.
