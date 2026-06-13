@@ -961,6 +961,10 @@ sbom variant="default":
         2>/dev/null || true
 
     echo "==> Generating BST-native SBOM with buildstream-sbom (${ELEMENT} → ${OUTFILE})..."
+    # Ensure pip cache directory exists before podman bind-mount.
+    # actions/cache does not create the path on a cold cache miss; podman
+    # refuses to start (exit 125) if the host-side directory is absent.
+    mkdir -p "${HOME}/.cache/pip"
     # Pinned to commit 0706fec3 (2026-04-01) — latest main, includes element
     # names in SPDX output (issue #9 fix). Switch to a versioned PyPI release
     # once the project publishes one.
