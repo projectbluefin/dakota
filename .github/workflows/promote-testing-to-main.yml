@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   promote:
-    uses: projectbluefin/actions/.github/workflows/reusable-promote-squash.yml@efa19f2c3efdcbef1c55a1730229891d781fd11b # v1
+    uses: projectbluefin/actions/.github/workflows/reusable-promote-squash.yml@v1
     with:
       variants: >-
         [{"image":"dakota"},{"image":"dakota-nvidia"}]

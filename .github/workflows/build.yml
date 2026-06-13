@@ -132,7 +132,7 @@ jobs:
       # Note: setup-runner btrfs does not pass loopback-free; watch for disk
       # pressure and upstream the option if needed.
       - name: Setup runner
-        uses: projectbluefin/actions/bootc-build/setup-runner@2a09e72e9be15b137392dde15f8587f35587e8eb # v1.1.0
+        uses: projectbluefin/actions/bootc-build/setup-runner@v1
         with:
           storage-backend: btrfs
           update-podman: true
@@ -210,7 +210,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Setup runner
-        uses: projectbluefin/actions/bootc-build/setup-runner@2a09e72e9be15b137392dde15f8587f35587e8eb # v1.1.0
+        uses: projectbluefin/actions/bootc-build/setup-runner@v1
         with:
           storage-backend: btrfs
           update-podman: true
