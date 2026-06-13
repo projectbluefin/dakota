@@ -217,17 +217,264 @@ jobs:
           generate-sbom: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── Smoke gate ────────────────────────────────────────────────────────────
-  # Boots the just-published :$sha image and runs the smoke suite.
-  # continue-on-error: true — smoke is observational for :testing; failures
-  # are surfaced as warnings, not blockers. The full e2e suite gates
-  # :testing → :stable in the weekly promotion workflow instead.
-  # Rationale: AT-SPI/GNOME Settings tests in the smoke suite are slow
-  # (~80 min) and timing-sensitive in VMs, causing false-positive failures
-  # that block :testing promotion without catching real regressions.
-  # See: projectbluefin/dakota#849
+  # ── Boot check (hard gate) ───────────────────────────────────────────────
+  # Inline QEMU boot check — gates :testing promotion. Target: <15 min.
+  # Checks: image installs via bootc, boots to multi-user.target, GDM is
+  # active, SSH is reachable. No AT-SPI, no behave, no timing sensitivity.
+  # See: projectbluefin/dakota#850
+  boot-check:
+    name: Boot check — gate
+    needs: [setup, publish-image]
+    if: needs.publish-image.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.setup.outputs.sha }}
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | \
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+
+      - name: Install QEMU
+        run: sudo apt-get install -y --no-install-recommends qemu-system-x86
+
+      - name: Login to GHCR
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | sudo podman login ghcr.io --username "$GH_ACTOR" --password-stdin
+
+      - name: Install image to disk via bootc
+        env:
+          IMAGE: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.sha }}
+        run: |
+          set -euo pipefail
+          fallocate -l 30G disk.raw
+          # bootupd exits 1 in plain VMs (no EFI partition target) — expected.
+          if sudo podman run --rm --quiet "${IMAGE}" bootc install to-disk --help 2>&1 | grep -q '\-\-bootloader'; then
+            sudo podman run --rm --privileged \
+              -v /dev:/dev --pid=host -v "$(pwd):/data:rw" \
+              "${IMAGE}" bootc install to-disk \
+                --via-loopback /data/disk.raw \
+                --skip-fetch-check \
+              || echo "bootc install exited $? (bootupd expected — continuing)"
+          else
+            sudo podman run --rm --privileged \
+              -v /dev:/dev --pid=host -v "$(pwd):/data:rw" \
+              "${IMAGE}" bootc install to-disk \
+                --via-loopback /data/disk.raw \
+              || echo "bootc install exited $? (bootupd expected — continuing)"
+          fi
+          sudo podman rmi "${IMAGE}" 2>/dev/null || true
+
+      - name: Extract kernel, initramfs, root UUID and ostree path
+        id: disk
+        run: |
+          set -euo pipefail
+          LOOP=$(sudo losetup -f --show -P disk.raw)
+          echo "Loop: ${LOOP}"
+          # Root is p3 on GPT disks laid out by bootc (EFI=p1, boot=p2, root=p3)
+          ROOT_PART="${LOOP}p3"
+          sudo mount "${ROOT_PART}" /mnt
+          ROOT_UUID=$(sudo blkid -s UUID -o value "${ROOT_PART}")
+          echo "root=${ROOT_PART}  uuid=${ROOT_UUID}"
+
+          # Find the ostree deployment
+          DEPLOY=$(sudo ls /mnt/ostree/deploy/default/deploy/ 2>/dev/null | head -1)
+          [[ -z "${DEPLOY}" ]] && { echo "ERROR: ostree deployment missing"; exit 1; }
+          DEP="/mnt/ostree/deploy/default/deploy/${DEPLOY}"
+          VAR="/mnt/ostree/deploy/default/var"
+          OSTREE_PATH="/ostree/deploy/default/deploy/${DEPLOY}"
+          echo "deploy=${DEPLOY}"
+
+          # Pick kernel version that has vmlinuz
+          KVER=""
+          for kv in $(sudo ls "${DEP}/usr/lib/modules/" 2>/dev/null); do
+            if [[ -f "${DEP}/usr/lib/modules/${kv}/vmlinuz" ]]; then
+              KVER="${kv}"; break
+            fi
+          done
+          [[ -z "${KVER}" ]] && { echo "ERROR: no vmlinuz found in deployment"; exit 1; }
+          echo "kver=${KVER}"
+
+          sudo cp "${DEP}/usr/lib/modules/${KVER}/vmlinuz" ./vmlinuz
+          sudo cp "${DEP}/usr/lib/modules/${KVER}/initramfs.img" ./initramfs.img
+          sudo chmod 644 vmlinuz initramfs.img
+
+          {
+            echo "ROOT_UUID=${ROOT_UUID}"
+            echo "OSTREE_PATH=${OSTREE_PATH}"
+            echo "KVER=${KVER}"
+            echo "DEP=${DEP}"
+            echo "VAR=${VAR}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Inject SSH key into deployment
+        env:
+          ROOT_UUID:   ${{ steps.disk.outputs.ROOT_UUID }}
+          OSTREE_PATH: ${{ steps.disk.outputs.OSTREE_PATH }}
+          DEP:         ${{ steps.disk.outputs.DEP }}
+          VAR:         ${{ steps.disk.outputs.VAR }}
+        run: |
+          set -euo pipefail
+          ssh-keygen -t ed25519 -f /tmp/vm_key -N "" -C "boot-check@gha"
+          PUBKEY=$(cat /tmp/vm_key.pub)
+          BFT_UID=1001
+
+          # Enable sshd in the deployment
+          sudo ln -sf /usr/lib/systemd/system/sshd.service \
+            "${DEP}/etc/systemd/system/multi-user.target.wants/sshd.service"
+          sudo ssh-keygen -A -f "${DEP}" 2>/dev/null || true
+
+          # Create bluefin-test user if absent
+          if ! sudo grep -q '^bluefin-test:' "${DEP}/etc/passwd" 2>/dev/null; then
+            printf 'bluefin-test:x:%d:%d:Bluefin Test:/var/home/bluefin-test:/bin/bash\n' \
+              "${BFT_UID}" "${BFT_UID}" | sudo tee -a "${DEP}/etc/passwd"
+            printf 'bluefin-test:*:19000:0:99999:7:::\n' | sudo tee -a "${DEP}/etc/shadow"
+            printf 'bluefin-test:x:%d:\n' "${BFT_UID}" | sudo tee -a "${DEP}/etc/group"
+          fi
+
+          # sshd drop-in: AuthorizedKeysCommand so key works without home dir
+          sudo mkdir -p "${DEP}/etc/ssh/sshd_config.d/"
+          printf 'PubkeyAuthentication yes\nPermitUserEnvironment yes\nAuthorizedKeysCommand /bin/cat /etc/ssh/ci-authorized-keys\nAuthorizedKeysCommandUser root\n' | \
+            sudo tee "${DEP}/etc/ssh/sshd_config.d/00-ci-auth.conf"
+          printf '%s\n' "${PUBKEY}" | sudo tee "${DEP}/etc/ssh/ci-authorized-keys"
+          sudo chmod 600 "${DEP}/etc/ssh/ci-authorized-keys"
+
+          # tmpfiles.d entry to create home dir at runtime
+          sudo mkdir -p "${DEP}/etc/tmpfiles.d/"
+          printf 'Z /var/home/bluefin-test 0700 %d %d -\nd /var/home/bluefin-test 0700 %d %d -\nd /var/home/bluefin-test/.ssh 0700 %d %d -\n' \
+            "${BFT_UID}" "${BFT_UID}" \
+            "${BFT_UID}" "${BFT_UID}" \
+            "${BFT_UID}" "${BFT_UID}" | \
+            sudo tee "${DEP}/etc/tmpfiles.d/ci-user.conf"
+          printf 'bluefin-test ALL=(ALL) NOPASSWD:ALL\n' | \
+            sudo tee "${DEP}/etc/sudoers.d/bluefin-test"
+
+          # Inject public key into var (runtime /var/home)
+          sudo mkdir -p "${VAR}/home/bluefin-test/.ssh"
+          printf '%s\n' "${PUBKEY}" | \
+            sudo tee "${VAR}/home/bluefin-test/.ssh/authorized_keys"
+          sudo chmod 700 "${VAR}/home/bluefin-test/.ssh"
+          sudo chmod 600 "${VAR}/home/bluefin-test/.ssh/authorized_keys"
+
+          sudo umount /mnt
+
+      - name: Boot VM
+        env:
+          ROOT_UUID:   ${{ steps.disk.outputs.ROOT_UUID }}
+          OSTREE_PATH: ${{ steps.disk.outputs.OSTREE_PATH }}
+          KVER:        ${{ steps.disk.outputs.KVER }}
+        run: |
+          set -euo pipefail
+          KERNEL_ARGS="root=UUID=${ROOT_UUID} rw ostree=${OSTREE_PATH}"
+          KERNEL_ARGS+=' systemd.firstboot=no selinux=0'
+          KERNEL_ARGS+=' console=ttyS0,115200 systemd.journald.forward_to_console=1'
+          KERNEL_ARGS+=' quiet'
+          # Mask slow/network-dependent services that are not needed for boot check
+          for svc in tailscaled brew-setup NetworkManager-wait-online firewalld \
+              wpa_supplicant flatpak-preinstall podman-auto-update \
+              podman-auto-update.timer malcontent-webd malcontent-webd-update \
+              malcontent-control speech-dispatcherd avahi-daemon avahi-daemon.socket \
+              cups cups.path cups.socket cups.browsed blueman-mechanism \
+              gnome-remote-desktop bazzite-hardware-setup \
+              greenboot-healthcheck greenboot-set-rollback-trigger \
+              systemd-udev-settle; do
+            KERNEL_ARGS+=" systemd.mask=${svc}.service"
+          done
+
+          touch vm-serial.log && chmod 666 vm-serial.log
+          sudo qemu-system-x86_64 \
+            -machine  q35,accel=kvm \
+            -cpu      host \
+            -m        4096 \
+            -smp      4 \
+            -kernel   ./vmlinuz \
+            -initrd   ./initramfs.img \
+            -append   "${KERNEL_ARGS}" \
+            -object   iothread,id=ioth0 \
+            -drive    if=none,id=disk,file=disk.raw,format=raw,cache=unsafe,aio=threads,discard=unmap \
+            -device   virtio-blk-pci,drive=disk,iothread=ioth0 \
+            -netdev   user,id=net0,hostfwd=tcp::2222-:22 \
+            -device   virtio-net-pci,netdev=net0 \
+            -display  none \
+            -serial   "file:$(pwd)/vm-serial.log" \
+            -daemonize \
+            -pidfile  /tmp/qemu.pid
+          QEMU_PID=$(sudo cat /tmp/qemu.pid)
+          echo "VM booting (pid=${QEMU_PID})"
+
+      - name: Wait for SSH
+        run: |
+          set -euo pipefail
+          SSH_OPTS=(-i /tmp/vm_key -o StrictHostKeyChecking=no -o ConnectTimeout=5
+            -o UserKnownHostsFile=/dev/null -o BatchMode=yes)
+          echo "Waiting for SSH on port 2222..."
+          for attempt in $(seq 1 36); do
+            if ssh "${SSH_OPTS[@]}" -p 2222 bluefin-test@127.0.0.1 true 2>/dev/null; then
+              echo "SSH ready after ~$((attempt * 5))s"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "ERROR: SSH did not become reachable within 3 minutes"
+          echo "--- last 40 lines of serial log ---"
+          tail -40 vm-serial.log || true
+          exit 1
+
+      - name: Health checks
+        run: |
+          set -euo pipefail
+          SSH=(ssh -i /tmp/vm_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+            -o BatchMode=yes -p 2222 bluefin-test@127.0.0.1)
+
+          echo "==> systemd multi-user.target"
+          "${SSH[@]}" sudo systemctl is-active multi-user.target
+
+          echo "==> gdm.service"
+          "${SSH[@]}" sudo systemctl is-active gdm.service
+
+          echo "==> no failed critical units"
+          FAILED=$("${SSH[@]}" sudo systemctl list-units --state=failed --no-legend \
+            | grep -v 'boot-timeout\|greenboot\|bazzite\|malcontent\|avahi\|cups\|blueman' \
+            || true)
+          if [[ -n "${FAILED}" ]]; then
+            echo "WARNING: failed units:"
+            echo "${FAILED}"
+          fi
+          echo "Boot check passed."
+
+      - name: Cleanup VM
+        if: always()
+        run: |
+          if [[ -f /tmp/qemu.pid ]]; then
+            sudo kill "$(sudo cat /tmp/qemu.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload serial log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: boot-check-serial-${{ needs.setup.outputs.sha }}
+          path: vm-serial.log
+          retention-days: 3
+          if-no-files-found: ignore
+
+  # ── Testsuite smoke (observational) ───────────────────────────────────────
+  # Runs the full testsuite smoke suite for signal. Non-blocking — AT-SPI
+  # timing failures do not block :testing promotion. Results visible in the
+  # workflow timeline. The full suite gates :testing → :stable in the weekly
+  # promotion workflow. See: projectbluefin/dakota#850
   smoke:
-    name: Smoke — boot gate
+    name: Smoke — observational
     needs: [setup, publish-image]
     if: needs.publish-image.result == 'success'
     permissions:
@@ -370,16 +617,17 @@ jobs:
             "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}@${SBOM_DIGEST}"
 
   # ── Promote :testing ──────────────────────────────────────────────────────
-  # Re-tags :$sha as :testing only after smoke passes.
+  # Re-tags :$sha as :testing only after boot-check passes.
   # Uses skopeo copy for server-side re-tagging: layers never leave the registry,
   # saving the 20–25 min round-trip of the previous podman pull→tag→push approach.
   # --preserve-digests keeps the promoted tag pointing at the signed manifest digest.
   # NVIDIA is continue-on-error so a failing NVIDIA promote does not
   # prevent the default :testing from landing.
   promote:
-    needs: [setup, publish-image, smoke]
+    needs: [setup, publish-image, boot-check, smoke]
     if: >-
       needs.publish-image.result == 'success' &&
+      needs.boot-check.result == 'success' &&
       (needs.smoke.result == 'success' || needs.smoke.result == 'failure') &&
       (github.event_name == 'workflow_run' || github.ref_name == 'main')
     runs-on: ubuntu-24.04
