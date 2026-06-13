@@ -281,19 +281,30 @@ jobs:
           set -euo pipefail
           LOOP=$(sudo losetup -f --show -P disk.raw)
           echo "Loop: ${LOOP}"
-          # Root is p3 on GPT disks laid out by bootc (EFI=p1, boot=p2, root=p3)
+          # Disk layout from bootc: p1=EFI, p2=/boot, p3=/  
           ROOT_PART="${LOOP}p3"
+          BOOT_PART="${LOOP}p2"
           sudo mount "${ROOT_PART}" /mnt
           ROOT_UUID=$(sudo blkid -s UUID -o value "${ROOT_PART}")
           echo "root=${ROOT_PART}  uuid=${ROOT_UUID}"
 
-          # Find the ostree deployment
+          # Find the ostree deployment directory
           DEPLOY=$(sudo ls /mnt/ostree/deploy/default/deploy/ 2>/dev/null | head -1)
           [[ -z "${DEPLOY}" ]] && { echo "ERROR: ostree deployment missing"; exit 1; }
           DEP="/mnt/ostree/deploy/default/deploy/${DEPLOY}"
           VAR="/mnt/ostree/deploy/default/var"
-          OSTREE_PATH="/ostree/deploy/default/deploy/${DEPLOY}"
           echo "deploy=${DEPLOY}"
+
+          # Read the exact OSTREE_PATH from the BLS boot entry.
+          # bootc writes /ostree/boot.1/default/TREEHASH/N — a different hash
+          # from the deploy directory name; must be read from the entry.
+          sudo mkdir -p /mnt_boot
+          sudo mount "${BOOT_PART}" /mnt_boot
+          OSTREE_PATH=$(sudo grep -rh '^options' /mnt_boot/loader/entries/*.conf 2>/dev/null \
+            | grep -o 'ostree=[^ ]*' | head -1 | sed 's/ostree=//')
+          sudo umount /mnt_boot
+          [[ -z "${OSTREE_PATH}" ]] && { echo "ERROR: could not read OSTREE_PATH from BLS entries"; exit 1; }
+          echo "ostree_path=${OSTREE_PATH}"
 
           # Pick kernel version that has vmlinuz
           KVER=""
@@ -315,6 +326,7 @@ jobs:
             echo "KVER=${KVER}"
             echo "DEP=${DEP}"
             echo "VAR=${VAR}"
+            echo "LOOP=${LOOP}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Inject SSH key into deployment
@@ -367,7 +379,7 @@ jobs:
           sudo chmod 600 "${VAR}/home/bluefin-test/.ssh/authorized_keys"
 
           sudo umount /mnt
-
+          sudo losetup -d "${{ steps.disk.outputs.LOOP }}" 2>/dev/null || true
       - name: Boot VM
         env:
           ROOT_UUID:   ${{ steps.disk.outputs.ROOT_UUID }}
