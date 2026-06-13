@@ -17,9 +17,7 @@ depends:
 
   - bluefin/ghostty.bst
 
-  - bluefin/glow.bst
   - bluefin/gum.bst
-  - bluefin/fzf.bst
   - bluefin/tealdeer.bst
   - bluefin/umotd.bst
 
