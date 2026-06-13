@@ -139,11 +139,22 @@ config:
         libGLESv1_CM_nvidia.so.%{nvidia-version} \
         libGLESv2_nvidia.so.%{nvidia-version} \
         libGLX_nvidia.so.%{nvidia-version} \
+        libnvidia-opencl.so.%{nvidia-version} \
     ; do
         if [ -f "$lib" ]; then
             install -Dm755 "$lib" "$LIBDIR/$lib"
         fi
     done
+
+    # VDPAU GPU driver goes in the vdpau/ sub-directory, not $LIBDIR root.
+    if [ -f "libvdpau_nvidia.so.%{nvidia-version}" ]; then
+        install -Dm755 "libvdpau_nvidia.so.%{nvidia-version}" \
+            "$LIBDIR/vdpau/libvdpau_nvidia.so.%{nvidia-version}"
+        ln -sf "libvdpau_nvidia.so.%{nvidia-version}" \
+            "$LIBDIR/vdpau/libvdpau_nvidia.so.1"
+        ln -sf "libvdpau_nvidia.so.%{nvidia-version}" \
+            "$LIBDIR/vdpau/libvdpau_nvidia.so"
+    fi
 
     # libnvidia-egl-* / libnvidia-vulkan-* use NVIDIA-internal versioning
     # decoupled from the driver version — copy by glob instead of name.
@@ -229,6 +240,30 @@ config:
             [ -f "$fw" ] && install -Dm644 "$fw" \
                 "%{install-root}/usr/lib/firmware/nvidia/%{nvidia-version}/$(basename $fw)" || true
         done
+    fi
+
+    # OpenCL ICD: allows the OpenCL ICD loader to find the NVIDIA implementation.
+    # Path /etc/OpenCL/vendors/ is the ocl-icd default search path.
+    if [ -f nvidia.icd ]; then
+        install -Dm644 nvidia.icd \
+            "%{install-root}/etc/OpenCL/vendors/nvidia.icd"
+    fi
+
+    # Power management: save/restore GPU state across suspend and hibernate.
+    # Without these the GPU context is lost on resume, causing hard locks.
+    SYSTEMD_SYSTEM="%{install-root}/usr/lib/systemd/system"
+    SYSTEMD_SLEEP="%{install-root}/usr/lib/systemd/system-sleep"
+    install -d "$SYSTEMD_SYSTEM" "$SYSTEMD_SLEEP"
+    for svc in \
+        nvidia-hibernate.service \
+        nvidia-resume.service \
+        nvidia-suspend.service \
+        nvidia-suspend-then-hibernate.service \
+    ; do
+        [ -f "$svc" ] && install -Dm644 "$svc" "$SYSTEMD_SYSTEM/$svc" || true
+    done
+    if [ -f nvidia-sleep.sh ]; then
+        install -Dm755 nvidia-sleep.sh "$SYSTEMD_SLEEP/nvidia"
     fi
 
     # NVIDIA's SLA permits redistribution of the userspace libs only if
