@@ -137,34 +137,37 @@ export variant="default":
     rm -rf .build-out
     just bst artifact checkout "$ELEMENT" --directory /src/.build-out
 
-    # Load the BST OCI image and apply the date-stamped VERSION_ID mutation.
-    # BST cannot stamp VERSION_ID at build time without busting the daily cache key,
-    # so it is set to "0" in os-release.bst and replaced here via buildah mount.
-    # buildah commit appends a tiny (~1 KB) delta layer; chunka rechunks to ≤120 layers.
-    # No squash needed — podman image mount in chunka merges all layers transparently.
-    echo "==> Loading BST OCI image..."
+    # Load the multi-layer OCI image and squash into a single layer.
+    # BuildStream produces separate layers (platform + gnomeos + bluefin);
+    # bootc and registry distribution work better with one squashed layer.
+    # Using podman (not skopeo) ensures the squashed view is preserved on push.
+    echo "==> Loading and squashing OCI image..."
     IMAGE_ID=$($SUDO_CMD podman pull -q oci:.build-out)
     rm -rf .build-out
 
-    # Inject build-date VERSION_ID and apply dynamic OCI labels via buildah.
-    # This replaces the previous podman build --squash-all approach, which re-encoded
-    # the entire 8.5 GB image for a 2-line sed edit. buildah mount + commit writes
-    # only the changed bytes as a tiny delta layer instead.
-    DATE_TAG="$(date -u +%Y%m%d)"
-    CONTAINER=$($SUDO_CMD buildah from "$IMAGE_ID")
-    MOUNT=$($SUDO_CMD buildah mount "$CONTAINER")
-    $SUDO_CMD sed -i "s/^VERSION_ID=.*/VERSION_ID=\"${DATE_TAG}\"/" "$MOUNT/usr/lib/os-release"
-    $SUDO_CMD sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\"${DATE_TAG}\"/" "$MOUNT/usr/lib/os-release"
+    # Build label arguments for dynamic OCI metadata
+    LABEL_ARGS=""
     if [ -n "${OCI_IMAGE_CREATED}" ]; then
-        $SUDO_CMD buildah config --label "org.opencontainers.image.created=${OCI_IMAGE_CREATED}" "$CONTAINER"
+        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.created=${OCI_IMAGE_CREATED}"
     fi
     if [ -n "${OCI_IMAGE_REVISION}" ]; then
-        $SUDO_CMD buildah config --label "org.opencontainers.image.revision=${OCI_IMAGE_REVISION}" "$CONTAINER"
+        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.revision=${OCI_IMAGE_REVISION}"
     fi
     if [ -n "${OCI_IMAGE_VERSION}" ]; then
-        $SUDO_CMD buildah config --label "org.opencontainers.image.version=${OCI_IMAGE_VERSION}" "$CONTAINER"
+        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.version=${OCI_IMAGE_VERSION}"
     fi
-    $SUDO_CMD buildah commit --rm "$CONTAINER" "${FINAL_NAME}:${FINAL_TAG}"
+
+    # Squash, inject build-date VERSION_ID, and apply dynamic labels.
+    # BST has no string option type, so VERSION_ID is set to "0" in os-release.bst
+    # and replaced here at export time — after the BST cache key is already fixed.
+    # Reverts the buildah mount+commit approach from f8b80d4: buildah is not
+    # available in quay.io/podman/stable (breaks local builds and Argo pipeline)
+    # and the multi-layer output breaks composefs xattr injection in chunka.
+    # Fixes: projectbluefin/dakota#841 (boot failure on :testing 2026-06-13)
+    DATE_TAG="$(date -u +%Y%m%d)"
+    # shellcheck disable=SC2086
+    printf 'FROM %s\nRUN sed -i "s/^VERSION_ID=.*/VERSION_ID=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\\"%s\\"/" /usr/lib/os-release\n' "$IMAGE_ID" "$DATE_TAG" "$DATE_TAG" \
+        | $SUDO_CMD podman build --pull=never --security-opt label=type:unconfined_t --squash-all ${LABEL_ARGS} -t "${FINAL_NAME}:${FINAL_TAG}" -f - .
     $SUDO_CMD podman rmi "$IMAGE_ID" || true
 
     echo "==> Export complete. Image loaded as ${FINAL_NAME}:${FINAL_TAG}"
