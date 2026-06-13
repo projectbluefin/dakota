@@ -1,0 +1,1 @@
+- 2026-06-13: fix boot failure on :testing — reverted buildah commit to podman build --squash-all; chunka composefs xattr injection requires flat single-layer input ([#841](https://github.com/projectbluefin/dakota/issues/841), [#846](https://github.com/projectbluefin/dakota/pull/846))
