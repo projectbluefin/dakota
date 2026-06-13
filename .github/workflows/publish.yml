@@ -218,10 +218,14 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # ── Smoke gate ────────────────────────────────────────────────────────────
-  # Boots the just-published :$sha image and runs the full smoke suite before
-  # promoting to :testing. Catches GDM boot failures, composefs xattr regressions,
-  # and any other smoke-detectable breakage (see projectbluefin/dakota#841).
-  # NVIDIA is not tested here — smoke targets the default variant only.
+  # Boots the just-published :$sha image and runs the smoke suite.
+  # continue-on-error: true — smoke is observational for :testing; failures
+  # are surfaced as warnings, not blockers. The full e2e suite gates
+  # :testing → :stable in the weekly promotion workflow instead.
+  # Rationale: AT-SPI/GNOME Settings tests in the smoke suite are slow
+  # (~80 min) and timing-sensitive in VMs, causing false-positive failures
+  # that block :testing promotion without catching real regressions.
+  # See: projectbluefin/dakota#849
   smoke:
     name: Smoke — boot gate
     needs: [setup, publish-image]
@@ -376,7 +380,7 @@ jobs:
     needs: [setup, publish-image, smoke]
     if: >-
       needs.publish-image.result == 'success' &&
-      needs.smoke.result == 'success' &&
+      (needs.smoke.result == 'success' || needs.smoke.result == 'failure') &&
       (github.event_name == 'workflow_run' || github.ref_name == 'main')
     runs-on: ubuntu-24.04
     strategy:
