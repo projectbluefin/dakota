@@ -83,10 +83,10 @@ jobs:
           fi
 
   # ── Export, sign, attest ─────────────────────────────────────────────────
-  # Pulls artifact from remote CAS, pushes :$sha, signs and attaches SBOM.
-  # Runs for every trigger (merge_group, schedule, dispatch).
-  # Does NOT push :latest — that is gated on e2e passing (see promote job).
-  publish:
+  # Pulls artifact from remote CAS, pushes :$sha, signs and attests.
+  # SBOM generation is split to a separate job (publish-sbom) so it runs
+  # in parallel with promote rather than blocking it.
+  publish-image:
     needs: setup
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -171,19 +171,6 @@ jobs:
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
         run: just lint
 
-      - name: Generate SBOM
-        env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
-        run: just sbom ${{ matrix.variant }}
-
-      - name: Upload SBOM artifact for release workflow
-        if: matrix.variant == 'default'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: sbom-${{ needs.setup.outputs.sha }}
-          path: dakota.spdx.json
-          retention-days: 30
-
       - name: Login to GHCR
         env:
           GH_ACTOR: ${{ github.actor }}
@@ -222,7 +209,7 @@ jobs:
       - name: Sign image and create attestation
         # generate-sbom: false — dakota uses just sbom (BST-native provenance via
         # bst artifact list). Syft post-build scan is less accurate for BST builds.
-        # SBOM attachment and SBOM signing are handled in the steps below.
+        # SBOM attachment and SBOM signing are handled in the publish-sbom job.
         uses: projectbluefin/actions/bootc-build/sign-and-publish@v1
         with:
           image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
@@ -230,10 +217,115 @@ jobs:
           generate-sbom: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+  # ── Generate and attach SBOM ──────────────────────────────────────────────
+  # Runs in parallel with promote — SBOM generation is not on the critical path
+  # to :testing. A fresh runner fetches BST metadata from remote CAS (no full
+  # artifact download needed; bst show reads element graph only).
+  # P3: pip wheel cache keyed to the pinned buildstream-sbom commit SHA so
+  # repeated runs skip the GitLab git fetch entirely.
+  publish-sbom:
+    needs: [setup, publish-image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: default
+            element: oci/bluefin.bst
+            image_suffix: ''
+            sbom_filename: dakota.spdx.json
+            continue: false
+          - variant: nvidia
+            element: oci/bluefin-nvidia.bst
+            image_suffix: '-nvidia'
+            sbom_filename: dakota-nvidia.spdx.json
+            continue: true
+    continue-on-error: ${{ matrix.continue }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.setup.outputs.sha }}
+
+      - name: Setup runner
+        uses: projectbluefin/actions/bootc-build/setup-runner@v1
+        with:
+          storage-backend: btrfs
+          update-podman: true
+          install-tools: '["just"]'
+
+      # BST config for remote CAS — buildstream-sbom calls bst show --deps all
+      # internally which needs element graph resolution via the remote CAS.
+      - name: Generate BST fetch config
+        env:
+          CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
+          CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
+        uses: ./.github/actions/generate-bst-ci-config
+        with:
+          enable-remote-execution: 'false'
+          enable-push: 'false'
+
+      # Cache the pip wheel for buildstream-sbom across runs.
+      # Key is the pinned GitLab commit SHA — auto-invalidates on pin bumps.
+      # The wheel lives at ~/.cache/pip on the host; mounted into the bst2
+      # container via -v in just sbom so pip finds it without a network fetch.
+      - name: Restore pip cache for buildstream-sbom
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.cache/pip
+          key: pip-sbom-0706fec3bedf6f73bd9d2fed32c2aed585feef8d
+          restore-keys: pip-sbom-
+
+      - name: Generate SBOM
+        env:
+          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+        run: just sbom ${{ matrix.variant }}
+
+      - name: Upload SBOM artifact for release workflow
+        if: matrix.variant == 'default'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-${{ needs.setup.outputs.sha }}
+          path: dakota.spdx.json
+          retention-days: 30
+
+      - name: Login to GHCR
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p ~/.docker
+          echo "$GH_TOKEN" | podman login ghcr.io --username "$GH_ACTOR" --password-stdin \
+            --compat-auth-file ~/.docker/config.json
+
+      - name: Install oras
+        uses: oras-project/setup-oras@38de303aac69abb66f3e6255b7198bff35f323e3 # v2.0.0
+
+      # Re-derive the image digest via skopeo so this job has no runtime
+      # dependency on publish-image job outputs (avoids matrix output wiring).
+      - name: Resolve image digest
+        id: digest
+        env:
+          BUILD_SHA: ${{ needs.setup.outputs.sha }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
+          DIGEST=$(skopeo inspect \
+            --creds "$GH_ACTOR:$GH_TOKEN" \
+            "docker://${IMAGE}:${BUILD_SHA}" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['Digest'])")
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
       - name: Attach SBOM
         id: sbom-attach
         env:
-          DIGEST: ${{ steps.push.outputs.digest }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
           set -o pipefail
           SBOM_DIGEST=$(oras attach \
@@ -256,16 +348,17 @@ jobs:
             "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}@${SBOM_DIGEST}"
 
   # ── Promote :testing ──────────────────────────────────────────────────────
-  # Re-tags :$sha as :testing immediately after a successful publish on any
-  # main, testing, or merge-queue build. No e2e gate here — every merged PR
-  # ships to :testing so users always get the latest code.
-  # e2e only gates the weekly :testing → :stable promotion.
+  # Re-tags :$sha as :testing immediately after a successful publish-image.
+  # Runs in parallel with publish-sbom — no longer blocked by SBOM generation.
+  # Uses skopeo copy for server-side re-tagging: layers never leave the registry,
+  # saving the 20–25 min round-trip of the previous podman pull→tag→push approach.
+  # --preserve-digests keeps the promoted tag pointing at the signed manifest digest.
   # NVIDIA is continue-on-error so a failing NVIDIA promote does not
   # prevent the default :testing from landing.
   promote:
-    needs: [setup, publish]
+    needs: [setup, publish-image]
     if: >-
-      needs.publish.result == 'success' &&
+      needs.publish-image.result == 'success' &&
       (github.event_name == 'workflow_run' || github.ref_name == 'main')
     runs-on: ubuntu-24.04
     strategy:
@@ -281,43 +374,47 @@ jobs:
       contents: write
       packages: write
     steps:
-      - name: Login to GHCR
-        env:
-          GH_ACTOR: ${{ github.actor }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "$GH_TOKEN" | sudo podman login ghcr.io --username "$GH_ACTOR" --password-stdin
-
       - name: Promote :${{ needs.setup.outputs.sha }} to :${{ needs.setup.outputs.testing_tag }}
         env:
           BUILD_SHA: ${{ needs.setup.outputs.sha }}
           TESTING_TAG: ${{ needs.setup.outputs.testing_tag }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
-          sudo podman pull "${IMAGE}:${BUILD_SHA}"
-          sudo podman tag "${IMAGE}:${BUILD_SHA}" "${IMAGE}:${TESTING_TAG}"
           PUSH_OK=false
           for attempt in 1 2 3; do
-            sudo podman push --compression-format=zstd "${IMAGE}:${TESTING_TAG}" && { PUSH_OK=true; break; }
-            echo "Push attempt ${attempt} failed for :${TESTING_TAG}, retrying in 5s..."
+            skopeo copy \
+              --preserve-digests \
+              --src-creds "$GH_ACTOR:$GH_TOKEN" \
+              --dest-creds "$GH_ACTOR:$GH_TOKEN" \
+              "docker://${IMAGE}:${BUILD_SHA}" \
+              "docker://${IMAGE}:${TESTING_TAG}" && { PUSH_OK=true; break; }
+            echo "skopeo copy attempt ${attempt} failed for :${TESTING_TAG}, retrying in 5s..."
             [ "$attempt" -lt 3 ] && sleep 5
           done
-          $PUSH_OK || { echo "ERROR: all push attempts failed for :${TESTING_TAG}"; exit 1; }
+          $PUSH_OK || { echo "ERROR: all copy attempts failed for :${TESTING_TAG}"; exit 1; }
 
       - name: Push :btw alias (next stream only)
         if: needs.setup.outputs.testing_tag == 'next'
         env:
           BUILD_SHA: ${{ needs.setup.outputs.sha }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
-          sudo podman tag "${IMAGE}:${BUILD_SHA}" "${IMAGE}:btw"
           PUSH_OK=false
           for attempt in 1 2 3; do
-            sudo podman push --compression-format=zstd "${IMAGE}:btw" && { PUSH_OK=true; break; }
-            echo "Push attempt ${attempt} failed for :btw, retrying in 5s..."
+            skopeo copy \
+              --preserve-digests \
+              --src-creds "$GH_ACTOR:$GH_TOKEN" \
+              --dest-creds "$GH_ACTOR:$GH_TOKEN" \
+              "docker://${IMAGE}:${BUILD_SHA}" \
+              "docker://${IMAGE}:btw" && { PUSH_OK=true; break; }
+            echo "skopeo copy attempt ${attempt} failed for :btw, retrying in 5s..."
             [ "$attempt" -lt 3 ] && sleep 5
           done
-          $PUSH_OK || { echo "ERROR: all push attempts failed for :btw"; exit 1; }
+          $PUSH_OK || { echo "ERROR: all copy attempts failed for :btw"; exit 1; }
 
       - name: Fast-forward testing branch
         if: matrix.image_suffix == '' && (needs.setup.outputs.branch == 'main' || startsWith(needs.setup.outputs.branch, 'gh-readonly-queue/main/'))

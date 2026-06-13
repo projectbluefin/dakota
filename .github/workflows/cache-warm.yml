@@ -14,8 +14,10 @@ name: Warm BuildStream Cache
 
 on:
   schedule:
-    # Monday and Thursday at 06:00 UTC — before European/US merge windows.
-    - cron: '0 6 * * 1,4'
+    # Weekdays at 06:00 UTC — before European/US merge windows.
+    # Daily cadence (was Mon/Thu) reduces the cold-build window after junction
+    # ref bumps from 3 days to 1 day, preventing 360-min timeout build failures.
+    - cron: '0 6 * * 1-5'
   workflow_dispatch:
 
 permissions:

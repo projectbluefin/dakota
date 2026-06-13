@@ -1258,3 +1258,169 @@ Renovate from the gate. After promotion #797 (June 10), the cycle broke permanen
 - `:stable` stopped updating
 
 **Fix: PR #822** (dakota) + **PR #218** (actions).
+
+### `gh pr merge --auto` also fails when target branch has NO branch protection (2026-06-13)
+
+The `--auto` lesson above covers the bypass case (protection exists but bypass
+not honoured). There is a second, distinct failure mode: if the target branch
+has **zero branch protection rules** (no ruleset, no classic protection),
+`gh pr merge --auto` fails immediately with:
+
+```
+GraphQL: Pull request Protected branch rules not configured for this branch
+        (enablePullRequestAutoMerge)
+```
+
+`testing` has no branch protection by design. Any automerge workflow targeting
+`testing` with `--auto` will always fail. The fix (applied in `projectbluefin/actions`
+`renovate-automerge.yml` `@v1`) is to drop `--auto` entirely — CI success is
+already guaranteed by the `workflow_run` trigger condition.
+
+**Two distinct `--auto` failure modes:**
+
+| Failure | Error | Cause | Fix |
+|---|---|---|---|
+| Bypass not honoured | Queued but never merges | Branch has protection, bot in bypass, but `--auto` ignores bypass | Drop `--auto`, use direct merge |
+| No protection at all | `Protected branch rules not configured` | Branch has zero protection rules | Drop `--auto`, use direct merge |
+
+**Diagnosis:** check `gh api repos/<owner>/<repo>/branches/<branch> --jq '.protected'`.
+If `false`, drop `--auto`. If `true`, check whether the token is in `bypass_actors`.
+
+### `workflow_run` always uses the DEFAULT BRANCH's workflow file (2026-06-13)
+
+When a workflow has `on: workflow_run`, GitHub runs it from the **repository's
+default branch** — not from the branch that triggered the upstream workflow run.
+
+**Consequence for automerge fixes:** if `renovate-automerge.yml` is fixed on a
+feature branch or `testing` but the fix hasn't landed on `main` (the default
+branch), every new `workflow_run` trigger still runs the old broken version from
+`main`. The fix takes effect only when it merges to `main`.
+
+**Implication:** fixes to `workflow_run`-triggered workflows that land on `testing`
+(via a Renovate-style staging flow) are effectively inert until the promote PR
+merges them to `main`.
+
+### Internal projectbluefin/ actions: use @v1 managed tag, not SHA pins (2026-06-13)
+
+SHA-pinning internal org actions (`projectbluefin/actions`) is
+counter-productive and was the root cause of the June 13 automerge outage:
+
+- The `--auto` bug was committed on June 7 at SHA `fcd2a6bac15f`
+- Every consumer (dakota, bluefin, bluefin-lts, common) pinned different
+  intermediate SHAs, all carrying the broken `--auto`
+- Fixes require N separate Renovate bump PRs — one per consumer — each
+  lagging by hours or days
+- `main` and `testing` diverged to different SHAs, creating split-brain
+
+**AGENTS.md already states the policy:**
+> `projectbluefin/` refs (`@v1`, `@main`) are intentional managed tags and are exempted.
+
+Use `@v1` — it moves forward with every non-breaking fix and is maintained by
+the org. `@v1.0.0` and `@v1.1.0` are static point-release tags if you need
+a pinned version.
+
+```yaml
+# ✗ — SHA pin, breaks propagation; 7 different SHAs across 10 files
+uses: projectbluefin/actions/bootc-build/setup-runner@2a09e72e... # v1.1.0
+
+# ✓ — managed tag, fixes propagate instantly
+uses: projectbluefin/actions/bootc-build/setup-runner@v1
+```
+
+**Enforcement:** `no-sha-pins-for-internal-actions` pre-commit hook blocks any
+future `projectbluefin/.*@<sha>` commits.
+
+**External actions** (`actions/checkout`, `taiki-e/install-action`, etc.) remain
+SHA-pinned — that policy is unchanged and correct.
+
+### build.yml push trigger must include `testing` for `:testing` images (2026-06-13)
+
+`build.yml` had `push: branches: [main, next]` — `testing` was missing.
+`publish.yml` already listed `testing` in its `workflow_run.branches` filter
+and had logic to publish `:testing` on testing-branch builds, but that path
+was dead because `build.yml` never triggered on push to `testing`.
+
+**Result:** `:testing` images were never updated by Renovate merges to testing.
+The promote PR was always building from stale image content.
+
+**Fix (PR #830):** add `testing` to `build.yml`'s push trigger. The build job
+runs on `event_name != 'pull_request'`, so push-to-testing fires the full build.
+BST artifact cache steps remain gated on `merge_group || schedule || workflow_dispatch`
+(intentional quota management) — they skip for plain pushes, which is fine.
+
+### publish.yml: 4-job pipeline after speed-up refactor (2026-06-12)
+
+`publish.yml` was restructured to remove three major bottlenecks. New job graph:
+
+```
+setup → publish-image → promote     (critical path to :testing: ~50–80 min)
+              └──────→ publish-sbom  (runs in parallel with promote)
+```
+
+**Job renames / splits:**
+- `publish` renamed to `publish-image` — exports OCI, pushes `:$sha`, signs. No SBOM.
+- `publish-sbom` (new) — depends on `publish-image`, runs in parallel with `promote`.
+  Contains: SBOM generation, artifact upload, oras attach, cosign sign SBOM.
+- `promote` — now depends on `publish-image` only (not SBOM). Saves 10–15 min.
+
+**skopeo copy in promote (P1):**
+The old `podman pull → tag → push` pattern transferred the full 8.5 GB image
+round-trip for each re-tag. Replace with:
+```bash
+skopeo copy \
+  --preserve-digests \
+  --src-creds "$GH_ACTOR:$GH_TOKEN" \
+  --dest-creds "$GH_ACTOR:$GH_TOKEN" \
+  "docker://${IMAGE}:${BUILD_SHA}" \
+  "docker://${IMAGE}:${TESTING_TAG}"
+```
+`--preserve-digests` is **mandatory** — it keeps the promoted tag pointing at
+the same manifest digest that cosign signed. Omitting it causes GHCR to re-encode
+layers and produce a new digest that breaks the signature chain.
+`skopeo` is pre-installed on ubuntu-24.04 runners — no install step needed.
+
+**SBOM pip cache (P3):**
+`buildstream-sbom` is installed from a GitLab git URL every run (3–8 min with
+retries). Cache the pip wheel at `~/.cache/pip` keyed to the pinned commit SHA:
+```yaml
+- uses: actions/cache@<SHA>
+  with:
+    path: ~/.cache/pip
+    key: pip-sbom-<pinned-commit-sha>
+    restore-keys: pip-sbom-
+```
+Mount into the bst2 container via `-v "${HOME}/.cache/pip:/root/.cache/pip:rw"`
+in the `just sbom` podman run call. Update the cache key when the pin is bumped.
+
+**buildah replaces squash-all in just export (P6):**
+`podman build --squash-all` re-encoded the entire 8.5 GB image for a 2-line
+`sed` edit to `/usr/lib/os-release`. Replace with:
+```bash
+CONTAINER=$(buildah from "$IMAGE_ID")
+MOUNT=$(buildah mount "$CONTAINER")
+sed -i "s/^VERSION_ID=.*/VERSION_ID=\"${DATE_TAG}\"/" "$MOUNT/usr/lib/os-release"
+sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\"${DATE_TAG}\"/" "$MOUNT/usr/lib/os-release"
+buildah config --label "org.opencontainers.image.created=..." "$CONTAINER"
+buildah commit --rm "$CONTAINER" "${FINAL_NAME}:${FINAL_TAG}"
+```
+`buildah commit` (no `--squash`) appends a tiny (~1 KB) delta layer. `chunka`'s
+BST path calls `podman image mount` which returns a merged overlayfs view
+regardless of layer count — multi-layer input is transparent to chunkah.
+`buildah` is pre-installed by `setup-runner@v1` (resolute package).
+
+**digest re-derivation in publish-sbom:**
+`publish-sbom` needs the image digest for `oras attach` but GHA matrix job
+outputs are fragile. Re-derive it with `skopeo inspect` instead:
+```bash
+DIGEST=$(skopeo inspect \
+  --creds "$GH_ACTOR:$GH_TOKEN" \
+  "docker://${IMAGE}:${BUILD_SHA}" \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['Digest'])")
+```
+No inter-job output wiring needed. The image was pushed by `publish-image` and
+is immediately available in GHCR before `publish-sbom` starts.
+
+**cache-warm cron: Mon–Fri (P4):**
+Changed from `0 6 * * 1,4` (Mon/Thu) to `0 6 * * 1-5` (Mon–Fri).
+A junction ref bump on Tuesday left the CAS cold for 3 days, causing build.yml
+to timeout at 360 min. Daily warming caps the cold window at 1 day.
