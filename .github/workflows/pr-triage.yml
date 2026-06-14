@@ -130,7 +130,7 @@ jobs:
             *) echo "is_maintainer=false" >> "$GITHUB_OUTPUT" ;;
           esac
 
-      - name: Approved — clear label
+      - name: Approved — clear label, enable auto-merge, update branch
         if: >-
           steps.perm.outputs.is_maintainer == 'true' &&
           github.event.review.state == 'approved'
@@ -139,8 +139,21 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           gh pr edit "$PR_URL" --remove-label "pr/needs-review" 2>/dev/null || true
+
+          # Enable auto-merge — squash-merges once required checks pass.
+          # Requires 'validate' in branch protection required_status_checks.
+          gh pr merge "$PR_URL" --auto --squash 2>/dev/null \
+            && echo "✅ Auto-merge enabled" \
+            || echo "::warning::Auto-merge unavailable — PR will need manual merge"
+
+          # Bring the branch current with main so CI runs on the latest state.
+          # Non-fatal — pr-autoupdate.yml retries on the next push to main.
+          gh pr update-branch "$PR_URL" 2>/dev/null \
+            && echo "✅ Branch updated" \
+            || echo "Branch already up-to-date or conflict — pr-autoupdate will handle it"
+
           cat << 'EOF' > /tmp/comment.md
-          Approved. Auto-merge is now eligible — the PR will enter the merge queue once all required checks pass.
+          Approved. Auto-merge enabled — the PR will squash-merge once `validate` passes.
 
           After it ships in nightly, users can confirm the fix with:
           ```bash
