@@ -1,0 +1,2 @@
+- 2026-06-13: fix boot failure on :testing — reverted buildah commit to podman build --squash-all; chunka composefs xattr injection requires flat single-layer input ([#841](https://github.com/projectbluefin/dakota/issues/841), [#846](https://github.com/projectbluefin/dakota/pull/846))
+- 2026-06-13: add composefs file-capability and GDM boot regression tests to testsuite smoke suite; gate :testing publish in dakota (publish.yml smoke job) and bluefin-lts (post-merge-e2e.yml + publish_stream_tag: false) ([testsuite#433](https://github.com/projectbluefin/testsuite/pull/433))

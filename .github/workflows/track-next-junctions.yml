@@ -69,20 +69,19 @@ jobs:
 
           EXISTING=$(gh pr list --head auto/track-next-junction --json number --jq '.[0].number' 2>/dev/null || true)
           if [ -n "$EXISTING" ]; then
-            PR_NUMBER="$EXISTING"
-            echo "Existing PR #${PR_NUMBER} — re-enabling auto-merge"
+            PR_URL=$(gh pr view "$EXISTING" --json url --jq '.url')
+            echo "Existing PR: $PR_URL — re-enabling auto-merge"
           else
             PR_BODY=$(printf '%s\n\n%s' \
             "Bumps \`gnome-build-meta.bst\` (master) and \`freedesktop-sdk.bst\` atomically on the \`next\` branch. Auto-merges once \`bst show\` validation passes." \
             "> **Note:** When gnome-build-meta cuts a stable branch (e.g. \`gnome-51\`), update \`track: master\` → \`track: <branch>\` in \`elements/gnome-build-meta.bst\` on \`next\`. No CI changes needed.")
-          PR_NUMBER=$(gh pr create \
-            --base next \
-            --head auto/track-next-junction \
-            --title "chore(deps): update core junctions (next branch)" \
-            --body "$PR_BODY" \
-            --json number --jq '.number')
-            echo "Created PR #${PR_NUMBER}"
+            PR_URL=$(gh pr create \
+              --base next \
+              --head auto/track-next-junction \
+              --title "chore(deps): update core junctions (next branch)" \
+              --body "$PR_BODY")
+            echo "Created PR: $PR_URL"
           fi
 
           # Enable auto-merge — merges automatically once required checks pass.
-          gh pr merge "$PR_NUMBER" --auto --squash
+          gh pr merge "$PR_URL" --auto --squash

@@ -37,24 +37,28 @@ Load when debugging CI failures, understanding the build pipeline, or working wi
 |---|---|
 | `.github/workflows/build.yml` | BST build + push artifacts to remote CAS. Fires on `merge_group` and `workflow_dispatch` only (no schedule). Does NOT push to GHCR directly. |
 | `.github/workflows/publish.yml` | 3-stage pipeline: setup → publish → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, then immediately promotes to `:testing` on every successful merge. No e2e gate — that lives only in the weekly promotion. |
-| `.github/workflows/release.yml` | Called from `weekly-testing-promotion.yml` after a successful promotion. Creates GitHub Release with card image, SBOM diff, and package changelog. Also available as `workflow_dispatch` for out-of-band cuts. |
-| `.github/workflows/weekly-testing-promotion.yml` | Weekly Tuesday promotion (06:00 UTC): 7-day floor check → verify `:testing` digests → cosign verify → e2e → promote to `:latest`+`:stable` → fast-forward branches → call `release.yml`. Has `environment: production` gate requiring human approval. |
+| `.github/workflows/promote-testing-to-main.yml` | Thin caller for `reusable-promote.yml` in `projectbluefin/actions`. Fires on `push: testing`, nightly schedule (23:00 UTC), and `workflow_dispatch`. Opens or updates the promotion PR that gates `:testing` → `:stable`. |
+| `.github/workflows/execute-release.yml` | Fires on `push: main` + `workflow_dispatch`. A `check-trigger` job reads the squash-merge commit message — only proceeds when it starts with `ci: promote testing images to stable`. Calls `reusable-execute-release.yml` (copies image tags) then `reusable-release.yml` (generates GitHub Release + SBOM diff). |
 | `.github/workflows/e2e.yml` | Smoke test via projectbluefin/testsuite. Fires on PR; `should-run` job skips the test when no image-affecting paths changed. |
+| `.github/workflows/vulnerability-scan.yml` | Weekly Monday 08:00 UTC CVE scan via `reusable-vulnerability-scan.yml`. Also available as `workflow_dispatch` with optional `image_ref` input. Results surface in the GitHub Security tab. |
 
 ## Trigger Behavior
 
-| Behavior | pull_request | merge_group | workflow_dispatch |
-|---|---|---|---|
-| `validate` job | Yes | No | No |
-| `e2e` job | Yes (change-detected) | No | Yes |
-| `build` job | No | Yes | Yes |
-| Push to GHCR? | No | Via publish.yml | Via publish.yml |
+| Behavior | pull_request | merge_group | workflow_dispatch | schedule |
+|---|---|---|---|---|
+| `validate` job | Yes | No | No | No |
+| `e2e` job | Yes (change-detected) | No | Yes | No |
+| `build` job | No | Yes | Yes | No |
+| `cache-warm` job | No | No | Yes | Yes (Mon/Thu 06:00 UTC) |
+| Push to GHCR? | No | Via publish.yml | Via publish.yml | No |
 
 **PR path:** `validate` + `e2e` (change-detected) — zero remote execution. ~15 min cached, ~30 min cold.
 
 **e2e change detection:** `e2e` uses a `should-run` job that diffs the PR branch against its base. It runs when `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf` change; otherwise the `e2e` job is skipped. Skipped satisfies the required status check.
 
 **Merge queue path:** `build` fires on `merge_group` — full OCI build, real CI gate before merge.
+
+**Cache-warm path:** `cache-warm.yml` runs Monday and Thursday at 06:00 UTC and on manual dispatch. Builds the default variant against the remote CAS so merge-queue builds land on cache hits even after junction ref bumps or upstream `gnome-build-meta` rebuilds. Failures are non-blocking — the warm build is best-effort. Addresses the cold-start non-determinism documented in [common automation-audit ND1](https://github.com/projectbluefin/common/blob/main/docs/factory/automation-audit/non-deterministic-steps.md).
 
 ## Remote Cache Architecture
 
@@ -109,7 +113,8 @@ git push --force-with-lease origin <branch-name>
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Build OOM or hangs | Memory pressure with 4 builders | Check element build resource usage |
-| "No space left on device" | BST cache fills runner disk | Check if any element generates large buildtrees |
+| "No space left on device" during **Chunkify** | Overlay copy-ups from `inject-xattrs.py` exhaust the ~1 GB root FS left by `setup-runner`'s BTRFS loopback | Fixed centrally in `chunka@v1` — auto-selects `/var/lib/containers` (BTRFS, ~49 GB) over `/var/tmp` (~1 GB) |
+| "No space left on device" during **Build** | BST cache fills runner disk | Check if any element generates large buildtrees |
 | `bootc container lint` fails | Image structure issues | Check OCI assembly, `/usr/etc` merge |
 | Build succeeds locally, fails in CI | Different cached versions | Compare `bst show` output; check remote CAS |
 | GHCR push fails | Token permissions | Check `packages: write` permission |
@@ -831,3 +836,806 @@ On days where gnome-build-meta `master` does not advance, **no build fires**.
 For a guaranteed nightly, a `schedule:` trigger on `next` is needed in
 `build.yml`. This is a known gap — track it if builds go stale.
 
+### publish.yml must include testing branch in workflow_run.branches (2026-06-10)
+
+`publish.yml` originally only listed `main`, `gh-readonly-queue/main/**`, `next`,
+and `gh-readonly-queue/next/**` in `workflow_run.branches`. Auto-merge tracking
+PRs target `testing` — their builds completed successfully but no image was ever
+published. `promote-testing-to-main.yml` fires on `push: branches: [testing]` and
+immediately does `skopeo inspect dakota:testing`, which silently failed every time
+testing advanced without a prior main publish.
+
+**Fix (PR 766):** add `testing` and `gh-readonly-queue/testing/**` to the
+`workflow_run.branches` filter, extend the `setup` job `if` condition, and map
+`testing` branch → `testing_tag=testing`. Match bluefin/bluefin-lts: every merge
+to testing publishes `:testing` immediately.
+
+### track-bst-sources: branch from origin/$BASE_BRANCH, not origin/main (2026-06-10)
+
+`track-bst-sources.yml` created auto-merge tracking branches from `origin/main`
+but targeted `testing`. When main and testing had diverged on workflow files, the
+PR diff included those CI changes in reverse — the PR appeared to be deleting
+them. PR 764 had 18 commits and would have removed `testing` from `build.yml`
+triggers and deleted `renovate-automerge.yml`. It was closed as a corrupted PR.
+
+**Corrupted auto-track PR anatomy:** CONFLICTING state, 10+ commits, diff shows
+CI workflow regressions (removes triggers, deletes workflows). The element file
+contents match the base branch — no real update present.
+
+**Fix (PR 766):** determine `BASE_BRANCH` before `git checkout`, stash the
+BST-tracked element changes, `git checkout -B "$BRANCH" "origin/$BASE_BRANCH"`,
+then `git stash pop`. The PR diff is now relative to the target branch only.
+
+### track-bst-sources: auto-merge silently never set — use --squash not --merge (2026-06-10)
+
+The repo has `allowMergeCommit=false` (only squash merges permitted). The
+workflow called `gh pr merge --auto --merge` which hit the `|| echo ::warning::`
+fallback — auto-merge was never set on any tracking PR. They sat unmerged
+indefinitely with no visible error.
+
+**Fix (PR 767):** `--merge` → `--squash`. The `renovate-automerge.yml` already
+used `--squash` correctly; `track-bst-sources` was the gap.
+
+**Diagnostic:** if a tracking PR has auto-merge null and validate passed, check
+`allowMergeCommit` on the repo before assuming a workflow bug.
+
+
+### `permissions: {}` at workflow level starves GITHUB_TOKEN for reusable job calls (2026-06-11)
+
+Setting `permissions: {}` at the **workflow** level and then specifying
+permissions at the **job** level does NOT work when the job uses `uses:` to
+call a reusable workflow. GitHub mints the `GITHUB_TOKEN` at the calling
+workflow's top-level scope — job-level `permissions:` can only restrict, not
+expand beyond that ceiling.
+
+**Symptom:** `startup_failure` with `jobs: []` (zero jobs started) on every
+run of a thin caller that uses `uses:` with its own `permissions:` block.
+
+**Fix:** Set the top-level `permissions:` to the superset of everything any job
+in the workflow needs:
+
+```yaml
+# WRONG — starves the token; jobs cannot escalate beyond {}
+permissions: {}
+
+jobs:
+  promote:
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: org/actions/.github/workflows/reusable.yml@SHA
+
+# CORRECT — top-level is the budget; job-level can reduce but not expand
+permissions:
+  contents: write
+  packages: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  promote:
+    uses: org/actions/.github/workflows/reusable.yml@SHA
+```
+
+**Affected workflows fixed 2026-06-11:** `promote-testing-to-main.yml` (#796),
+`execute-release.yml` (#798).
+
+### `pull_request: closed` trigger causes `startup_failure` for all non-promotion merges (2026-06-11)
+
+When a workflow uses `on: pull_request: types: [closed]` and ALL jobs have
+`if:` conditions that evaluate to `false` for non-promotion PRs, GitHub reports
+the workflow run as `startup_failure` instead of a clean skip. This produces
+alarming noise in every PR merge and masks real failures.
+
+**Symptom:** `execute-release.yml` showed `startup_failure` on every single PR
+merged to `main` from the day it was introduced — 25+ runs, none successful,
+all with `jobs: []`.
+
+**Correct pattern (from bluefin-lts):** Use `push: branches: main` +
+`workflow_dispatch`, then add a lightweight `check-trigger` job that reads
+the squash-merge commit message:
+
+```yaml
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  check-trigger:
+    runs-on: ubuntu-latest
+    outputs:
+      is-promotion: ${{ steps.check.outputs.is-promotion }}
+    steps:
+      - id: check
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "is-promotion=true" >> "$GITHUB_OUTPUT"
+          elif echo "$COMMIT_MSG" | grep -q "^ci: promote testing images to stable"; then
+            echo "is-promotion=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is-promotion=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  execute:
+    needs: [check-trigger]
+    if: needs.check-trigger.outputs.is-promotion == 'true'
+    uses: ...
+```
+
+When `is-promotion=false`, `check-trigger` succeeds cleanly and subsequent
+jobs are skipped — no `startup_failure`.
+
+**Fixed:** `execute-release.yml` PR #800, 2026-06-11.
+
+### CODEOWNERS: no-owner override for auto-managed files (2026-06-11)
+
+Files auto-managed by a bot (e.g. `elements/bluefin/common.bst` bumped by
+mergeraptor on every common release) should not trigger code-owner review
+requests. Add a no-owner line for the specific file **above** the catch-all
+path rule — CODEOWNERS is evaluated top-to-bottom and the first match wins:
+
+```
+# Auto-managed by mergeraptor — no review required
+elements/bluefin/common.bst
+
+# Everything else in elements/ needs a maintainer review
+elements/ @projectbluefin/maintainers
+```
+
+Also add the bot to `bypass_pull_request_allowances` in the repo's branch
+protection ruleset so it can satisfy the `required_approving_review_count`
+without a human approval. Without this, auto-merge is set but never clears.
+
+**Fixed:** PR #807, 2026-06-11.
+
+### CODEOWNERS: use team slugs, not individual handles (2026-06-11)
+
+Individual `@handle` entries in CODEOWNERS mean:
+- New team members are never auto-requested for review
+- Departed maintainers keep getting pinged
+- Team membership changes require a CODEOWNERS PR
+
+**Fix:** Use `@org/team-slug` instead:
+
+```
+# WRONG
+* @castrojo @p5 @m2Giles @tulilirockz
+
+# CORRECT
+* @projectbluefin/maintainers
+```
+
+**Fixed:** PR #796, 2026-06-11.
+
+### Promotion PR noise: suppress CodeRabbit with `@coderabbitai ignore` (2026-06-11)
+
+CodeRabbit posts review summaries on every PR, including automated promotion
+PRs that only touch `.github/release-state.yaml`. To suppress it, add this
+HTML comment as the **first line** of the PR body:
+
+```markdown
+<!-- @coderabbitai ignore -->
+```
+
+Added to `reusable-promote.yml` in `projectbluefin/actions` (commit f5cd16ce).
+
+### Promotion PR body: include release context for maintainer decision-making (2026-06-11)
+
+The old promotion PR body was a raw YAML dump. Maintainers had no context for
+deciding whether to merge. The rich body template now includes:
+
+| Field | Source |
+|---|---|
+| Days since last stable | `gh release list --limit 1 --json publishedAt` |
+| Commits since last stable | `git rev-list --count $LAST_PROMOTE_SHA..origin/main` |
+| Component old→new refs | `git show $LAST_SHA:elements/gnome-build-meta.bst` vs current |
+| Images table | Parsed from `.github/release-state.yaml` |
+
+Change indicator `⬆` appears when a junction ref changed since the last
+promotion.
+
+**Location:** `reusable-promote.yml` "Open or update promotion PR" step in
+`projectbluefin/actions`.
+
+### GitHub Release body limit: 125k characters (2026-06-11)
+
+`gh release create --notes-file release-notes.md` fails with HTTP 422 if the
+body exceeds GitHub's hard limit of 125,000 characters:
+
+```
+HTTP 422: Validation Failed
+body is too long (maximum is 125000 characters)
+```
+
+The release notes generator in `reusable-release.yml` can produce bodies larger
+than this limit when the SBOM diff or changelog is long (e.g. after 12+ days
+between stable releases).
+
+**Fixed in `projectbluefin/actions#191`:** `reusable-release.yml` now hard-caps
+the release body at 120,000 characters with a `…` trailer before calling
+`gh release create`. No manual intervention needed.
+
+### `sign-and-publish` reusable action: cert identity regexp must include consuming repo (2026-06-11)
+
+The `sign-and-publish` action in `projectbluefin/actions` has a default
+`certificate-identity-regexp` that is repo-specific. If the pinned SHA
+pre-dates when `dakota` was added to that regexp, every `publish.yml` run
+fails at the cosign verification step — 100% failure rate.
+
+**Symptom:** publish run fails at cosign verify with a cert identity mismatch.
+All `:testing` builds stop. May appear as "65%" failure rate if some older
+cached `:testing` images still serve.
+
+**Fix:** Bump the `projectbluefin/actions` SHA to a commit that includes
+the repo name in the default regexp. Or pass an explicit input:
+
+```yaml
+- uses: projectbluefin/actions/.github/actions/sign-and-publish@<SHA>
+  with:
+    cosign_identity_regexp: >-
+      ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
+```
+
+**Root cause (PR #792, 2026-06-11):** Actions SHA `3025b5d31f34` excluded
+`dakota`; bumping to `2a09e72e9be1` (actions#166) fixed it.
+
+**Rule:** after bumping any `projectbluefin/actions` SHA, verify the first
+publish run succeeds before assuming the bump is clean.
+
+### `cliff.toml` required at repo root for structured release notes (2026-06-11)
+
+`reusable-release.yml` calls `git-cliff` via the `generate-release-notes`
+step. Without `cliff.toml` at the repo root, it falls back to a raw
+`git log` heredoc — no commit grouping, no filtering, no section headers.
+
+**Add `cliff.toml`** adapted from `projectbluefin/common/cliff.toml` with
+Conventional Commits parser. Dakota-specific note: **omit** the
+`chore: promote` skip rule. Dakota uses OCI digest promotion via the
+`execute-release.yml` commit-message gate — there are no squash promotion
+commits in the git history that need filtering out.
+
+**Key sections in `cliff.toml`:**
+
+```toml
+[git]
+conventional_commits = true
+filter_unconventional = false
+tag_pattern = "v[0-9].*"
+skip_tags = ""
+
+[git.commit_parsers]
+# do NOT add: { message = "^chore: promote", skip = true }
+# Dakota promotions don't produce commits like this
+```
+
+**Added in PR #793, 2026-06-11.** Closes projectbluefin/common#609.
+
+### `gh pr merge --auto` does NOT honour `bypass_pull_request_allowances` (2026-06-12)
+
+`gh pr merge "$PR_URL" --auto --squash` enables GitHub's **auto-merge queue**.
+The queue evaluates branch-protection conditions using GitHub's internal process
+and does **not** honour `bypass_pull_request_allowances`. So a bot app in the
+bypass list that enables auto-merge still sees the PR sit open waiting for a
+human approval that will never arrive automatically.
+
+**Only direct merges (without `--auto`) use the bypass.**
+
+**Symptom:** all `auto-merge` group PRs from `track-bst-sources.yml` (common,
+distrobox, brew, shell extensions, etc.) were sitting open indefinitely despite
+`required_approving_count: 1` and the bot in `bypass_pull_request_allowances`.
+
+**Fix (PR #820):** remove `--auto` from the merge call. Since there are no
+required status checks, the direct merge completes immediately on PR creation.
+
+```bash
+# ✗ — queued auto-merge, bypass ignored
+gh pr merge "$PR_URL" --auto --squash
+
+# ✓ — direct merge, bypass honoured
+gh pr merge "$PR_URL" --squash
+```
+
+**Rule:** use `--auto` only when you want to wait for required CI checks to pass
+AND the merging actor has no bypass. For bypass actors merging bot-managed PRs
+with no required checks, drop `--auto`.
+
+### Caller-level `permissions:` must be a superset of all reusable workflow job permissions (2026-06-12)
+
+When a thin-caller workflow calls a reusable workflow via `uses:`, the
+**caller's top-level `permissions:` block caps what GITHUB_TOKEN can do** in
+every job inside the reusable. If the reusable's job needs `packages: read` or
+`actions: read` and the caller only declares `contents: write`, those scopes
+are silently restricted to `none` — producing `startup_failure with jobs: []`.
+
+**Symptom:** `promote-testing-to-main.yml` had `startup_failure` on every run
+after the thin-caller migration (PR #811). Missing `packages: read` (for GHCR
+digest lookups) and `actions: read` (for workflow-run status checks) were not
+in the caller's `permissions:` block.
+
+**Fix (PR #817):** declare every scope the reusable's jobs need at the
+caller's top level:
+
+```yaml
+permissions:
+  contents: write       # push squash promotion branch
+  pull-requests: write  # create / update / auto-merge the promotion PR
+  issues: write         # open / close failure-tracking issues
+  packages: read        # read image digests in release-gate checks
+  actions: read         # inspect workflow-run statuses in release-gate
+```
+
+**Rule when writing thin callers:** read the reusable workflow's job-level
+`permissions:` blocks and make the caller's top-level `permissions:` a strict
+superset of the union of all of them.
+
+### SHA-pinning a reusable that itself has nested SHA-pinned calls — inner SHA must still exist (2026-06-12)
+
+When you SHA-pin a reusable workflow (e.g.
+`projectbluefin/actions/.github/workflows/reusable-promote-squash.yml@<sha>`),
+GitHub validates the **full call chain at startup** — including any
+`uses:` references inside the pinned reusable. If the pinned reusable
+internally calls another workflow at a now-deleted SHA, the calling workflow
+fails with:
+
+```
+failed to parse workflow: error parsing called workflow
+--> "projectbluefin/actions/.github/workflows/reusable-release-gate.yml@<dead-sha>"
+: failed to fetch workflow: workflow was not found.
+```
+
+This manifests as `startup_failure` on the **outer** caller — the error is not
+visible without running the workflow and reading the dispatch HTTP response.
+
+**Cause in this session:** the bluefin SHA for `reusable-promote-squash.yml`
+(`5f3cab`) internally called `reusable-release-gate.yml@5f8abb` which had been
+removed from the `actions` repo. The original dakota SHA (`6c2278`) internally
+calls `reusable-release-gate.yml@v1` (the managed tag), which remains valid.
+
+**Fix (PR #819):** revert to the SHA whose nested calls use `@v1` tags rather
+than pinned SHAs for inner dependencies.
+
+**Rule:** when picking a SHA to pin for a reusable workflow, verify that its
+own nested `uses:` references are either `@v1`/managed-tags or still-live
+SHAs. Prefer the version that uses managed tags internally — those age better.
+
+---
+
+## Testing→main promotion pipeline — full cycle and failure modes (2026-06-12)
+
+### How the cycle works (bluefin model)
+
+```
+Renovate PR → testing branch (automerges when build CI passes)
+    → push to testing → promote-testing-to-main fires
+    → squash PR: auto/promote-testing-to-main → main
+    → maintainer merges
+    → execute-release fires (commit msg "ci: promote testing images to stable")
+    → :testing retagged as :stable
+    → push to main → sync-main-to-testing fires
+    → main fast-forwarded into testing (testing == main again)
+    → next Renovate cycle begins
+```
+
+### Three invariants that must all hold
+
+1. **`baseBranchPatterns: ["testing"]`** in `renovate.json5` — Renovate must target
+   `testing`, not `main`. With `baseBranchPatterns: ["main"]`, `testing` is a dead
+   branch: nothing ever lands there, the promote workflow finds nothing to squash,
+   and `:stable` never updates.
+
+2. **`sync-main-to-testing.yml`** must exist — after each squash-merge promotion, the
+   squash commit lands on `main` but not `testing`. Without this workflow, `testing`
+   falls permanently behind `main`. The next promote run finds diverged trees (so
+   `sync_needed=true`), but the squash produces nothing staged → `git commit` exits 1.
+
+3. **`pr-triage.yml` must exempt `renovate/*` PRs targeting `testing`** — the triage
+   workflow blocks all PRs not targeting `main`. Without an exemption, Renovate PRs
+   to `testing` are immediately blocked and cannot automerge.
+
+### The empty-squash crash (known bug in reusable-promote-squash)
+
+When `testing` is behind `main` with no unique content:
+- `git merge --squash origin/testing` says "Already up to date"
+- Nothing is staged
+- `git commit` exits 1 → job fails with misleading error
+
+This is fixed by `projectbluefin/actions#218` (adds `git diff --cached --quiet` guard
+before `git commit`). In steady state (sync-main-to-testing present), this edge case
+doesn't occur because `testing == main` after each sync, and the next promote run gets
+`sync_needed=false` cleanly. The fix is defence-in-depth.
+
+### Root cause of 2026-06-11/12 breakage
+
+PR #741 changed `baseBranchPatterns` from `["testing"]` to `["main"]` to work around
+the triage gate — but without also adding `sync-main-to-testing.yml` or exempting
+Renovate from the gate. After promotion #797 (June 10), the cycle broke permanently:
+- `testing` fell 20+ commits behind `main` (no sync workflow)
+- Renovate stopped feeding `testing` (wrong base branch)
+- Promote workflow crashed nightly (empty squash)
+- `:stable` stopped updating
+
+**Fix: PR #822** (dakota) + **PR #218** (actions).
+
+### `gh pr merge --auto` also fails when target branch has NO branch protection (2026-06-13)
+
+The `--auto` lesson above covers the bypass case (protection exists but bypass
+not honoured). There is a second, distinct failure mode: if the target branch
+has **zero branch protection rules** (no ruleset, no classic protection),
+`gh pr merge --auto` fails immediately with:
+
+```
+GraphQL: Pull request Protected branch rules not configured for this branch
+        (enablePullRequestAutoMerge)
+```
+
+`testing` has no branch protection by design. Any automerge workflow targeting
+`testing` with `--auto` will always fail. The fix (applied in `projectbluefin/actions`
+`renovate-automerge.yml` `@v1`) is to drop `--auto` entirely — CI success is
+already guaranteed by the `workflow_run` trigger condition.
+
+**Two distinct `--auto` failure modes:**
+
+| Failure | Error | Cause | Fix |
+|---|---|---|---|
+| Bypass not honoured | Queued but never merges | Branch has protection, bot in bypass, but `--auto` ignores bypass | Drop `--auto`, use direct merge |
+| No protection at all | `Protected branch rules not configured` | Branch has zero protection rules | Drop `--auto`, use direct merge |
+
+**Diagnosis:** check `gh api repos/<owner>/<repo>/branches/<branch> --jq '.protected'`.
+If `false`, drop `--auto`. If `true`, check whether the token is in `bypass_actors`.
+
+### `workflow_run` always uses the DEFAULT BRANCH's workflow file (2026-06-13)
+
+When a workflow has `on: workflow_run`, GitHub runs it from the **repository's
+default branch** — not from the branch that triggered the upstream workflow run.
+
+**Consequence for automerge fixes:** if `renovate-automerge.yml` is fixed on a
+feature branch or `testing` but the fix hasn't landed on `main` (the default
+branch), every new `workflow_run` trigger still runs the old broken version from
+`main`. The fix takes effect only when it merges to `main`.
+
+**Implication:** fixes to `workflow_run`-triggered workflows that land on `testing`
+(via a Renovate-style staging flow) are effectively inert until the promote PR
+merges them to `main`.
+
+### Internal projectbluefin/ actions: use @v1 managed tag, not SHA pins (2026-06-13)
+
+SHA-pinning internal org actions (`projectbluefin/actions`) is
+counter-productive and was the root cause of the June 13 automerge outage:
+
+- The `--auto` bug was committed on June 7 at SHA `fcd2a6bac15f`
+- Every consumer (dakota, bluefin, bluefin-lts, common) pinned different
+  intermediate SHAs, all carrying the broken `--auto`
+- Fixes require N separate Renovate bump PRs — one per consumer — each
+  lagging by hours or days
+- `main` and `testing` diverged to different SHAs, creating split-brain
+
+**AGENTS.md already states the policy:**
+> `projectbluefin/` refs (`@v1`, `@main`) are intentional managed tags and are exempted.
+
+Use `@v1` — it moves forward with every non-breaking fix and is maintained by
+the org. `@v1.0.0` and `@v1.1.0` are static point-release tags if you need
+a pinned version.
+
+```yaml
+# ✗ — SHA pin, breaks propagation; 7 different SHAs across 10 files
+uses: projectbluefin/actions/bootc-build/setup-runner@2a09e72e... # v1.1.0
+
+# ✓ — managed tag, fixes propagate instantly
+uses: projectbluefin/actions/bootc-build/setup-runner@v1
+```
+
+**Enforcement:** `no-sha-pins-for-internal-actions` pre-commit hook blocks any
+future `projectbluefin/.*@<sha>` commits.
+
+**External actions** (`actions/checkout`, `taiki-e/install-action`, etc.) remain
+SHA-pinned — that policy is unchanged and correct.
+
+### build.yml push trigger must include `testing` for `:testing` images (2026-06-13)
+
+`build.yml` had `push: branches: [main, next]` — `testing` was missing.
+`publish.yml` already listed `testing` in its `workflow_run.branches` filter
+and had logic to publish `:testing` on testing-branch builds, but that path
+was dead because `build.yml` never triggered on push to `testing`.
+
+**Result:** `:testing` images were never updated by Renovate merges to testing.
+The promote PR was always building from stale image content.
+
+**Fix (PR #830):** add `testing` to `build.yml`'s push trigger. The build job
+runs on `event_name != 'pull_request'`, so push-to-testing fires the full build.
+BST artifact cache steps remain gated on `merge_group || schedule || workflow_dispatch`
+(intentional quota management) — they skip for plain pushes, which is fine.
+
+### publish.yml: 4-job pipeline after speed-up refactor (2026-06-12)
+
+`publish.yml` was restructured to remove three major bottlenecks. New job graph:
+
+```
+setup → publish-image → promote     (critical path to :testing: ~50–80 min)
+              └──────→ publish-sbom  (runs in parallel with promote)
+```
+
+**Job renames / splits:**
+- `publish` renamed to `publish-image` — exports OCI, pushes `:$sha`, signs. No SBOM.
+- `publish-sbom` (new) — depends on `publish-image`, runs in parallel with `promote`.
+  Contains: SBOM generation, artifact upload, oras attach, cosign sign SBOM.
+- `promote` — now depends on `publish-image` only (not SBOM). Saves 10–15 min.
+
+**skopeo copy in promote (P1):**
+The old `podman pull → tag → push` pattern transferred the full 8.5 GB image
+round-trip for each re-tag. Replace with:
+```bash
+skopeo copy \
+  --preserve-digests \
+  --src-creds "$GH_ACTOR:$GH_TOKEN" \
+  --dest-creds "$GH_ACTOR:$GH_TOKEN" \
+  "docker://${IMAGE}:${BUILD_SHA}" \
+  "docker://${IMAGE}:${TESTING_TAG}"
+```
+`--preserve-digests` is **mandatory** — it keeps the promoted tag pointing at
+the same manifest digest that cosign signed. Omitting it causes GHCR to re-encode
+layers and produce a new digest that breaks the signature chain.
+`skopeo` is pre-installed on ubuntu-24.04 runners — no install step needed.
+
+**SBOM pip cache (P3):**
+`buildstream-sbom` is installed from a GitLab git URL every run (3–8 min with
+retries). Cache the pip wheel at `~/.cache/pip` keyed to the pinned commit SHA:
+```yaml
+- uses: actions/cache@<SHA>
+  with:
+    path: ~/.cache/pip
+    key: pip-sbom-<pinned-commit-sha>
+    restore-keys: pip-sbom-
+```
+Mount into the bst2 container via `-v "${HOME}/.cache/pip:/root/.cache/pip:rw"`
+in the `just sbom` podman run call. Update the cache key when the pin is bumped.
+
+**buildah replaces squash-all in just export (P6):**
+`podman build --squash-all` re-encoded the entire 8.5 GB image for a 2-line
+`sed` edit to `/usr/lib/os-release`. Replace with:
+```bash
+CONTAINER=$(buildah from "$IMAGE_ID")
+MOUNT=$(buildah mount "$CONTAINER")
+sed -i "s/^VERSION_ID=.*/VERSION_ID=\"${DATE_TAG}\"/" "$MOUNT/usr/lib/os-release"
+sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\"${DATE_TAG}\"/" "$MOUNT/usr/lib/os-release"
+buildah config --label "org.opencontainers.image.created=..." "$CONTAINER"
+buildah commit --rm "$CONTAINER" "${FINAL_NAME}:${FINAL_TAG}"
+```
+`buildah commit` (no `--squash`) appends a tiny (~1 KB) delta layer. `chunka`'s
+BST path calls `podman image mount` which returns a merged overlayfs view
+regardless of layer count — multi-layer input is transparent to chunkah.
+`buildah` is pre-installed by `setup-runner@v1` (resolute package).
+
+**digest re-derivation in publish-sbom:**
+`publish-sbom` needs the image digest for `oras attach` but GHA matrix job
+outputs are fragile. Re-derive it with `skopeo inspect` instead:
+```bash
+DIGEST=$(skopeo inspect \
+  --creds "$GH_ACTOR:$GH_TOKEN" \
+  "docker://${IMAGE}:${BUILD_SHA}" \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['Digest'])")
+```
+No inter-job output wiring needed. The image was pushed by `publish-image` and
+is immediately available in GHCR before `publish-sbom` starts.
+
+**cache-warm cron: Mon–Fri (P4):**
+Changed from `0 6 * * 1,4` (Mon/Thu) to `0 6 * * 1-5` (Mon–Fri).
+A junction ref bump on Tuesday left the CAS cold for 3 days, causing build.yml
+to timeout at 360 min. Daily warming caps the cold window at 1 day.
+
+### Promotion PR: force-push dismisses approvals even when diff is unchanged (2026-06-13)
+
+When `main` advances (e.g. Renovate merges) while a promotion PR has a
+maintainer approval, the promote workflow was rebuilding the squash branch
+and force-pushing — even though the effective diff against `main` was
+identical. GitHub dismisses approvals on **any** force-push regardless of
+content. The first approver had to re-approve on every unrelated commit
+landing on `main`, indefinitely.
+
+**Root cause:** the rebuild step always ran `git push --force` without checking
+whether the new squash content differed from the existing promotion branch.
+
+**Fix (actions#225):** tree-identity check before force-pushing:
+
+```bash
+NEW_TREE=$(git write-tree)
+EXISTING_TREE=$(git rev-parse "origin/${PROMOTION_BRANCH}^{tree}" 2>/dev/null || echo "")
+if [ "$NEW_TREE" = "$EXISTING_TREE" ] && [ -n "$EXISTING_TREE" ]; then
+  echo "promoted=skipped"   # skip push — approvals preserved
+else
+  git commit && git push --force
+  echo "promoted=true"      # content changed — new approval required (correct)
+fi
+```
+
+`promoted=skipped` passes all downstream `!= 'false'` guards — PR body and
+gate section still refresh. Only the push is skipped.
+
+**Rule:** Never force-push a promotion branch when the squash tree is unchanged.
+`git write-tree` before committing gives the tree hash of staged content without
+creating a commit.
+
+### Promotion PR: force-push clears reviewRequests — maintainers team not notified (2026-06-13)
+
+After a force-push, GitHub clears all pending reviewer requests. `reviewRequests`
+becomes `[]`. The team doesn't know re-review is needed; the PR sits blocked
+with no active requests.
+
+**Fix (actions#226):** re-request the maintainers team after any force-push:
+
+```bash
+if [ "${{ steps.rebuild.outputs.promoted }}" = "true" ]; then
+  gh pr edit "$PR_NUMBER" \
+    --add-reviewer "${{ github.repository_owner }}/maintainers" 2>/dev/null
+fi
+```
+
+Skip on `promoted=skipped` — approvals are preserved so no re-request is
+needed. Re-requesting when nothing changed would spam reviewers with no new
+content to review.
+
+**Both fixes are in `reusable-promote-squash.yml@v1`** and apply automatically
+to bluefin, bluefin-lts, and dakota.
+
+## buildah in export recipe — do not use without confirming availability
+
+**Context:** `f8b80d4` switched the `just export` recipe from `podman build --squash-all` to
+`buildah from + buildah mount + buildah commit` to save ~35–50 min by avoiding full image re-encode.
+
+**Bug (dakota#841):** This broke two things:
+1. **Boot failure on real hardware** — the multi-layer `buildah commit` output differs from the
+   single flat layer produced by `--squash-all`. chunka's composefs xattr injection expects to
+   rechunk a flat image; multi-layer input produces a different composefs tree that fails to mount
+   at boot.
+2. **Local/Argo builds broken** — `quay.io/podman/stable` (used by `just build` and the Argo
+   `dakota-bst` WorkflowTemplate) does not include `buildah`. GitHub Actions ubuntu-24.04 has
+   buildah pre-installed, so GHCR builds succeeded while local/Argo builds errored with
+   `buildah: command not found` (exit 127).
+
+**Fix:** Reverted to `podman build --squash-all` in PR fixing #841.
+
+**Rule:** Any `just export` change that introduces a tool dependency beyond `podman` must be
+verified in both environments:
+- `quay.io/podman/stable:latest` (Argo pipeline image)
+- `ubuntu-24.04` GitHub Actions runner
+If the tool is only available on ubuntu-24.04, the Justfile recipe must install it explicitly
+(e.g. `dnf install -y buildah`) or the approach must avoid it entirely.
+
+### chunka overlay dirs must land on BTRFS, not root FS (2026-06-13)
+
+**Symptom:** `Chunkify image layers` step fails with:
+```
+No space left on device
+```
+The GitHub Actions runner terminates mid-step with a `System.IO.IOException` in the
+runner diagnostic log. The step is killed before `sudo umount` can run, leaving
+orphaned overlay mounts (cleaned up when the ephemeral runner terminates).
+
+**Root cause:** `chunka@v1` (BST path) creates three overlay work dirs — `UPPER`,
+`WORK`, `MERGED` — in `/var/tmp`. `setup-runner` mounts a BTRFS loopback over
+`/var/lib/containers` using `loopback-free: "1"`, leaving only ~1 GB free on the
+root filesystem. `inject-xattrs.py` sets `user.component` xattrs on every path in
+`files/fakecap-manifest.tsv` (700K+ entries). Each `setxattr` call on a regular
+file in an overlayfs triggers a **copy-up**: the entire file is copied to `UPPER`.
+Copy-ups from a full OS image easily exceed 1 GB, exhausting the root FS.
+
+**Fix (2026-06-13):** Fixed centrally in `projectbluefin/actions` `chunka@v1`
+(`bootc-build/chunka/action.yml`). At runtime, the action now picks the directory
+with the most free space from `[/var/lib/containers, /var/tmp]`:
+
+```bash
+_OVERLAY_TMPDIR="/var/tmp"
+for _candidate in /var/lib/containers /var/tmp; do
+  if [[ -d "$_candidate" ]]; then
+    _free=$(df --output=avail "$_candidate" 2>/dev/null | tail -1 || echo 0)
+    _best=$(df --output=avail "$_OVERLAY_TMPDIR" 2>/dev/null | tail -1 || echo 0)
+    if (( _free > _best )); then _OVERLAY_TMPDIR="$_candidate"; fi
+  fi
+done
+UPPER=$(mktemp -d -p "$_OVERLAY_TMPDIR")
+WORK=$(mktemp -d -p "$_OVERLAY_TMPDIR")
+MERGED=$(mktemp -d -p "$_OVERLAY_TMPDIR")
+```
+
+On CI runners with `setup-runner btrfs`, `/var/lib/containers` wins (~49 GB).
+On local dev machines `/var/tmp` is the fallback. The action also logs the chosen
+dir and available space for future diagnosis.
+
+The same fix was applied to the `chunkify` recipe in the dakota `Justfile`
+(used by `just build` for local dev).
+
+**The fix is in `@v1` — no dakota workflow changes required.** All callers of
+`chunka@v1` (default and nvidia variants across all branches) get the fix
+automatically.
+
+**Do not add a `/var/tmp` bind-mount workaround to individual workflows.** The fix
+belongs in the action, not scattered across consumers.
+
+### actions/cache does not create the cache directory on a cold miss — podman bind-mounts fail (2026-06-13)
+
+`actions/cache` only *restores* an existing archive; on a cache miss it does
+nothing and leaves the target path absent. If a subsequent `podman run` uses
+`-v "${HOME}/.cache/pip:/root/.cache/pip:rw"` and the host-side directory
+does not exist, podman exits **125** (container failed to start) before any
+command runs.
+
+```
+Error: statfs /home/runner/.cache/pip: no such file or directory
+error: recipe `sbom` failed with exit code 125
+```
+
+**Fix:** `mkdir -p` the directory in the Justfile recipe immediately before
+the `podman run`, not in the workflow step. This makes the fix unconditional
+regardless of where `just sbom` is invoked:
+
+```bash
+mkdir -p "${HOME}/.cache/pip"
+podman run --rm ... -v "${HOME}/.cache/pip:/root/.cache/pip:rw" ...
+```
+
+**Rule:** Any `podman run -v HOST_PATH:...` where `HOST_PATH` is a cache
+directory that may not pre-exist must be preceded by `mkdir -p HOST_PATH`.
+Never rely on `actions/cache` to guarantee the directory exists.
+
+### Boot-check gate: inline QEMU boot vs AT-SPI smoke (2026-06-13)
+
+The testsuite `smoke` suite runs AT-SPI / GNOME Settings accessibility
+tests that take **80+ minutes** in a VM and fail on timing sensitivity
+in VMs, not on real image defects. Using it as a hard promote gate
+blocks `:testing` on every merge without catching real regressions
+(boot failures, composefs xattr breakage are caught by user reports,
+not AT-SPI tests).
+
+**Fixed in PR #849 / closes #850:**
+
+`publish.yml` now has two separate jobs:
+
+| Job | Gate type | What it checks | Target time |
+|---|---|---|---|
+| `boot-check` | **Hard** — blocks promote | bootc install → boot → SSH → `gdm active` | ~10 min |
+| `smoke` | Observational | Full testsuite smoke suite (AT-SPI etc.) | ~80 min |
+
+The `promote` job gates on `boot-check.result == 'success'`. Smoke
+runs in parallel for signal; its result is allowed to be success or
+failure — promote proceeds either way.
+
+**Rule:** The per-merge gate should always be a deterministic boot
+check (SSH reachable + GDM active). The full AT-SPI suite belongs in
+the weekly pre-stable gate, not the per-merge pre-testing gate.
+
+### OSTREE_PATH in boot-check kernel args must come from the BLS entry (2026-06-13)
+
+When constructing QEMU kernel args for an inline boot check, the
+`ostree=` kernel argument requires the path in the format:
+
+```
+/ostree/boot.1/default/TREEHASH/N
+```
+
+where `TREEHASH` is the **ostree commit SHA** — a completely different
+hash from the deploy directory name (`/ostree/deploy/default/deploy/SHA.N`).
+Using the deploy directory path as the ostree= argument causes the initrd
+to fail to switch-root and the VM hangs silently.
+
+**Fix:** Read the exact path from the BLS (Boot Loader Specification)
+entry on the boot partition (p2). The entry already contains the correct
+`ostree=` value that the real bootloader would use:
+
+```bash
+sudo mkdir -p /mnt_boot
+sudo mount "${LOOP}p2" /mnt_boot
+OSTREE_PATH=$(sudo grep -rh '^options' /mnt_boot/loader/entries/*.conf 2>/dev/null \
+  | grep -o 'ostree=[^ ]*' | head -1 | sed 's/ostree=//')
+sudo umount /mnt_boot
+```
+
+**Also:** always detach the loopback device after unmounting the image
+before handing `disk.raw` to QEMU. Export the loop device name as a step
+output and run `sudo losetup -d "${LOOP}"` after `umount`. Leaving the loop
+device attached while QEMU holds the file open is a resource leak.
+
+**Disk partition layout from bootc:** p1=EFI, p2=/boot (BLS entries here),
+p3=/ (ostree deployments and the running rootfs).

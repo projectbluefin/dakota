@@ -10,6 +10,8 @@
   </picture>
 </a>
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/projectbluefin/dakota)
+
 **Alpha** — [filing issues](https://github.com/projectbluefin/dakota/issues) is the whole point.
 
 ## Built-in feedback loop

@@ -33,11 +33,15 @@ Every agent session produces two outputs: **the work** (the PR) and **the learni
 | Local OTA testing (QEMU or physical hardware) | [`local-ota.md`](local-ota.md) |
 | CI pipeline, remote cache, GHCR | [`ci.md`](ci.md) |
 | Manual promotion (testing → stable) and release | [`ci.md`](ci.md) — *Manual stable promotion flow* |
+| Reusable workflow `startup_failure` debugging | [`ci.md`](ci.md) — *`permissions: {}` at workflow level starves GITHUB_TOKEN*, *`pull_request: closed` trigger*, and *`sign-and-publish` cert identity regexp* |
+| CODEOWNERS: auto-managed file bypass | [`ci.md`](ci.md) — *CODEOWNERS: no-owner override for auto-managed files* |
+| Structured changelog / release notes (cliff.toml) | [`ci.md`](ci.md) — *`cliff.toml` required at repo root for structured release notes* |
 | `:next`/`:btw` rolling GNOME 51 stream | [`overview.md`](overview.md) — *Image Streams* + [`ci.md`](ci.md) |
 | Clearing stuck merge queue | [`merge-queue.md`](merge-queue.md) |
 | Actionadon lifecycle, issue queue, data donation | [`actionadon.md`](actionadon.md) |
 | Project overview and what Dakota is | [`overview.md`](overview.md) |
 | ujust recipes in `files/just-overrides/` | [`.github/skills/ujust-recipes.md`](../../.github/skills/ujust-recipes.md) |
+| VM stack (virt-manager + QEMU flatpaks) | [`vm-stack.md`](vm-stack.md) |
 | Installer (bootc-installer) | [`installer.md`](installer.md) |
 | Merging dep-update PRs into testing | [`merge-queue.md`](merge-queue.md) |
 | PR review workflow | [`pr-review.md`](pr-review.md) |

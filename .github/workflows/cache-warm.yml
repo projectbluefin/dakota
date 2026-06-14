@@ -1,0 +1,91 @@
+name: Warm BuildStream Cache
+
+# Prevents cold-start timeouts by keeping the remote BST CAS hot.
+# Runs Monday and Thursday mornings, well before typical PR merge windows.
+#
+# Context: dakota BST builds have a 360-min job timeout. When cache misses
+# (after junction ref bumps or gnome-build-meta upstream rebuilds), the full
+# GNOME stack must rebuild from scratch, which can exceed 6h. This workflow
+# triggers a build on schedule so the remote CAS at cache.projectbluefin.io
+# stays warm and merge-queue builds land on cache hits.
+#
+# Failure here is non-blocking — the warm build is best-effort.
+# Tracks: projectbluefin/common#583 (automation audit Phase 7)
+
+on:
+  schedule:
+    # Weekdays at 06:00 UTC — before European/US merge windows.
+    # Daily cadence (was Mon/Thu) reduces the cold-build window after junction
+    # ref bumps from 3 days to 1 day, preventing 360-min timeout build failures.
+    - cron: '0 6 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dakota-cache-warm
+  cancel-in-progress: false
+
+jobs:
+  warm-cache:
+    name: Build to warm remote CAS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Check bst2 image pin consistency
+        uses: ./.github/actions/check-bst2-pin
+
+      - name: Setup runner
+        uses: projectbluefin/actions/bootc-build/setup-runner@v1
+        with:
+          storage-backend: btrfs
+          update-podman: true
+          install-tools: '["just"]'
+
+      - name: Restore BST workspace cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.cache/buildstream
+          key: bst-warm-${{ hashFiles('elements/gnome-build-meta.bst', 'elements/freedesktop-sdk.bst', 'Justfile') }}
+          restore-keys: |
+            bst-warm-
+            bst-show-
+
+      - name: Generate BuildStream CI config
+        env:
+          CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
+          CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
+        uses: ./.github/actions/generate-bst-ci-config
+        with:
+          enable-remote-execution: false
+          enable-push: true
+
+      - name: Build default variant (warm-cache mode, non-blocking)
+        env:
+          BST_FLAGS: -o x86_64_v3 true --no-interactive
+        run: |
+          set +e
+          # Build only — no checkout, no push to GHCR. Goal is to populate
+          # the remote CAS so subsequent merge-queue builds get cache hits.
+          just bst build oci/bluefin.bst
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::Cache warm build failed (rc=${rc}) — non-blocking."
+            echo "::warning::Likely causes: gnome-build-meta upstream rebuilding, junction ref skew."
+          fi
+          exit 0
+
+      - name: Report cache state
+        if: always()
+        run: |
+          echo "::notice::Cache warm completed at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          CACHED=$(just bst show --deps all --format '%{name} %{state}' oci/bluefin.bst 2>/dev/null \
+            | grep -c "cached" || echo 0)
+          echo "::notice::Cached elements after warm: ${CACHED}"

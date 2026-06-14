@@ -11,21 +11,24 @@
 
 ## Publish pipeline (publish.yml)
 
-`build` success on main triggers publish.yml via `workflow_run`:
+`build` success on main/testing/next triggers publish.yml via `workflow_run`:
 
 ```
 build.yml (main) → [workflow_run] → publish.yml
-                                    setup → publish (matrix) → e2e-gate → promote
+                                    setup → publish-image (matrix) → promote
+                                                     └──────────────→ publish-sbom
 ```
 
 | Job | What |
 |---|---|
-| `setup` | Resolves SHA and trigger event |
-| `publish` | Exports from CAS, pushes `:$sha`, signs, SBOM, attests |
-| `e2e-gate` | Smoke-tests `ghcr.io/projectbluefin/dakota:$sha` — schedule/dispatch only |
-| `promote` | Re-tags `:$sha` → `:testing` after e2e passes — schedule/dispatch only |
+| `setup` | Resolves SHA, trigger event, and branch |
+| `publish-image` | Exports from CAS; runs `chunka@v1` to rechunk; pushes `:$sha`; signs + attests |
+| `promote` | `skopeo copy` `:$sha` → `:testing` (merge-queue/schedule/dispatch) |
+| `publish-sbom` | Generates SBOM; attaches via oras; signs SBOM (runs in parallel with promote) |
 
-`:testing` is never published without a passing e2e smoke test.
+`promote` depends only on `publish-image`, not on SBOM — saves 10–15 min on the critical path.
+
+After every successful publish, `execute-release.yml` auto-fires and creates a GitHub Release.
 
 After every successful publish, `release.yml` auto-fires (via `workflow_run`) and creates a GitHub Release with a card image, SBOM diff, and package changelog.
 

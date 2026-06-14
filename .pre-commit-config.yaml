@@ -18,8 +18,14 @@ repos:
   - repo: local
     hooks:
       - id: no-floating-action-tags
-        name: Block floating GitHub Action tags
+        name: Block floating GitHub Action tags (external)
         language: pygrep
         entry: 'uses:(?!.*projectbluefin/).*@(main|master|latest|v[0-9])'
+        types: [yaml]
+        files: '(^\.github/workflows/.*\.yml$|action\.yml$)'
+      - id: no-sha-pins-for-internal-actions
+        name: Block SHA pins for projectbluefin/ actions (use @v1)
+        language: pygrep
+        entry: 'uses:.*projectbluefin/.*@[0-9a-f]{40}'
         types: [yaml]
         files: '(^\.github/workflows/.*\.yml$|action\.yml$)'

@@ -160,6 +160,10 @@ export variant="default":
     # Squash, inject build-date VERSION_ID, and apply dynamic labels.
     # BST has no string option type, so VERSION_ID is set to "0" in os-release.bst
     # and replaced here at export time — after the BST cache key is already fixed.
+    # Reverts the buildah mount+commit approach from f8b80d4: buildah is not
+    # available in quay.io/podman/stable (breaks local builds and Argo pipeline)
+    # and the multi-layer output breaks composefs xattr injection in chunka.
+    # Fixes: projectbluefin/dakota#841 (boot failure on :testing 2026-06-13)
     DATE_TAG="$(date -u +%Y%m%d)"
     # shellcheck disable=SC2086
     printf 'FROM %s\nRUN sed -i "s/^VERSION_ID=.*/VERSION_ID=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\\"%s\\"/" /usr/lib/os-release\n' "$IMAGE_ID" "$DATE_TAG" "$DATE_TAG" \
@@ -594,7 +598,21 @@ chunkify image_ref:
     }
     trap cleanup EXIT
 
-    UPPER=$(mktemp -d -p /var/tmp); WORK=$(mktemp -d -p /var/tmp); MERGED=$(mktemp -d -p /var/tmp)
+    # Pick the tmpdir with the most free space for the overlay work dirs.
+    # fakecap-restore triggers overlayfs copy-up for every file it touches
+    # (700K+ entries); copy-ups can exhaust /var/tmp on machines where root
+    # has little free space (e.g. CI runners with a BTRFS loopback for
+    # /var/lib/containers).  Mirror the same logic used in chunka@v1.
+    _OVERLAY_TMPDIR="/var/tmp"
+    for _candidate in /var/lib/containers /var/tmp; do
+        if [ -d "$_candidate" ]; then
+            _free=$(df --output=avail "$_candidate" 2>/dev/null | tail -1 || echo 0)
+            _best=$(df --output=avail "$_OVERLAY_TMPDIR" 2>/dev/null | tail -1 || echo 0)
+            if (( _free > _best )); then _OVERLAY_TMPDIR="$_candidate"; fi
+        fi
+    done
+    echo "==> overlay tmpdir: ${_OVERLAY_TMPDIR} ($(df -h --output=avail "${_OVERLAY_TMPDIR}" | tail -1 | tr -d ' ') free)"
+    UPPER=$(mktemp -d -p "$_OVERLAY_TMPDIR"); WORK=$(mktemp -d -p "$_OVERLAY_TMPDIR"); MERGED=$(mktemp -d -p "$_OVERLAY_TMPDIR")
     $SUDO_CMD chmod 755 "$UPPER" "$WORK" "$MERGED"
     $SUDO_CMD mount -t overlay overlay \
         -o "lowerdir=${LOWER},upperdir=${UPPER},workdir=${WORK}" \
@@ -957,6 +975,10 @@ sbom variant="default":
         2>/dev/null || true
 
     echo "==> Generating BST-native SBOM with buildstream-sbom (${ELEMENT} → ${OUTFILE})..."
+    # Ensure pip cache directory exists before podman bind-mount.
+    # actions/cache does not create the path on a cold cache miss; podman
+    # refuses to start (exit 125) if the host-side directory is absent.
+    mkdir -p "${HOME}/.cache/pip"
     # Pinned to commit 0706fec3 (2026-04-01) — latest main, includes element
     # names in SPDX output (issue #9 fix). Switch to a versioned PyPI release
     # once the project publishes one.
@@ -966,6 +988,7 @@ sbom variant="default":
         -v "{{justfile_directory()}}:/src:rw" \
         -v "${HOME}/.cache/buildstream:/root/.cache/buildstream:rw" \
         -v "${HOME}/.config/buildstream-generate:/root/.config/buildstream-generate:rw" \
+        -v "${HOME}/.cache/pip:/root/.cache/pip:rw" \
         -w /src \
         -e ELEMENT="${ELEMENT}" \
         -e SPDX_NAME="${SPDX_NAME}" \

@@ -12,6 +12,6 @@ permissions:
 jobs:
   automerge:
     if: github.event.workflow_run.conclusion == 'success'
-    uses: projectbluefin/actions/.github/workflows/reusable-renovate-automerge.yml@fcd2a6bac15f2037df2e62572eef7a70fd25759f # v1
+    uses: projectbluefin/actions/.github/workflows/reusable-renovate-automerge.yml@v1
     with:
       head_sha: ${{ github.event.workflow_run.head_sha }}

@@ -174,3 +174,39 @@ sources:
 ```
 
 This pattern is used in `tailscale.bst`, `glow.bst`, `gum.bst`, and `fzf.bst`.
+
+### Shared profile scripts require the binary in a BST element — check common Containerfile (2026-06-09)
+
+`projectbluefin/common` ships profile scripts in `system_files/shared/etc/profile.d/`
+that are installed by `common.bst`. If a script calls a binary that common's Containerfile
+downloads into `/out/bluefin/usr/bin/` (not `/out/shared/`), that binary will be missing
+from the BST build and every terminal open will print `bash: <cmd>: command not found`.
+
+Pattern to detect: check `common/Containerfile` for curl downloads to `/out/bluefin/usr/bin/`
+that match any script in `system_files/shared/etc/profile.d/`.
+
+Fix has two parts:
+1. **projectbluefin/common**: move the binary download from `/out/bluefin/usr/bin/` to
+   `/out/shared/usr/bin/` in the Containerfile, and move the corresponding config from
+   `system_files/bluefin/etc/<tool>/` to `system_files/shared/etc/<tool>/`.
+2. **projectbluefin/dakota**: add a BST element that downloads the same binary for the
+   BST build path. Config is installed by `common.bst` (copies both `bluefin/etc/` and
+   `shared/etc/`), so the BST element only needs to provide the binary.
+
+For raw binaries (no tarball), use `kind: remote` with `filename: <name>` to rename on
+download, then a clean `install -Dm755` without globs. Example from `umotd.bst`:
+
+```yaml
+sources:
+- kind: remote
+  filename: umotd
+  (?):
+  - arch == "x86_64":
+      url: github_files:theMimolet/umotd/releases/download/v0.2.1/umotd_0.2.1_linux_amd64
+      ref: 2cd5a07344f553e590b432aa5b3a07c5cbd055487468d33514130ae5f05ba02e
+  - arch == "aarch64":
+      url: github_files:theMimolet/umotd/releases/download/v0.2.1/umotd_0.2.1_linux_arm64
+      ref: 1598bb13f30f3c2e17fe4349fd04f567999a0643919d5a4abb186a14cb7d62f0
+```
+
+References: projectbluefin/common PR 542, projectbluefin/dakota PR 762 (issue 753)

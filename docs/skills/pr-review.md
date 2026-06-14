@@ -90,4 +90,20 @@ Then pipe the findings directly into fixes before the PR lands. This session
 caught 4 issues from rubber duck + 1 interaction bug (TOCTOU guard) from
 doublecheck — all fixed before merging.
 
+### Check new service/file additions are wired into BST install-commands (2026-06-10)
+
+Dropping a file into `files/firstboot/` (or any source directory) does not make
+it land in the OCI image. `elements/bluefin/firstboot-services.bst` only installs
+files explicitly listed in `install-commands`. A PR that adds a new file but no
+corresponding `install -Dm644 ... "%{install-root}/..."` line is silently incomplete
+— the file exists in the source tree but never reaches the image.
+
+**Review checklist for PRs adding new files:**
+1. Find the `.bst` element that owns the directory (grep `path: files/<dir>` in `elements/`)
+2. Confirm the element's `install-commands` block has an entry for the new file
+3. If the file should be enabled at boot, also check for a `ln -sf` symlink step
+
+PR 750 added `files/firstboot/keyring-unlock.service` with no install-commands
+entry — the service would never land in the image.
+
 ---
