@@ -1,0 +1,31 @@
+name: Run Testsuite
+
+# Canonical wrapper — always call this, never call projectbluefin/testsuite e2e.yml directly.
+# Pin the testsuite SHA here; all callers inherit it automatically.
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: "Full image reference to test (e.g. ghcr.io/projectbluefin/dakota:testing)"
+        required: true
+        type: string
+      suites:
+        description: "Comma-separated list of test suites to run"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  e2e:
+    name: ${{ inputs.suites }}
+    permissions:
+      contents: read
+      packages: write
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@afb1505fd2b7f28de11ad7a1b531760efea635c3 # main
+    with:
+      image: ${{ inputs.image }}
+      suites: ${{ inputs.suites }}
+    secrets: inherit
