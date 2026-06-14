@@ -113,7 +113,8 @@ git push --force-with-lease origin <branch-name>
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Build OOM or hangs | Memory pressure with 4 builders | Check element build resource usage |
-| "No space left on device" | BST cache fills runner disk | Check if any element generates large buildtrees |
+| "No space left on device" during **Chunkify** | Overlay copy-ups from `inject-xattrs.py` exhaust the ~1 GB root FS left by `setup-runner`'s BTRFS loopback | Fixed centrally in `chunka@v1` — auto-selects `/var/lib/containers` (BTRFS, ~49 GB) over `/var/tmp` (~1 GB) |
+| "No space left on device" during **Build** | BST cache fills runner disk | Check if any element generates large buildtrees |
 | `bootc container lint` fails | Image structure issues | Check OCI assembly, `/usr/etc` merge |
 | Build succeeds locally, fails in CI | Different cached versions | Compare `bst show` output; check remote CAS |
 | GHCR push fails | Token permissions | Check `packages: write` permission |
@@ -1478,3 +1479,163 @@ content to review.
 
 **Both fixes are in `reusable-promote-squash.yml@v1`** and apply automatically
 to bluefin, bluefin-lts, and dakota.
+
+## buildah in export recipe — do not use without confirming availability
+
+**Context:** `f8b80d4` switched the `just export` recipe from `podman build --squash-all` to
+`buildah from + buildah mount + buildah commit` to save ~35–50 min by avoiding full image re-encode.
+
+**Bug (dakota#841):** This broke two things:
+1. **Boot failure on real hardware** — the multi-layer `buildah commit` output differs from the
+   single flat layer produced by `--squash-all`. chunka's composefs xattr injection expects to
+   rechunk a flat image; multi-layer input produces a different composefs tree that fails to mount
+   at boot.
+2. **Local/Argo builds broken** — `quay.io/podman/stable` (used by `just build` and the Argo
+   `dakota-bst` WorkflowTemplate) does not include `buildah`. GitHub Actions ubuntu-24.04 has
+   buildah pre-installed, so GHCR builds succeeded while local/Argo builds errored with
+   `buildah: command not found` (exit 127).
+
+**Fix:** Reverted to `podman build --squash-all` in PR fixing #841.
+
+**Rule:** Any `just export` change that introduces a tool dependency beyond `podman` must be
+verified in both environments:
+- `quay.io/podman/stable:latest` (Argo pipeline image)
+- `ubuntu-24.04` GitHub Actions runner
+If the tool is only available on ubuntu-24.04, the Justfile recipe must install it explicitly
+(e.g. `dnf install -y buildah`) or the approach must avoid it entirely.
+
+### chunka overlay dirs must land on BTRFS, not root FS (2026-06-13)
+
+**Symptom:** `Chunkify image layers` step fails with:
+```
+No space left on device
+```
+The GitHub Actions runner terminates mid-step with a `System.IO.IOException` in the
+runner diagnostic log. The step is killed before `sudo umount` can run, leaving
+orphaned overlay mounts (cleaned up when the ephemeral runner terminates).
+
+**Root cause:** `chunka@v1` (BST path) creates three overlay work dirs — `UPPER`,
+`WORK`, `MERGED` — in `/var/tmp`. `setup-runner` mounts a BTRFS loopback over
+`/var/lib/containers` using `loopback-free: "1"`, leaving only ~1 GB free on the
+root filesystem. `inject-xattrs.py` sets `user.component` xattrs on every path in
+`files/fakecap-manifest.tsv` (700K+ entries). Each `setxattr` call on a regular
+file in an overlayfs triggers a **copy-up**: the entire file is copied to `UPPER`.
+Copy-ups from a full OS image easily exceed 1 GB, exhausting the root FS.
+
+**Fix (2026-06-13):** Fixed centrally in `projectbluefin/actions` `chunka@v1`
+(`bootc-build/chunka/action.yml`). At runtime, the action now picks the directory
+with the most free space from `[/var/lib/containers, /var/tmp]`:
+
+```bash
+_OVERLAY_TMPDIR="/var/tmp"
+for _candidate in /var/lib/containers /var/tmp; do
+  if [[ -d "$_candidate" ]]; then
+    _free=$(df --output=avail "$_candidate" 2>/dev/null | tail -1 || echo 0)
+    _best=$(df --output=avail "$_OVERLAY_TMPDIR" 2>/dev/null | tail -1 || echo 0)
+    if (( _free > _best )); then _OVERLAY_TMPDIR="$_candidate"; fi
+  fi
+done
+UPPER=$(mktemp -d -p "$_OVERLAY_TMPDIR")
+WORK=$(mktemp -d -p "$_OVERLAY_TMPDIR")
+MERGED=$(mktemp -d -p "$_OVERLAY_TMPDIR")
+```
+
+On CI runners with `setup-runner btrfs`, `/var/lib/containers` wins (~49 GB).
+On local dev machines `/var/tmp` is the fallback. The action also logs the chosen
+dir and available space for future diagnosis.
+
+The same fix was applied to the `chunkify` recipe in the dakota `Justfile`
+(used by `just build` for local dev).
+
+**The fix is in `@v1` — no dakota workflow changes required.** All callers of
+`chunka@v1` (default and nvidia variants across all branches) get the fix
+automatically.
+
+**Do not add a `/var/tmp` bind-mount workaround to individual workflows.** The fix
+belongs in the action, not scattered across consumers.
+
+### actions/cache does not create the cache directory on a cold miss — podman bind-mounts fail (2026-06-13)
+
+`actions/cache` only *restores* an existing archive; on a cache miss it does
+nothing and leaves the target path absent. If a subsequent `podman run` uses
+`-v "${HOME}/.cache/pip:/root/.cache/pip:rw"` and the host-side directory
+does not exist, podman exits **125** (container failed to start) before any
+command runs.
+
+```
+Error: statfs /home/runner/.cache/pip: no such file or directory
+error: recipe `sbom` failed with exit code 125
+```
+
+**Fix:** `mkdir -p` the directory in the Justfile recipe immediately before
+the `podman run`, not in the workflow step. This makes the fix unconditional
+regardless of where `just sbom` is invoked:
+
+```bash
+mkdir -p "${HOME}/.cache/pip"
+podman run --rm ... -v "${HOME}/.cache/pip:/root/.cache/pip:rw" ...
+```
+
+**Rule:** Any `podman run -v HOST_PATH:...` where `HOST_PATH` is a cache
+directory that may not pre-exist must be preceded by `mkdir -p HOST_PATH`.
+Never rely on `actions/cache` to guarantee the directory exists.
+
+### Boot-check gate: inline QEMU boot vs AT-SPI smoke (2026-06-13)
+
+The testsuite `smoke` suite runs AT-SPI / GNOME Settings accessibility
+tests that take **80+ minutes** in a VM and fail on timing sensitivity
+in VMs, not on real image defects. Using it as a hard promote gate
+blocks `:testing` on every merge without catching real regressions
+(boot failures, composefs xattr breakage are caught by user reports,
+not AT-SPI tests).
+
+**Fixed in PR #849 / closes #850:**
+
+`publish.yml` now has two separate jobs:
+
+| Job | Gate type | What it checks | Target time |
+|---|---|---|---|
+| `boot-check` | **Hard** — blocks promote | bootc install → boot → SSH → `gdm active` | ~10 min |
+| `smoke` | Observational | Full testsuite smoke suite (AT-SPI etc.) | ~80 min |
+
+The `promote` job gates on `boot-check.result == 'success'`. Smoke
+runs in parallel for signal; its result is allowed to be success or
+failure — promote proceeds either way.
+
+**Rule:** The per-merge gate should always be a deterministic boot
+check (SSH reachable + GDM active). The full AT-SPI suite belongs in
+the weekly pre-stable gate, not the per-merge pre-testing gate.
+
+### OSTREE_PATH in boot-check kernel args must come from the BLS entry (2026-06-13)
+
+When constructing QEMU kernel args for an inline boot check, the
+`ostree=` kernel argument requires the path in the format:
+
+```
+/ostree/boot.1/default/TREEHASH/N
+```
+
+where `TREEHASH` is the **ostree commit SHA** — a completely different
+hash from the deploy directory name (`/ostree/deploy/default/deploy/SHA.N`).
+Using the deploy directory path as the ostree= argument causes the initrd
+to fail to switch-root and the VM hangs silently.
+
+**Fix:** Read the exact path from the BLS (Boot Loader Specification)
+entry on the boot partition (p2). The entry already contains the correct
+`ostree=` value that the real bootloader would use:
+
+```bash
+sudo mkdir -p /mnt_boot
+sudo mount "${LOOP}p2" /mnt_boot
+OSTREE_PATH=$(sudo grep -rh '^options' /mnt_boot/loader/entries/*.conf 2>/dev/null \
+  | grep -o 'ostree=[^ ]*' | head -1 | sed 's/ostree=//')
+sudo umount /mnt_boot
+```
+
+**Also:** always detach the loopback device after unmounting the image
+before handing `disk.raw` to QEMU. Export the loop device name as a step
+output and run `sudo losetup -d "${LOOP}"` after `umount`. Leaving the loop
+device attached while QEMU holds the file open is a resource leak.
+
+**Disk partition layout from bootc:** p1=EFI, p2=/boot (BLS entries here),
+p3=/ (ostree deployments and the running rootfs).

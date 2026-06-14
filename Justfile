@@ -137,34 +137,37 @@ export variant="default":
     rm -rf .build-out
     just bst artifact checkout "$ELEMENT" --directory /src/.build-out
 
-    # Load the BST OCI image and apply the date-stamped VERSION_ID mutation.
-    # BST cannot stamp VERSION_ID at build time without busting the daily cache key,
-    # so it is set to "0" in os-release.bst and replaced here via buildah mount.
-    # buildah commit appends a tiny (~1 KB) delta layer; chunka rechunks to ≤120 layers.
-    # No squash needed — podman image mount in chunka merges all layers transparently.
-    echo "==> Loading BST OCI image..."
+    # Load the multi-layer OCI image and squash into a single layer.
+    # BuildStream produces separate layers (platform + gnomeos + bluefin);
+    # bootc and registry distribution work better with one squashed layer.
+    # Using podman (not skopeo) ensures the squashed view is preserved on push.
+    echo "==> Loading and squashing OCI image..."
     IMAGE_ID=$($SUDO_CMD podman pull -q oci:.build-out)
     rm -rf .build-out
 
-    # Inject build-date VERSION_ID and apply dynamic OCI labels via buildah.
-    # This replaces the previous podman build --squash-all approach, which re-encoded
-    # the entire 8.5 GB image for a 2-line sed edit. buildah mount + commit writes
-    # only the changed bytes as a tiny delta layer instead.
-    DATE_TAG="$(date -u +%Y%m%d)"
-    CONTAINER=$($SUDO_CMD buildah from "$IMAGE_ID")
-    MOUNT=$($SUDO_CMD buildah mount "$CONTAINER")
-    $SUDO_CMD sed -i "s/^VERSION_ID=.*/VERSION_ID=\"${DATE_TAG}\"/" "$MOUNT/usr/lib/os-release"
-    $SUDO_CMD sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\"${DATE_TAG}\"/" "$MOUNT/usr/lib/os-release"
+    # Build label arguments for dynamic OCI metadata
+    LABEL_ARGS=""
     if [ -n "${OCI_IMAGE_CREATED}" ]; then
-        $SUDO_CMD buildah config --label "org.opencontainers.image.created=${OCI_IMAGE_CREATED}" "$CONTAINER"
+        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.created=${OCI_IMAGE_CREATED}"
     fi
     if [ -n "${OCI_IMAGE_REVISION}" ]; then
-        $SUDO_CMD buildah config --label "org.opencontainers.image.revision=${OCI_IMAGE_REVISION}" "$CONTAINER"
+        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.revision=${OCI_IMAGE_REVISION}"
     fi
     if [ -n "${OCI_IMAGE_VERSION}" ]; then
-        $SUDO_CMD buildah config --label "org.opencontainers.image.version=${OCI_IMAGE_VERSION}" "$CONTAINER"
+        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.version=${OCI_IMAGE_VERSION}"
     fi
-    $SUDO_CMD buildah commit --rm "$CONTAINER" "${FINAL_NAME}:${FINAL_TAG}"
+
+    # Squash, inject build-date VERSION_ID, and apply dynamic labels.
+    # BST has no string option type, so VERSION_ID is set to "0" in os-release.bst
+    # and replaced here at export time — after the BST cache key is already fixed.
+    # Reverts the buildah mount+commit approach from f8b80d4: buildah is not
+    # available in quay.io/podman/stable (breaks local builds and Argo pipeline)
+    # and the multi-layer output breaks composefs xattr injection in chunka.
+    # Fixes: projectbluefin/dakota#841 (boot failure on :testing 2026-06-13)
+    DATE_TAG="$(date -u +%Y%m%d)"
+    # shellcheck disable=SC2086
+    printf 'FROM %s\nRUN sed -i "s/^VERSION_ID=.*/VERSION_ID=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\\"%s\\"/" /usr/lib/os-release\n' "$IMAGE_ID" "$DATE_TAG" "$DATE_TAG" \
+        | $SUDO_CMD podman build --pull=never --security-opt label=type:unconfined_t --squash-all ${LABEL_ARGS} -t "${FINAL_NAME}:${FINAL_TAG}" -f - .
     $SUDO_CMD podman rmi "$IMAGE_ID" || true
 
     echo "==> Export complete. Image loaded as ${FINAL_NAME}:${FINAL_TAG}"
@@ -595,7 +598,21 @@ chunkify image_ref:
     }
     trap cleanup EXIT
 
-    UPPER=$(mktemp -d -p /var/tmp); WORK=$(mktemp -d -p /var/tmp); MERGED=$(mktemp -d -p /var/tmp)
+    # Pick the tmpdir with the most free space for the overlay work dirs.
+    # fakecap-restore triggers overlayfs copy-up for every file it touches
+    # (700K+ entries); copy-ups can exhaust /var/tmp on machines where root
+    # has little free space (e.g. CI runners with a BTRFS loopback for
+    # /var/lib/containers).  Mirror the same logic used in chunka@v1.
+    _OVERLAY_TMPDIR="/var/tmp"
+    for _candidate in /var/lib/containers /var/tmp; do
+        if [ -d "$_candidate" ]; then
+            _free=$(df --output=avail "$_candidate" 2>/dev/null | tail -1 || echo 0)
+            _best=$(df --output=avail "$_OVERLAY_TMPDIR" 2>/dev/null | tail -1 || echo 0)
+            if (( _free > _best )); then _OVERLAY_TMPDIR="$_candidate"; fi
+        fi
+    done
+    echo "==> overlay tmpdir: ${_OVERLAY_TMPDIR} ($(df -h --output=avail "${_OVERLAY_TMPDIR}" | tail -1 | tr -d ' ') free)"
+    UPPER=$(mktemp -d -p "$_OVERLAY_TMPDIR"); WORK=$(mktemp -d -p "$_OVERLAY_TMPDIR"); MERGED=$(mktemp -d -p "$_OVERLAY_TMPDIR")
     $SUDO_CMD chmod 755 "$UPPER" "$WORK" "$MERGED"
     $SUDO_CMD mount -t overlay overlay \
         -o "lowerdir=${LOWER},upperdir=${UPPER},workdir=${WORK}" \
@@ -958,6 +975,10 @@ sbom variant="default":
         2>/dev/null || true
 
     echo "==> Generating BST-native SBOM with buildstream-sbom (${ELEMENT} → ${OUTFILE})..."
+    # Ensure pip cache directory exists before podman bind-mount.
+    # actions/cache does not create the path on a cold cache miss; podman
+    # refuses to start (exit 125) if the host-side directory is absent.
+    mkdir -p "${HOME}/.cache/pip"
     # Pinned to commit 0706fec3 (2026-04-01) — latest main, includes element
     # names in SPDX output (issue #9 fix). Switch to a versioned PyPI release
     # once the project publishes one.
