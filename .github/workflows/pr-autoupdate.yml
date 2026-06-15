@@ -1,0 +1,67 @@
+# Auto-update open PRs targeting main when main advances.
+# Prevents the BEHIND state that blocks auto-merge from triggering.
+# Runs after every push to main (including merge-queue squash commits).
+# Non-destructive: gh pr update-branch merges main in; conflicts stay open.
+name: PR Auto-update
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: pr-autoupdate
+  cancel-in-progress: true
+
+jobs:
+  update-stale-prs:
+    name: Update stale PRs targeting main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Find and update stale PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Find all open PRs targeting main that are BEHIND and not from bots.
+          # Renovate PRs target testing, not main — skip them.
+          # Mergeraptor manages its own branches — skip those too.
+          STALE_PRS=$(gh pr list \
+            --repo "$REPO" \
+            --base main \
+            --state open \
+            --json number,headRefName,mergeStateStatus,author \
+            --jq '
+              .[] |
+              select(.mergeStateStatus == "BEHIND") |
+              select(.author.login != "renovate[bot]") |
+              select(.author.login != "app/mergeraptor") |
+              .number
+            ')
+
+          if [ -z "$STALE_PRS" ]; then
+            echo "No stale PRs found — nothing to do"
+            exit 0
+          fi
+
+          echo "Stale PRs to update: $(echo "$STALE_PRS" | tr '\n' ' ')"
+
+          UPDATED=0
+          SKIPPED=0
+          for PR_NUM in $STALE_PRS; do
+            if gh pr update-branch "$PR_NUM" --repo "$REPO" 2>/dev/null; then
+              echo "  ✅ PR #${PR_NUM} updated"
+              UPDATED=$((UPDATED + 1))
+            else
+              echo "  ⚠️  PR #${PR_NUM} skipped (already up-to-date or merge conflict)"
+              SKIPPED=$((SKIPPED + 1))
+            fi
+          done
+
+          echo "Done — updated: ${UPDATED}, skipped: ${SKIPPED}"
