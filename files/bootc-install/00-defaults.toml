@@ -1,2 +1,8 @@
 [install]
 bootloader = "systemd"
+
+[install.filesystem.root]
+# Required since bootc no longer defaults the root filesystem type.
+# Without this, `bootc install to-disk` exits 1 with "No root filesystem
+# specified", leaving disk.raw unpartitioned and breaking the CI boot check.
+type = "xfs"
