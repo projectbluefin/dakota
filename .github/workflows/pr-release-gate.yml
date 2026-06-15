@@ -16,7 +16,7 @@ jobs:
       issues: write
       packages: read
       pull-requests: write
-    uses: projectbluefin/actions/.github/workflows/reusable-release-gate.yml@34f00f9304a19ffeab55e30646ad48352c0d3c8b # v1
+    uses: projectbluefin/actions/.github/workflows/reusable-release-gate.yml@3f01fd8e8c186b072c21d0453f2dc66c727f9db8 # v1
     with:
       repo: ${{ github.repository }}
       registry: ghcr.io/projectbluefin
