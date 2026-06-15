@@ -37,4 +37,8 @@ jobs:
       cosign_identity_regexp: >-
         ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
       run_e2e: false
+      # run_e2e is intentionally false for dakota. The e2e quality gate lives
+      # at the weekly-testing-promotion.yml level with a GitHub 'production'
+      # Environment requiring 2 explicit human approvals — not at the PR gate
+      # level. The promotion PR here gets cosign verification only.
     secrets: inherit

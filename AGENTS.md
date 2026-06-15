@@ -116,7 +116,7 @@ Non-compliance = automatic rejection.
 
 **Verification:** Every PR must confirm `just lint` passed and the image booted. Use `just boot-test` for automated pass/fail. No WIP PRs.
 
-**Pre-commit guard:** `no-floating-action-tags` blocks third-party `@main`/`@v*` floating action tags at commit time. `projectbluefin/` refs (`@v1`, `@main`) are intentional managed tags and are exempted.
+**Pre-commit guard:** `no-floating-action-tags` blocks third-party `@main`/`@v*` floating action tags at commit time. `projectbluefin/actions/` refs (`@v1`) are intentional managed tags and are exempted.
 
 **Justfile integrity:** All maintenance tasks must be `just` recipes. No loose shell commands. If a task isn't covered by an existing recipe, add one alongside your change.
 
@@ -184,6 +184,8 @@ Do not request review without evidence. Before opening a PR for review:
 
 **Production promotion** (`weekly-testing-promotion.yml`) requires 2 distinct human approvals in the GitHub `production` Environment. No agent may trigger, approve, or bypass this gate. Admin bypasses are permanently logged in Environment deployment history.
 
+**Dakota promotion PR has no e2e gate by design.** `promote-testing-to-main.yml` passes `run_e2e: false` to `reusable-promote-squash.yml` — the promotion PR gets cosign verification only. The e2e quality gate is at the weekly-testing-promotion level (2 human approvals in the `production` Environment). Do not add `run_e2e: true` to the promote caller.
+
 **Promotion pipeline — cosign verify pattern:** When adding cosign verification to a promotion workflow, anchor the `--certificate-identity-regexp` with `^...$` and restrict it to the specific publishing workflow file and allowed ref patterns (e.g. `^https://github.com/<repo>/.github/workflows/publish\.yml@refs/heads/(main|gh-readonly-queue/main/.+)$`). An unanchored wildcard accepts signatures from any workflow in the repo.
 
 **cosign install on GHA runners:** Never write directly to `/usr/local/bin` without `sudo`. Use `curl -fsSL ... -o "$RUNNER_TEMP/cosign"` then `sudo install -m 0755 "$RUNNER_TEMP/cosign" /usr/local/bin/cosign`. The runner user cannot write to `/usr/local/bin` on GitHub-hosted runners.
@@ -243,4 +245,4 @@ Per `docs/pr-checklist.md`: always `Assisted-by:` — **never `Co-authored-by:`*
 
 ### SHA pinning (actions only)
 
-All `uses:` references to external actions must be pinned to a full commit SHA with a version comment. Never use floating tags. `projectbluefin/` refs (`@v1`, `@main`) are intentional managed tags and are exempted.
+All `uses:` references to external actions must be pinned to a full commit SHA with a version comment. Never use floating tags. `projectbluefin/actions` refs (`@v1`) are intentional managed tags and are exempted.
