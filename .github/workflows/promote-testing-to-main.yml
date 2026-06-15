@@ -27,10 +27,13 @@ permissions:
   issues: write         # open / close failure-tracking issues
   packages: read        # read image digests in release-gate checks
   actions: read         # inspect workflow-run statuses in release-gate
+  # workflows: write is required when the testing→main delta includes .github/workflows/ changes.
+  # actionlint 1.7.x flags this as unknown (stale built-in list) — it is a valid GITHUB_TOKEN scope.
+  workflows: write      # push squash branch when delta includes workflow file changes
 
 jobs:
   promote:
-    uses: projectbluefin/actions/.github/workflows/reusable-promote-squash.yml@34f00f9304a19ffeab55e30646ad48352c0d3c8b # v1
+    uses: projectbluefin/actions/.github/workflows/reusable-promote-squash.yml@v1
     with:
       variants: >-
         [{"image":"dakota"},{"image":"dakota-nvidia"}]
