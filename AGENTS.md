@@ -12,20 +12,29 @@ Load **[docs/SKILL.md](docs/SKILL.md)** for the full reference skill tree. Only 
 common ──────────────────────────┐
 (shared OCI layer)               │
                                  ▼
-bluefin  (main→stable)       ←── images ──→ testsuite (e2e gate)
-bluefin-lts (main→lts)       ←── images ──→ testsuite (e2e gate)
-dakota  (main→testing→latest/stable) ←── images ──→ testsuite (e2e gate)
-dakota  (next→:next/:btw, rolling nightly, no stable promotion)
+bluefin  (PRs→testing; testing→main; main→:stable)   ←── testsuite (e2e gate)
+bluefin-lts (PRs→testing*; testing→main; main→:lts)  ←── testsuite (e2e gate)
+dakota  (PRs→testing; testing→main; main→:stable)    ←── testsuite (e2e gate)
+dakota  (next→:next/:btw — rolling nightly, no stable promotion)
                                  │
                                  ▼
                                 iso (installation media)
 ```
 
 Each image repo pulls `ghcr.io/projectbluefin/common:latest` as a base layer.
-testsuite gates `:testing` promotion nightly and `:latest`/`:stable` promotion weekly.
+
+**Git branch model (authoritative):**
+
+| Repo | PR target | Promotion path | Release action |
+|---|---|---|---|
+| `bluefin` | `testing` | `testing→main` | `execute-release.yml` copies `:testing`→`:stable` |
+| `bluefin-lts` | `testing`* | `testing→main` | `execute-release.yml` copies `:testing`→`:lts` |
+| `dakota` | `testing` | `testing→main` | `execute-release.yml` fires on push to main |
+
+Never target `main` directly for feature work. `main` receives only squash-merge promotion commits.
 
 **Dakota image streams:**
-- `:testing` / `:latest` / `:stable` — `main` branch, GNOME 50 stable, e2e-gated weekly promotion
+- `:testing` / `:stable` — `main` branch, GNOME 50 stable, promotion via `promote-testing-to-main.yml`
 - `:next` / `:btw` — `next` branch, GNOME 51 master, fully automated rolling nightly, **no promotion to stable ever**
 
 **`elements/bluefin/common.bst` strips bluefin-only content from common.** Any file added to `common/system_files/shared/` that does not apply to a fresh dakota install must be explicitly `rm -f`'d in the `install-commands` block of that element. Current stripped files: `rechunker-group-fix` script, service, and preset (chunka migration aid — not needed on fresh dakota).
@@ -175,20 +184,27 @@ Do not request review without evidence. Before opening a PR for review:
 | `flow/project-report` | Scanner flow for a linked repository, org, roadmap, or docs report. |
 | `flow/issue-review` | Scanner flow for a linked issue review. |
 | `flow/pr-review` | Reviewer flow for a linked PR review. |
-| `lab:pass` | Maintainer lab validation passed; enables label-gated auto-merge for maintainer-owned PR branches. After `lab:pass`, one maintainer ack/approval is sufficient for merge-queue entry. |
+| `lab:pass` | Maintainer lab validation passed; sufficient for merge-queue entry on maintainer-owned branches. |
 | `needs-human/agent-oops` | An agent made a mistake here — wrong assumption, bad output, filed a spurious issue, broke something. This label builds a learning corpus. |
 
 **Skill contribution:** If you discover a pattern, fix a recurring mistake, or learn something that would help future agents, you **must** update the relevant skill file in `docs/skills/` in the same PR as your change. If no relevant skill file exists, create one and add it to the routing table in `docs/skills/README.md`. Skills are living documents — every agent improves them.
 
-**Agents MUST NOT push directly to `main`.** All changes via PR from a feature branch. Branch protection enforces this.
+**Agents MUST NOT push directly to `main`.** All changes via PR from a feature branch targeting `testing`. `main` receives only squash-merge promotion commits.
 
-**Production promotion** (`weekly-testing-promotion.yml`) requires 2 distinct human approvals in the GitHub `production` Environment. No agent may trigger, approve, or bypass this gate. Admin bypasses are permanently logged in Environment deployment history.
+**Promotion pipeline:** `promote-testing-to-main.yml` (calling `reusable-promote-squash.yml@v1` from `projectbluefin/actions`) maintains an always-open `auto/promote-testing-to-main` PR. On merge, `execute-release.yml` fires and copies the verified image to the stable tags. No separate `weekly-testing-promotion.yml` workflow exists — do not reference it.
 
-**Promotion pipeline — cosign verify pattern:** When adding cosign verification to a promotion workflow, anchor the `--certificate-identity-regexp` with `^...$` and restrict it to the specific publishing workflow file and allowed ref patterns (e.g. `^https://github.com/<repo>/.github/workflows/publish\.yml@refs/heads/(main|gh-readonly-queue/main/.+)$`). An unanchored wildcard accepts signatures from any workflow in the repo.
+> ⚠️ **Note on dakota promotion e2e gate:** Dakota's `promote-testing-to-main.yml` sets
+> `run_e2e: false` — the promotion PR has no e2e gate, only cosign verification.
+> E2E testing is available on-demand via `e2e.yml` (`workflow_dispatch` only).
+> This is intentional: PRs do not publish a testing build first, so running e2e at
+> promotion time would test a stale image. The trade-off is documented here to avoid
+> confusion when comparing with bluefin (which does gate on e2e).
 
-**cosign install on GHA runners:** Never write directly to `/usr/local/bin` without `sudo`. Use `curl -fsSL ... -o "$RUNNER_TEMP/cosign"` then `sudo install -m 0755 "$RUNNER_TEMP/cosign" /usr/local/bin/cosign`. The runner user cannot write to `/usr/local/bin` on GitHub-hosted runners.
+**Promotion pipeline — cosign verify pattern:** When adding cosign verification to a promotion workflow, anchor the `--certificate-identity-regexp` with `^...$` and restrict it to the specific publishing workflow file and allowed ref patterns. An unanchored wildcard accepts signatures from any workflow in the repo.
 
-**TOCTOU guard in promotion workflows:** The `lock-sha` step must lock the *tested* source SHA (from the `verify` step output), not the live `main` HEAD. Compare the live HEAD to the tested SHA and fail early if they differ. Locking the live HEAD after testing is a race — `main` may have advanced between the e2e run and the lock step.
+**cosign install on GHA runners:** Never write directly to `/usr/local/bin` without `sudo`. Use `curl -fsSL ... -o "$RUNNER_TEMP/cosign"` then `sudo install -m 0755 "$RUNNER_TEMP/cosign" /usr/local/bin/cosign`.
+
+**TOCTOU guard in promotion workflows:** The `lock-sha` step must lock the *tested* source SHA, not the live `main` HEAD. Compare live HEAD to tested SHA and fail early if they differ.
 
 **`.github/workflows/`, `Justfile`, `build_files/`, and `elements/` are CODEOWNERS-protected** — PRs touching these paths require maintainer review.
 
@@ -213,13 +229,13 @@ When asked to review a pull request, load the branch workflow before giving feed
 
 **Review priorities (in order):**
 
-1. **Branch hygiene** — PR must branch from `upstream/main`, not a fork's local `main`. Check `git diff upstream/main...HEAD --stat` is minimal.
+1. **Branch hygiene** — PR must branch from `upstream/testing`, not from `main` or a fork's local branch. Check `git diff upstream/testing...HEAD --stat` is minimal.
 2. **Checklist compliance** — verify the relevant checklist items from `pr-checklist.md` for the type of change.
 3. **CI gate status** — `validate` and `e2e` are required status checks. If CI hasn't run, note it.
 4. **Scope discipline** — one logical change per PR. Junction bumps must not include patch modifications in the same commit.
 5. **Correctness** — element syntax, layer kind (`compose` not `stack`), cargo sources generated not hand-written, etc.
 
-**Recommend the workflow.** If a contributor's PR doesn't follow the branch flow (e.g., branched from fork `main`, missing `Closes #NNN`, no checklist in PR body), guide them toward the correct pattern documented in `docs/workflow.md` rather than just rejecting.
+**Recommend the workflow.** If a contributor's PR doesn't follow the branch flow (e.g., targeting `main` instead of `testing`, missing `Closes #NNN`, no checklist in PR body), guide them toward the correct pattern documented in `docs/workflow.md` rather than just rejecting.
 
 ## Development Standards
 
@@ -236,7 +252,7 @@ feat(bluefin): add container build optimization
 
 Closes #NNN
 
-Assisted-by: Claude Sonnet 4.6 via GitHub Copilot
+Assisted-by: Claude Sonnet 4.5 via pi
 ```
 
 Per `docs/pr-checklist.md`: always `Assisted-by:` — **never `Co-authored-by:`** (this is a repo-local rule that differs from the org-wide template).
