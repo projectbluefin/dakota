@@ -258,30 +258,52 @@ jobs:
         run: |
           set -euo pipefail
           fallocate -l 30G disk.raw
+          # Pre-create the loopback device on the HOST before starting the container.
+          # --via-loopback creates the loop device inside the container; the host
+          # kernel doesn't create partition device nodes (loop0p2, loop0p3, etc.)
+          # visible inside the container, causing mkfs to fail with ENOENT.
+          # Passing the pre-created host loop device directly means the host kernel
+          # creates the partition nodes, which appear in the container via -v /dev:/dev.
+          LOOP=$(sudo losetup -f --show disk.raw)
+          echo "Host loop device: ${LOOP}"
+          echo "BOOT_CHECK_LOOP=${LOOP}" >> "$GITHUB_ENV"
           # bootupd exits 1 in plain VMs (no EFI partition target) — expected.
           if sudo podman run --rm --quiet "${IMAGE}" bootc install to-disk --help 2>&1 | grep -q '\-\-bootloader'; then
             sudo podman run --rm --privileged \
               -v /dev:/dev --pid=host -v "$(pwd):/data:rw" \
               "${IMAGE}" bootc install to-disk \
-                --via-loopback /data/disk.raw \
                 --skip-fetch-check \
+                "${LOOP}" \
               || echo "bootc install exited $? (bootupd expected — continuing)"
           else
             sudo podman run --rm --privileged \
               -v /dev:/dev --pid=host -v "$(pwd):/data:rw" \
               "${IMAGE}" bootc install to-disk \
-                --via-loopback /data/disk.raw \
+                "${LOOP}" \
               || echo "bootc install exited $? (bootupd expected — continuing)"
           fi
           sudo podman rmi "${IMAGE}" 2>/dev/null || true
+          # Ensure the host kernel has created partition device nodes before
+          # the next step tries to mount them.
+          sudo partprobe "${LOOP}" 2>/dev/null || true
+          sudo udevadm settle --timeout=30 2>/dev/null || true
 
       - name: Extract kernel, initramfs, root UUID and ostree path
         id: disk
         run: |
           set -euo pipefail
-          LOOP=$(sudo losetup -f --show -P disk.raw)
+          # Reuse the loop device attached by the install step.
+          # Disk layout from bootc (systemd-boot, x86-64):
+          #   p1 = BIOS boot (1 MiB, grub fallback)
+          #   p2 = EFI System / xbootldr (512 MiB, holds BLS entries)
+          #   p3 = Linux root — xfs, ostree deployments live here
+          LOOP="${BOOT_CHECK_LOOP}"
+          if [ -z "${LOOP}" ] || ! sudo losetup "${LOOP}" &>/dev/null; then
+            # Fallback: re-attach if the install step detached it
+            LOOP=$(sudo losetup -f --show -P disk.raw)
+            sudo udevadm settle --timeout=10 2>/dev/null || true
+          fi
           echo "Loop: ${LOOP}"
-          # Disk layout from bootc: p1=EFI, p2=/boot, p3=/  
           ROOT_PART="${LOOP}p3"
           BOOT_PART="${LOOP}p2"
           sudo mount "${ROOT_PART}" /mnt
