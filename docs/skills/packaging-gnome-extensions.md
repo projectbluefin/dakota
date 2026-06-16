@@ -1,11 +1,33 @@
 ---
+
 name: packaging-gnome-extensions
 description: Packages GNOME Shell extensions for BuildStream in dakota. Covers UUID discovery, install path, extension stack wiring, GSettings schema compilation, and dconf keyfile last-writer-wins behavior.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
 # Packaging GNOME Shell Extensions
 
 Load when packaging a GNOME Shell extension for BuildStream in dakota.
+
+## When to Use
+
+Use when adding, updating, or debugging a GNOME Shell extension package, schema wiring, or extension enablement behavior in Dakota.
+
+## When NOT to Use
+
+- Normal application packaging that is not a Shell extension
+- Generic BST syntax questions without extension-specific behavior
+- Desktop settings issues unrelated to extension packaging
+
+## Core Process
+
+1. Discover the extension UUID first.
+2. Create the element under the shell-extensions subtree.
+3. Install files into the UUID-based destination path.
+4. Wire the extension into the extension stack and any settings/defaults flow.
+5. Re-check schema compilation and dconf ordering behavior.
 
 ## Creating an Extension Element
 
@@ -135,6 +157,28 @@ install-commands:
 - [ ] Element added to `elements/bluefin/gnome-shell-extensions.bst`
 - [ ] `just validate` passes
 - [ ] `just bst build bluefin/shell-extensions/<name>.bst` passes
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "An extension is just another package." | UUID pathing, schemas, and settings wiring make it different. |
+| "I'll infer the UUID from the project name." | Wrong often enough to waste time; read metadata. |
+| "The files installed, so GNOME will see it." | Not if the path, schema, or enablement flow is wrong. |
+
+## Red Flags
+
+- UUID not verified from metadata
+- Extension installed into a guessed path
+- Settings/default behavior changed without considering last-writer-wins ordering
+- Treating schema compilation as optional
+
+## Verification
+
+- [ ] UUID was confirmed from the extension metadata
+- [ ] Files install to the correct Shell extension path
+- [ ] Schema/default wiring was considered explicitly
+- [ ] The extension is wired into the intended stack or enablement flow
 
 ## Lessons Learned
 

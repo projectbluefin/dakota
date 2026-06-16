@@ -1,17 +1,33 @@
 ---
+
 name: remove-package
 description: Workflow for removing a software package from the Dakota image. Covers element deletion, deps.bst unwiring, dangling reference checks, and validation. Load for any "remove package from Dakota" task.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
 # Removing a Package
 
 Load when removing a software package from the Dakota image in `projectbluefin/dakota`.
 
+## When to Use
+
+Use when deleting software from Dakota, unwiring an obsolete element, or removing image content that should no longer ship.
+
 ## When NOT to Use
 
 - Adding a package → `add-package.md`
 - Only updating a version → `update-refs.md`
 - Debugging a broken element → `debugging.md`
+
+## Core Process
+
+1. Find every reference before deleting anything.
+2. Remove the element and unwind stack wiring.
+3. Check workflows, docs, presets, and ancillary references.
+4. Validate the graph after the removal.
+5. Confirm the image no longer carries the package.
 
 ## Quick Start
 
@@ -56,6 +72,28 @@ just validate
 # 6. Build image to confirm clean
 just build
 ```
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll just delete the element file and let CI find the rest." | Dakota removals usually leave dangling graph or workflow references. |
+| "The `bluefin/` path means there may be an RPM side to clean up too." | No. Clean up BST wiring, not imaginary RPM metadata. |
+| "If the build still works, the package is gone." | You still need to verify the image and references are actually clean. |
+
+## Red Flags
+
+- Element file deleted without touching `deps.bst` or other stacks
+- No repo-wide reference search before removal
+- Assuming package removal is local to one file
+- Containerfile/RPM cleanup steps showing up in the plan
+
+## Verification
+
+- [ ] All references to the package were searched before deletion
+- [ ] Stack wiring and ancillary references were removed
+- [ ] The graph validates after removal
+- [ ] The image/package output no longer includes the removed software
 
 ## Lessons Learned
 

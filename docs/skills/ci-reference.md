@@ -26,6 +26,12 @@ Route through `ci.md` first, then come here only when the focused skills do not 
 - Writing or modifying `.bst` element files → `buildstream.md`
 - Understanding what packages flow into the OCI image → `oci-layers.md`
 
+## Core Process
+
+1. Route through the focused CI skills first.
+2. Come here only when you need historical prior art or an exact failure signature.
+3. If a pattern keeps recurring, extract it into a focused skill and stop adding load to this archive.
+
 ## Quick Reference
 
 | What | Value |
@@ -188,6 +194,26 @@ At the start of every dakota session, check GNOME OS upstream status:
 gh pr list --repo gnome/gnome-build-meta --state open --limit 10
 gh run list --repo projectbluefin/dakota --limit 5
 ```
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll just add the new lesson to the big archive." | If it is reusable enough, it probably deserves a focused skill. |
+| "Loading the giant reference first is safer." | It is slower and usually less accurate for the active task. |
+| "Historical prior art is the same as current guidance." | The point of the focused skills is to keep current guidance small and sharp. |
+
+## Red Flags
+
+- New agents loading this before `ci.md`
+- Repeated patterns staying buried here instead of being split out
+- Fixes being applied from old lore without checking current workflow files
+
+## Verification
+
+- [ ] The focused CI skills were exhausted before using this archive
+- [ ] Any recurring pattern found here was considered for extraction into a focused skill
+- [ ] The archive is being used as prior art, not as the default CI entry point
 
 ## Cross-References
 

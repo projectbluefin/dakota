@@ -1,17 +1,32 @@
 ---
+
 name: dakota-overview
 description: Provides context on what Dakota is, how it differs from bluefin/bluefin-lts, current package gaps, and build optimization notes. Load when planning new package additions or when someone asks what Dakota is.
+metadata:
+  context7-sources:
+    - /bootc-dev/bootc
+    - /apache/buildstream
 ---
 
 # Dakota Overview
 
 Load when you need context on what dakota is, how it differs from production Bluefin, what unique features it has, or when planning new package additions.
 
+## When to Use
+
+Use when you need product/repo context before planning work, when someone asks what Dakota is, or when deciding whether a package or feature fits Dakota's scope.
+
 ## When NOT to Use
 
 - Authoring `.bst` element files → use `buildstream.md` or `add-package.md`
 - Debugging CI pipeline failures → use `ci.md`
 - Looking up specific packaging patterns → use the relevant `packaging-*.md` skill
+
+## Core Process
+
+1. Confirm whether the question is about Dakota's identity, architecture, or scope.
+2. Use the hard facts here to avoid importing bluefin or OSTree assumptions.
+3. Route into a packaging or CI skill once the repo context is clear.
 
 ## Hard Facts — Violations Recorded 3+ Times
 
@@ -171,6 +186,26 @@ Heavy build contributors:
 2. **GRUB** — built in 3 variants (i386-pc, i386-efi, x86_64-efi). Required because upstream GNOME OS uses systemd-boot only; Bluefin needs GRUB for bootc compatibility.
 3. **Junction patches** — patches to freedesktop-sdk and gnome-build-meta modify junction identity hashes, which may affect upstream cache hit rates. Upstreaming patches would improve this.
 4. **Pre-built binary pattern** — used for Tailscale, Zig, Homebrew, Go CLI tools. New packages should follow this pattern where possible.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "Dakota is basically bluefin with different packaging." | No. The build and runtime model differ in important ways. |
+| "If it works in OSTree land, the advice carries over." | Dakota runtime is composefs/bootc-focused. |
+| "CI green is enough to say the image is fixed." | Hardware confirmation still matters here. |
+
+## Red Flags
+
+- Suggesting RPM, rpm-ostree, or OSTree-specific remediation for Dakota runtime problems
+- Treating `:next` as a stable-promotion stream
+- Describing Dakota as a 1:1 clone of production Bluefin
+
+## Verification
+
+- [ ] The answer reflects Dakota's actual runtime and build model
+- [ ] Bluefin/OSTree assumptions were explicitly filtered out
+- [ ] The scope advice matches Dakota's intended positioning
 
 ## Lessons Learned
 

@@ -1,17 +1,33 @@
 ---
+
 name: packaging-zig
 description: Packages a Zig build system project from source. Covers two-stage cache population (zig fetch for HTTP deps, manual placement for git deps), DESTDIR pattern, and -Dcpu=baseline requirement. ghostty.bst is the reference implementation.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
 # Packaging Zig Projects
 
 Load when packaging a project that uses the Zig build system for dakota/Bluefin BuildStream.
 
+## When to Use
+
+Use when a project is built with Zig and needs the Dakota offline-cache packaging pattern.
+
 ## When NOT to Use
 
 - Rust/Cargo project → `packaging-rust.md`
 - Go project → `packaging-go.md`
 - Pre-built binary → `packaging-binaries.md`
+
+## Core Process
+
+1. Read `build.zig.zon` and identify every dependency.
+2. Pre-stage all dependencies as sources.
+3. Populate the Zig cache in the expected offline layout.
+4. Build with the repo's known-good CPU/runtime flags.
+5. Validate the installed binary and cache assumptions.
 
 ## Overview
 
@@ -142,6 +158,28 @@ grep minimum_zig_version path/to/build.zig.zon
 - [ ] Element added to `elements/bluefin/deps.bst`
 - [ ] `just validate` passes
 - [ ] `just bst build bluefin/<name>.bst` passes
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "Zig will fetch dependencies for me during build." | Not inside BST. You must stage them. |
+| "If one cache trick worked once, it'll generalize." | Zig dependency shapes vary; read the project first. |
+| "The reference element is overkill." | The reference exists because ad-hoc Zig packaging breaks easily. |
+
+## Red Flags
+
+- Unstaged `build.zig.zon` dependencies
+- Guessing cache layout instead of matching the reference pattern
+- Skipping the repo's proven Zig flags
+- Treating network isolation as an afterthought
+
+## Verification
+
+- [ ] All Zig deps are staged as sources
+- [ ] Offline cache population is explicit and reproducible
+- [ ] Build flags follow the known-good Dakota pattern
+- [ ] Final binary layout was validated
 
 ## Lessons Learned
 
