@@ -1783,3 +1783,49 @@ appear in the host's `/dev`, which is bind-mounted into the container via
 **Note:** The boot-check gate (introduced PR #849, 2026-06-13) **never passed
 once** due to these two compounding bugs. Both were in the CI script, not the
 image. The image always worked on real hardware.
+
+### `bootc install to-disk` fails with "Device has no children" even with host-side loop device (2026-06-15)
+
+Even after pre-creating the loop device on the host (PR #864 fix above), bootc's
+internal `sfdisk` call fails to make partition nodes appear in time:
+
+```
+Re-reading the partition table failed.: Invalid argument
+The kernel still uses the old table. The new table will be used at the next reboot
+or after you run partprobe(8) or partx(8).
+error: Installing to disk: Creating rootfs: Device has no children
+bootc install exited 1 (bootupd expected — continuing)
+```
+
+Root cause: `losetup -f --show disk.raw` creates the loop device WITHOUT the
+`LO_FLAGS_PARTSCAN` kernel flag. Without it, `ioctl(BLKRRPART)` returns `EINVAL`
+on modern kernels, and the kernel does **not** auto-create `/dev/loop0p3` when
+sfdisk writes the partition table inside the container. bootc immediately tries
+`mkfs.xfs /dev/loop0p3` → node doesn't exist → "Device has no children".
+
+**Fix:** Use `-P` (PARTSCAN) in the initial `losetup` call:
+
+```bash
+# -P tells the kernel to auto-create partition nodes via uevents when
+# the partition table is written — even inside the container.
+LOOP=$(sudo losetup -f --show -P disk.raw)
+```
+
+Also add a fast-fail check after the install to catch the failure clearly
+rather than getting "wrong fs type" in the Extract step:
+
+```bash
+sudo partprobe "${LOOP}" 2>/dev/null || true
+sudo udevadm settle --timeout=30 2>/dev/null || true
+if ! sudo blkid "${LOOP}p3" &>/dev/null; then
+  echo "ERROR: bootc install did not create a filesystem on ${LOOP}p3"
+  sudo fdisk -l "${LOOP}" 2>&1 || true
+  exit 1
+fi
+```
+
+**Why PARTSCAN works:** with `LO_FLAGS_PARTSCAN` set, the kernel monitors the
+loop device for partition table changes and auto-creates device nodes via uevents
+processed by the host udevd. The container sees these via `-v /dev:/dev`. The
+`sfdisk` "Invalid argument" message is benign — PARTSCAN replaces the old
+`BLKRRPART` ioctl mechanism.

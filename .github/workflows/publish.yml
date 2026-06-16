@@ -258,13 +258,15 @@ jobs:
         run: |
           set -euo pipefail
           fallocate -l 30G disk.raw
-          # Pre-create the loopback device on the HOST before starting the container.
-          # --via-loopback creates the loop device inside the container; the host
-          # kernel doesn't create partition device nodes (loop0p2, loop0p3, etc.)
-          # visible inside the container, causing mkfs to fail with ENOENT.
-          # Passing the pre-created host loop device directly means the host kernel
-          # creates the partition nodes, which appear in the container via -v /dev:/dev.
-          LOOP=$(sudo losetup -f --show disk.raw)
+          # Pre-create the loopback device on the HOST (with -P / PARTSCAN) before
+          # starting the container. Two requirements:
+          # 1. Host device: --via-loopback creates the loop inside the container where
+          #    the host kernel never exposes partition nodes via -v /dev:/dev.
+          # 2. PARTSCAN (-P): without it, when sfdisk inside the container writes the
+          #    partition table, ioctl(BLKRRPART) returns EINVAL and the kernel never
+          #    creates loop0p2/loop0p3 nodes → bootc fails "Device has no children".
+          #    With -P (LO_FLAGS_PARTSCAN) the kernel auto-creates nodes via uevents.
+          LOOP=$(sudo losetup -f --show -P disk.raw)
           echo "Host loop device: ${LOOP}"
           echo "BOOT_CHECK_LOOP=${LOOP}" >> "$GITHUB_ENV"
           # bootupd exits 1 in plain VMs (no EFI partition target) — expected.
@@ -287,6 +289,13 @@ jobs:
           # the next step tries to mount them.
           sudo partprobe "${LOOP}" 2>/dev/null || true
           sudo udevadm settle --timeout=30 2>/dev/null || true
+          # Verify root filesystem was created — fail fast with a clear error
+          # rather than the confusing "wrong fs type" message in the Extract step.
+          if ! sudo blkid "${LOOP}p3" &>/dev/null; then
+            echo "ERROR: bootc install did not create a filesystem on ${LOOP}p3"
+            sudo fdisk -l "${LOOP}" 2>&1 || true
+            exit 1
+          fi
 
       - name: Extract kernel, initramfs, root UUID and ostree path
         id: disk
