@@ -287,12 +287,14 @@ jobs:
               -v /dev:/dev --pid=host -v "$(pwd):/data:rw" \
               "${IMAGE}" bootc install to-disk \
                 --skip-fetch-check \
+                --wipe \
                 "${LOOP}" \
               || echo "bootc install exited $? (bootupd expected — continuing)"
           else
             sudo podman run --rm --privileged \
               -v /dev:/dev --pid=host -v "$(pwd):/data:rw" \
               "${IMAGE}" bootc install to-disk \
+                --wipe \
                 "${LOOP}" \
               || echo "bootc install exited $? (bootupd expected — continuing)"
           fi
