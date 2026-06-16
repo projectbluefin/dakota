@@ -269,6 +269,18 @@ jobs:
           LOOP=$(sudo losetup -f --show -P disk.raw)
           echo "Host loop device: ${LOOP}"
           echo "BOOT_CHECK_LOOP=${LOOP}" >> "$GITHUB_ENV"
+          # Pre-create the GPT partition table and wait for udev to materialise
+          # /dev/loop0p1-p3 BEFORE running bootc. When nodes already exist,
+          # bootc's internal sfdisk performs an in-place UPDATE (synchronous)
+          # rather than a CREATE FROM SCRATCH (async udev event). Without this,
+          # bootc calls mkfs immediately after sfdisk and races udevd — losing
+          # with ENOENT on loop0p3. Layout matches bootc's default for x86-64:
+          #   2048  sectors (1 MiB)  — BIOS boot
+          #   1048576 sectors (512 MiB) — EFI System
+          #   rest                    — Linux root (x86-64)
+          printf 'label: gpt\n2048 2048 21686148-6449-6E6F-744E-656564454649\n4096 1048576 C12A7328-F81F-11D2-BA4B-00A0C93EC93B\n1052672 - 4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709\n' \
+            | sudo sfdisk "${LOOP}"
+          sudo udevadm settle --timeout=10 2>/dev/null || true
           # bootupd exits 1 in plain VMs (no EFI partition target) — expected.
           if sudo podman run --rm --quiet "${IMAGE}" bootc install to-disk --help 2>&1 | grep -q '\-\-bootloader'; then
             sudo podman run --rm --privileged \
