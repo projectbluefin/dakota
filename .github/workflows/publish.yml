@@ -258,21 +258,21 @@ jobs:
         run: |
           set -euo pipefail
           fallocate -l 30G disk.raw
-          # Use --via-loopback: pass the raw file path directly into the
-          # container. bootc manages the loop device lifecycle internally,
-          # avoiding the host-side loop/partition-node race entirely.
-          # After the container exits the raw file has a complete partition
-          # table; attach with -P to materialise loop0p1/p2/p3 on the host.
+          # Use the documented raw-image install path: bootc manages the loop
+          # device lifecycle internally, writes a generic VM image layout, and
+          # uses the same xfs root filesystem users get by default.
           # Source: https://github.com/bootc-dev/bootc/blob/main/docs/src/bootc-install.md
-          sudo podman run --rm --privileged --pid=host \
+          sudo podman run --rm --privileged --pid=host --ipc=host \
             --security-opt label=type:unconfined_t \
             -v /dev:/dev \
             -v /var/lib/containers:/var/lib/containers \
             -v "$(pwd):/data" \
             "${IMAGE}" bootc install to-disk \
+              --generic-image \
+              --filesystem xfs \
               --via-loopback /data/disk.raw \
               --wipe \
-            || echo "bootc install exited $? (bootupd expected — continuing)"
+            || { rc=$?; echo "bootc install exited ${rc} — checking whether the deployment was written"; }
           sudo podman rmi "${IMAGE}" 2>/dev/null || true
           # Attach with -P so the kernel scans the partition table and
           # creates loop0p1/p2/p3 nodes before the next step mounts them.
@@ -500,27 +500,9 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
 
-  # ── Testsuite smoke (observational) ───────────────────────────────────────
-  # Runs the full testsuite smoke suite for signal. Non-blocking — AT-SPI
-  # timing failures do not block :testing promotion. Results visible in the
-  # workflow timeline. The full suite gates :testing → :stable in the weekly
-  # promotion workflow. See: projectbluefin/dakota#850
-  smoke:
-    name: Smoke — observational
-    needs: [setup, publish-image]
-    if: needs.publish-image.result == 'success'
-    permissions:
-      contents: read
-      packages: write
-    uses: ./.github/workflows/run-testsuite.yml
-    with:
-      image: ghcr.io/${{ github.repository_owner }}/dakota:${{ needs.setup.outputs.sha }}
-      suites: smoke
-    secrets: inherit
-
   # ── Generate and attach SBOM ──────────────────────────────────────────────
-  # Runs in parallel with smoke — SBOM generation is not on the critical path
-  # to :testing. A fresh runner fetches BST metadata from remote CAS (no full
+  # Runs outside the critical path to :testing. A fresh runner fetches BST
+  # metadata from remote CAS (no full
   # artifact download needed; bst show reads element graph only).
   # P3: pip wheel cache keyed to the pinned buildstream-sbom commit SHA so
   # repeated runs skip the GitLab git fetch entirely.

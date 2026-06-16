@@ -1,6 +1,10 @@
 ---
 name: ci
 description: Dakota CI pipeline reference. Covers workflow files, trigger behavior, remote cache architecture, common failures, and promotion flow. Load when debugging CI failures, understanding why a build was or wasn't triggered, or running a manual promotion.
+metadata:
+  context7-sources:
+    - /websites/github_en_actions
+    - /bootc-dev/bootc
 ---
 
 # CI Pipeline Operations
@@ -1563,22 +1567,25 @@ belongs in the action, not scattered across consumers.
 
 `actions/cache` only *restores* an existing archive; on a cache miss it does
 nothing and leaves the target path absent. If a subsequent `podman run` uses
-`-v "${HOME}/.cache/pip:/root/.cache/pip:rw"` and the host-side directory
-does not exist, podman exits **125** (container failed to start) before any
-command runs.
+bind mounts such as `-v "${HOME}/.cache/pip:/root/.cache/pip:rw"` or
+`-v "${HOME}/.cache/buildstream:/root/.cache/buildstream:rw"` and the host-side
+directory does not exist, podman exits **125** (container failed to start)
+before any command runs.
 
 ```
-Error: statfs /home/runner/.cache/pip: no such file or directory
+Error: statfs /home/runner/.cache/buildstream: no such file or directory
 error: recipe `sbom` failed with exit code 125
 ```
 
-**Fix:** `mkdir -p` the directory in the Justfile recipe immediately before
-the `podman run`, not in the workflow step. This makes the fix unconditional
-regardless of where `just sbom` is invoked:
+**Fix:** `mkdir -p` every host cache directory in the Justfile recipe
+immediately before the `podman run`, not in the workflow step. This makes the
+fix unconditional regardless of where `just sbom` is invoked:
 
 ```bash
-mkdir -p "${HOME}/.cache/pip"
-podman run --rm ... -v "${HOME}/.cache/pip:/root/.cache/pip:rw" ...
+mkdir -p "${HOME}/.cache/buildstream" "${HOME}/.cache/pip"
+podman run --rm ... \
+  -v "${HOME}/.cache/buildstream:/root/.cache/buildstream:rw" \
+  -v "${HOME}/.cache/pip:/root/.cache/pip:rw" ...
 ```
 
 **Rule:** Any `podman run -v HOST_PATH:...` where `HOST_PATH` is a cache
@@ -1611,6 +1618,26 @@ condition alone is insufficient; the job still waits if the dep is in `needs`).
 **Rule:** The per-merge gate should always be a deterministic boot
 check (SSH reachable + GDM active). The full AT-SPI suite belongs in
 the weekly pre-stable gate, not the per-merge pre-testing gate.
+
+### Observational reusable-workflow jobs must be split out of publish.yml (2026-06-16)
+
+`continue-on-error` is **not** supported on jobs that call a reusable workflow
+via `uses:`. That means an observational suite like `smoke` still makes the
+parent workflow red if it lives inside `publish.yml`, even when `promote` no
+longer depends on it.
+
+**Symptom:** publish pipeline lands `:testing` successfully, but
+`Publish Bluefin dakota` still ends red because the observational smoke job
+fails inside the same workflow run.
+
+**Fix:** move observational reusable-workflow jobs into a separate workflow
+triggered by `workflow_run` from the successful publish pipeline. Keep the
+hard gate (`boot-check`) in `publish.yml`; keep the flaky/slow signal in the
+follow-up workflow.
+
+**Rule:** If a GitHub Actions job is both (a) observational and
+(b) implemented as a reusable-workflow call, it does not belong in the
+critical publish workflow.
 
 ### OSTREE_PATH in boot-check kernel args must come from the BLS entry (2026-06-13)
 

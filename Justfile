@@ -954,7 +954,9 @@ sbom variant="default":
         *) echo "ERROR: unknown variant '{{variant}}' (expected: default | nvidia)" >&2; exit 1 ;;
     esac
 
-    # Persist the snakeoil key cache so bst show runs silently (see bst recipe).
+    # Persist host-side caches before bind-mounting them into podman.
+    # actions/cache restores archives but does not create missing directories on a cold miss.
+    mkdir -p "${HOME}/.cache/buildstream"
     mkdir -p "${HOME}/.config/buildstream-generate"
     GIT_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
     # Prime the generated source plugin cache (snakeoil secureboot keys).
