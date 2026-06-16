@@ -1789,7 +1789,7 @@ image. The image always worked on real hardware.
 Even after pre-creating the loop device on the host (PR #864 fix above), bootc's
 internal `sfdisk` call fails to make partition nodes appear in time:
 
-```
+```text
 Re-reading the partition table failed.: Invalid argument
 The kernel still uses the old table. The new table will be used at the next reboot
 or after you run partprobe(8) or partx(8).
@@ -1829,3 +1829,22 @@ loop device for partition table changes and auto-creates device nodes via uevent
 processed by the host udevd. The container sees these via `-v /dev:/dev`. The
 `sfdisk` "Invalid argument" message is benign — PARTSCAN replaces the old
 `BLKRRPART` ioctl mechanism.
+
+**Second race — node creation from scratch is still async (PR #886):**
+Even with PARTSCAN, creating device nodes from scratch requires udevd to
+process the uevent, which is asynchronous. bootc's `mkfs.xfs` call immediately
+follows sfdisk and races udevd — resulting in `ENOENT` on `/dev/loop0p3`.
+
+Fix: pre-seed the loop device with the same GPT layout bootc will use, then
+`udevadm settle`, *before* starting the container. bootc's sfdisk then
+performs an **in-place UPDATE** of existing nodes (synchronous) rather than
+a **CREATE FROM SCRATCH** (async). Layout must match bootc's x86-64 default:
+
+```bash
+# Pre-create GPT so nodes exist before bootc runs
+# Layout: 1M BIOS | 512M EFI | rest Linux root (x86-64)
+printf 'label: gpt\n2048 2048 21686148-6449-6E6F-744E-656564454649\n4096 1048576 C12A7328-F81F-11D2-BA4B-00A0C93EC93B\n1052672 - 4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709\n' \
+  | sudo sfdisk "${LOOP}"
+sudo udevadm settle --timeout=10 2>/dev/null || true
+# now run bootc install — sfdisk UPDATE is synchronous, mkfs finds the node
+```
