@@ -263,7 +263,7 @@ jobs:
           # defaults, and only pass the raw file path via --via-loopback.
           # Dakota ships those defaults in files/bootc-install/00-defaults.toml.
           # Source: projectbluefin/testsuite/.github/actions/gnome-e2e/action.yml
-          sudo podman run --rm --privileged --pid=host \
+          sudo podman run --rm --privileged --pid=host --ipc=host \
             --security-opt label=type:unconfined_t \
             -v /dev:/dev \
             -v /var/lib/containers:/var/lib/containers \
@@ -271,6 +271,7 @@ jobs:
             "${IMAGE}" bootc install to-disk \
               --via-loopback /data/disk.raw \
               --filesystem ext4 \
+              --bootloader none \
               --wipe \
             || { rc=$?; echo "bootc install exited ${rc} — checking whether the deployment was written"; }
           sudo podman rmi "${IMAGE}" 2>/dev/null || true
