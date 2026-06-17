@@ -53,3 +53,6 @@ jobs:
 
       - name: Run actionlint
         run: ./actionlint -color .github/workflows/*.yml
+
+      - name: Check publish workflow policy
+        run: python3 scripts/check_publish_workflow.py
