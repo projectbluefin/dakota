@@ -271,6 +271,7 @@ jobs:
               --generic-image \
               --filesystem xfs \
               --via-loopback /data/disk.raw \
+              --filesystem ext4 \
               --wipe \
             || { rc=$?; echo "bootc install exited ${rc} — checking whether the deployment was written"; }
           sudo podman rmi "${IMAGE}" 2>/dev/null || true
