@@ -62,7 +62,12 @@ bst *ARGS:
 
 # Validate BST element graph — mirrors CI validate job.
 [group('dev')]
+check-publish-workflow:
+    python3 scripts/check_publish_workflow.py
+
+[group('dev')]
 validate:
+    just check-publish-workflow
     just bst show --deps all oci/bluefin.bst
     just bst show --deps all oci/bluefin-nvidia.bst
 

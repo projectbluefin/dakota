@@ -258,18 +258,17 @@ jobs:
         run: |
           set -euo pipefail
           fallocate -l 30G disk.raw
-          # Use the documented raw-image install path: bootc manages the loop
-          # device lifecycle internally, writes a generic VM image layout, and
-          # uses the same xfs root filesystem users get by default.
-          # Source: https://github.com/bootc-dev/bootc/blob/main/docs/src/bootc-install.md
-          sudo podman run --rm --privileged --pid=host --ipc=host \
+          # Match the working testsuite raw-image flow: let the image's own
+          # bootc install config provide the xfs rootfs + systemd bootloader
+          # defaults, and only pass the raw file path via --via-loopback.
+          # Dakota ships those defaults in files/bootc-install/00-defaults.toml.
+          # Source: projectbluefin/testsuite/.github/actions/gnome-e2e/action.yml
+          sudo podman run --rm --privileged --pid=host \
             --security-opt label=type:unconfined_t \
             -v /dev:/dev \
             -v /var/lib/containers:/var/lib/containers \
             -v "$(pwd):/data" \
             "${IMAGE}" bootc install to-disk \
-              --generic-image \
-              --filesystem xfs \
               --via-loopback /data/disk.raw \
               --wipe \
             || { rc=$?; echo "bootc install exited ${rc} — checking whether the deployment was written"; }
@@ -501,9 +500,10 @@ jobs:
           if-no-files-found: ignore
 
   # ── Generate and attach SBOM ──────────────────────────────────────────────
-  # Runs outside the critical path to :testing. A fresh runner fetches BST
-  # metadata from remote CAS (no full
-  # artifact download needed; bst show reads element graph only).
+  # Runs outside the critical path to :testing. Failures here must not block
+  # publish/promotion; stable release notes already regenerate SBOM inline in
+  # execute-release.yml. A fresh runner fetches BST metadata from remote CAS
+  # (no full artifact download needed; bst show reads element graph only).
   # P3: pip wheel cache keyed to the pinned buildstream-sbom commit SHA so
   # repeated runs skip the GitLab git fetch entirely.
   publish-sbom:
@@ -518,7 +518,7 @@ jobs:
             element: oci/bluefin.bst
             image_suffix: ''
             sbom_filename: dakota.spdx.json
-            continue: false
+            continue: true
           - variant: nvidia
             element: oci/bluefin-nvidia.bst
             image_suffix: '-nvidia'

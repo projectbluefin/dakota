@@ -1769,13 +1769,13 @@ type = "xfs"
 
 No behaviour change for users — xfs was always the implicit default. This makes it explicit.
 
-### `bootc install to-disk` — correct approach for CI loop devices (2026-06-16)
+### `bootc install to-disk` — correct approach for CI loop devices (2026-06-16, updated 2026-06-17)
 
-**Use `--via-loopback` with the raw file path.** This is the documented bootc
-pattern for disk images. bootc manages the loop device lifecycle internally,
-eliminating all host-side partition-node race conditions.
+**Use `--via-loopback` with the raw file path, and let the image's own bootc
+install config provide the xfs rootfs + systemd bootloader defaults.**
 
-Source: https://github.com/bootc-dev/bootc/blob/main/docs/src/bootc-install.md
+Working reference: `projectbluefin/testsuite/.github/actions/gnome-e2e/action.yml`
+Source docs: https://github.com/bootc-dev/bootc/blob/main/docs/src/bootc-install.md
 
 ```bash
 fallocate -l 30G disk.raw
@@ -1803,11 +1803,21 @@ if ! sudo blkid "${LOOP}p3" &>/dev/null; then
 fi
 ```
 
-**Why `--via-loopback` works:** bootc creates and manages the loop device
-inside the container where it controls the full lifecycle. Partition nodes
-appear correctly because bootc owns the device end-to-end. After the container
-exits, attaching with `-P` on a file that already has a partition table triggers
-a synchronous kernel scan — nodes are ready immediately.
+Dakota already ships the real install defaults in `files/bootc-install/00-defaults.toml`:
+
+```toml
+[install]
+bootloader = "systemd"
+
+[install.filesystem.root]
+type = "xfs"
+```
+
+**Why this shape matters:** `--via-loopback` keeps bootc in control of the loop
+lifecycle, avoiding host-side partition-node races. But the workflow should not
+re-specify `--generic-image` or `--filesystem xfs` ad hoc — that drifted away
+from the working testsuite flow and reintroduced `Creating rootfs: No such file
+or directory (os error 2)` in Dakota publish boot-checks on 2026-06-17.
 
 **Do NOT:**
 - Pre-create a host loop device and pass it as a block device path — bootc's
@@ -1816,7 +1826,11 @@ a synchronous kernel scan — nodes are ready immediately.
   removing the nodes you just created.
 - Pre-partition with `sfdisk` before running bootc — bootc refuses with
   "Detected existing partitions".
+- Add `--generic-image` or `--filesystem xfs` back into the CI boot-check
+  command; Dakota already gets xfs/systemd from image install config.
 
 **Note:** The boot-check gate never passed from PR #849 (2026-06-13) through
-PR #895 (2026-06-16) due to iterating on the wrong approach. The fix was
-always to use `--via-loopback` as documented. The image works on real hardware.
+PR #895 (2026-06-16) due to iterating on the wrong approach. The first stable
+shape was `--via-loopback`; the 2026-06-17 regression came from drifting away
+from the working testsuite invocation, not from a need to go back to host-side
+loop handling.
