@@ -54,6 +54,8 @@ else:
     )
     if not default_continue:
         errors.append('publish-sbom default variant must stay continue-on-error via continue: true')
+    if 'continue-on-error: ${{ matrix.continue }}' not in sbom_body:
+        errors.append('publish-sbom job must wire continue-on-error: ${{ matrix.continue }}')
 
 if errors:
     for err in errors:

@@ -1769,7 +1769,7 @@ type = "xfs"
 
 No behaviour change for users — xfs was always the implicit default. This makes it explicit.
 
-### `bootc install to-disk` — correct approach for CI loop devices (2026-06-16, updated 2026-06-17)
+### `bootc install to-disk` correct approach for CI loop devices (2026-06-17)
 
 **Use `--via-loopback` with the raw file path, and let the image's own bootc
 install config provide the xfs rootfs + systemd bootloader defaults.**
