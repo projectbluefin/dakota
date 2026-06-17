@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:bootc-dev/bootc.git
   track: v*
-  ref: v1.16.0-0-gd3f885e3c69f2194059329ac1685273197e6b1f7
+  ref: v1.16.1-0-ge10e933c717a2fd57d589a3ce1984146eadfb9cb
 - kind: cargo2
   ref:
   - kind: registry
@@ -84,10 +84,10 @@ sources:
     version: 0.22.1
     sha: 72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6
   - kind: git
-    commit: c1adfa9834aec219ea3c015e04871a46b375b0f0
+    commit: 22a4223d4101cb3f9306e942a79ceb13f173927e
     repo: https://github.com/bootc-dev/bcvk
     query:
-      rev: c1adfa9834aec219ea3c015e04871a46b375b0f0
+      rev: 22a4223d4101cb3f9306e942a79ceb13f173927e
     name: bcvk-qemu
     version: 0.1.0
   - kind: registry
@@ -204,8 +204,8 @@ sources:
     sha: 714a53001bf66416adb0e2ef5ac857140e7dc3a0c48fb28b2f10762fc4b5069f
   - kind: registry
     name: clap_complete
-    version: 4.6.2
-    sha: 3ff7a1dccbdd8b078c2bdebff47e404615151534d5043da397ec50286816f9cb
+    version: 4.6.5
+    sha: e0a7a9bfdb35811f9e59832f0f05975114d2251b415fb534108e6f34060fd772
   - kind: registry
     name: clap_derive
     version: 4.6.1
@@ -922,12 +922,12 @@ sources:
     sha: 9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220
   - kind: registry
     name: pin-project
-    version: 1.1.11
-    sha: f1749c7ed4bcaf4c3d0a3efc28538844fb29bcdd7d2b67b2be7e20ba861ff517
+    version: 1.1.13
+    sha: 2466b2336ed02bcdca6b294417127b90ec92038d1d5c4fbeac971a922e0e0924
   - kind: registry
     name: pin-project-internal
-    version: 1.1.11
-    sha: d9b20ed30f105399776b9c883e68e536ef602a16ae6f596d2c473591d6ad64c6
+    version: 1.1.13
+    sha: c96395f0a926bc13b1c17622aaddda1ecb55d49c8f1bf9777e4d877800a43f8b
   - kind: registry
     name: pin-project-lite
     version: 0.2.17
@@ -1170,8 +1170,8 @@ sources:
     sha: 0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64
   - kind: registry
     name: shlex
-    version: 2.0.0
-    sha: 7f70fe4c6ac787e57441913f82b210e668fb2033613bc7a76909cd8afce8bb1f
+    version: 2.0.1
+    sha: f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba
   - kind: registry
     name: signal-hook
     version: 0.3.18
@@ -1246,8 +1246,8 @@ sources:
     sha: 396a35feb67335377e0251fcbc1092fc85c484bd4e3a7a54319399da127796e7
   - kind: registry
     name: tar
-    version: 0.4.45
-    sha: 22692a6476a21fa75fdfc11d452fda482af402c008cdbaf3476414e122040973
+    version: 0.4.46
+    sha: 3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840
   - kind: registry
     name: tar-core
     version: 0.1.0
@@ -1422,8 +1422,8 @@ sources:
     sha: 06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821
   - kind: registry
     name: uuid
-    version: 1.23.1
-    sha: ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76
+    version: 1.23.3
+    sha: 144d6b123cef80b301b8f72a9e2ca4370ddec21950d0a103dd22c437006d2db7
   - kind: registry
     name: uzers
     version: 0.12.2
@@ -1498,8 +1498,8 @@ sources:
     sha: 5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb
   - kind: registry
     name: which
-    version: 8.0.2
-    sha: 81995fafaaaf6ae47a7d0cc83c67caf92aeb7e5331650ae6ff856f7c0c60c459
+    version: 8.0.3
+    sha: c789537cf2f7f55be8e6192f92e464174ee55f91af622777f7f1ceb0dbccd03e
   - kind: registry
     name: winapi
     version: 0.3.9
