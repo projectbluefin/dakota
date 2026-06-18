@@ -263,6 +263,9 @@ jobs:
           # defaults, and only pass the raw file path via --via-loopback.
           # Dakota ships those defaults in files/bootc-install/00-defaults.toml.
           # Source: projectbluefin/testsuite/.github/actions/gnome-e2e/action.yml
+          # --ipc=host: bootc's loopback install uses IPC for udevd/mount
+          # coordination inside the privileged container; without it the
+          # loopback attach races and partitions may not be visible.
           sudo podman run --rm --privileged --pid=host --ipc=host \
             --security-opt label=type:unconfined_t \
             -v /dev:/dev \
@@ -318,7 +321,8 @@ jobs:
           # --bootloader none skips writing BLS entries to the ESP, so we
           # find OSTREE_PATH directly from the ostree boot.1 tree on the root
           # filesystem. bootc writes /ostree/boot.1/default/TREEHASH/N
-          # regardless of bootloader mode.
+          # regardless of bootloader mode. Fresh install always has exactly
+          # one deployment so sort | head -1 is deterministic.
           OSTREE_PATH=$(sudo find /mnt/ostree/boot.1/default -mindepth 2 -maxdepth 2 \
             -type d 2>/dev/null | sort | head -1 | sed 's|^/mnt||')
           [[ -z "${OSTREE_PATH}" ]] && { echo "ERROR: could not find OSTREE_PATH in /ostree/boot.1"; exit 1; }
