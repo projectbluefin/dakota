@@ -263,6 +263,9 @@ jobs:
           # defaults, and only pass the raw file path via --via-loopback.
           # Dakota ships those defaults in files/bootc-install/00-defaults.toml.
           # Source: projectbluefin/testsuite/.github/actions/gnome-e2e/action.yml
+          # --ipc=host: bootc's loopback install uses IPC for udevd/mount
+          # coordination inside the privileged container; without it the
+          # loopback attach races and partitions may not be visible.
           sudo podman run --rm --privileged --pid=host --ipc=host \
             --security-opt label=type:unconfined_t \
             -v /dev:/dev \
@@ -292,10 +295,10 @@ jobs:
         run: |
           set -euo pipefail
           # Reuse the loop device attached by the install step.
-          # Disk layout from bootc (systemd-boot, x86-64):
-          #   p1 = BIOS boot (1 MiB, grub fallback)
-          #   p2 = EFI System / xbootldr (512 MiB, holds BLS entries)
-          #   p3 = Linux root — xfs, ostree deployments live here
+          # Disk layout from bootc (--bootloader none, x86-64):
+          #   p1 = BIOS boot (1 MiB)
+          #   p2 = EFI System (512 MiB, not populated — bootloader skipped)
+          #   p3 = Linux root — ext4, ostree deployments live here
           LOOP="${BOOT_CHECK_LOOP}"
           if [ -z "${LOOP}" ] || ! sudo losetup "${LOOP}" &>/dev/null; then
             # Fallback: re-attach if the install step detached it
@@ -304,7 +307,6 @@ jobs:
           fi
           echo "Loop: ${LOOP}"
           ROOT_PART="${LOOP}p3"
-          BOOT_PART="${LOOP}p2"
           sudo mount "${ROOT_PART}" /mnt
           ROOT_UUID=$(sudo blkid -s UUID -o value "${ROOT_PART}")
           echo "root=${ROOT_PART}  uuid=${ROOT_UUID}"
@@ -316,15 +318,14 @@ jobs:
           VAR="/mnt/ostree/deploy/default/var"
           echo "deploy=${DEPLOY}"
 
-          # Read the exact OSTREE_PATH from the BLS boot entry.
-          # bootc writes /ostree/boot.1/default/TREEHASH/N — a different hash
-          # from the deploy directory name; must be read from the entry.
-          sudo mkdir -p /mnt_boot
-          sudo mount "${BOOT_PART}" /mnt_boot
-          OSTREE_PATH=$(sudo grep -rh '^options' /mnt_boot/loader/entries/*.conf 2>/dev/null \
-            | grep -o 'ostree=[^ ]*' | head -1 | sed 's/ostree=//')
-          sudo umount /mnt_boot
-          [[ -z "${OSTREE_PATH}" ]] && { echo "ERROR: could not read OSTREE_PATH from BLS entries"; exit 1; }
+          # --bootloader none skips writing BLS entries to the ESP, so we
+          # find OSTREE_PATH directly from the ostree boot.1 tree on the root
+          # filesystem. bootc writes /ostree/boot.1/default/TREEHASH/N
+          # regardless of bootloader mode. Fresh install always has exactly
+          # one deployment so sort | head -1 is deterministic.
+          OSTREE_PATH=$(sudo find /mnt/ostree/boot.1/default -mindepth 2 -maxdepth 2 \
+            -type d 2>/dev/null | sort | head -1 | sed 's|^/mnt||')
+          [[ -z "${OSTREE_PATH}" ]] && { echo "ERROR: could not find OSTREE_PATH in /ostree/boot.1"; exit 1; }
           echo "ostree_path=${OSTREE_PATH}"
 
           # Pick kernel version that has vmlinuz
