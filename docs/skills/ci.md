@@ -1607,7 +1607,7 @@ not AT-SPI tests).
 
 | Job | Gate type | What it checks | Target time |
 |---|---|---|---|
-| `boot-check` | **Hard** — blocks promote | bootc install → boot → SSH → `gdm active` | ~10 min |
+| `boot-check` | **Hard** — blocks promote | bootc install → boot → SSH → GDM not-failed | ~10 min |
 | `smoke` | Observational | Full testsuite smoke suite (AT-SPI etc.) | ~80 min |
 
 The `promote` job gates on `boot-check.result == 'success'`. Smoke
@@ -1616,8 +1616,17 @@ removing it from `needs` is what makes it truly non-blocking (an `if:`
 condition alone is insufficient; the job still waits if the dep is in `needs`).
 
 **Rule:** The per-merge gate should always be a deterministic boot
-check (SSH reachable + GDM active). The full AT-SPI suite belongs in
-the weekly pre-stable gate, not the per-merge pre-testing gate.
+check (SSH reachable + GDM not-crashed). The full AT-SPI suite belongs
+in the weekly pre-stable gate, not the per-merge pre-testing gate.
+
+**GDM headless caveat:** QEMU runs with `-display none` (no display
+device). GDM will be `inactive` in this environment — that is expected
+behavior, not a regression. The health check uses
+`systemctl show gdm.service --property=ActiveState` and fails only if
+the state is `failed` (GDM crashed). `inactive` / `activating` are
+both acceptable. Using `systemctl is-active gdm.service` was wrong:
+it exits 3 on `inactive`, which triggers `set -e` and blocks every
+promote run regardless of image health.
 
 ### Observational reusable-workflow jobs must be split out of publish.yml (2026-06-16)
 

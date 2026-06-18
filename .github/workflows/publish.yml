@@ -480,7 +480,23 @@ jobs:
           "${SSH[@]}" sudo systemctl is-active multi-user.target
 
           echo "==> gdm.service"
-          "${SSH[@]}" sudo systemctl is-active gdm.service
+          # In headless QEMU (-display none) GDM is 'inactive' — no display device,
+          # so the display-manager never starts. That is expected and OK.
+          # Fail only if GDM is in 'failed' state, which means it crashed — a real
+          # image regression. 'inactive' / 'activating' are both acceptable here.
+          if ! GDM_STATE=$("${SSH[@]}" sudo systemctl show gdm.service --property=ActiveState --value 2>/dev/null); then
+            echo "ERROR: unable to query gdm.service ActiveState"
+            exit 1
+          fi
+          if [[ -z "${GDM_STATE}" ]]; then
+            echo "ERROR: empty gdm.service ActiveState — unit may not exist"
+            exit 1
+          fi
+          echo "GDM state: ${GDM_STATE}"
+          if [[ "${GDM_STATE}" == "failed" ]]; then
+            echo "ERROR: gdm.service is in failed state — image regression"
+            exit 1
+          fi
 
           echo "==> no failed critical units"
           FAILED=$("${SSH[@]}" sudo systemctl list-units --state=failed --no-legend \
