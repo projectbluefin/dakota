@@ -15,7 +15,7 @@ permissions:
 jobs:
   gate:
     if: github.event.pull_request.head.ref == 'auto/promote-testing-to-main'
-    uses: projectbluefin/actions/.github/workflows/reusable-release-gate.yml@v1
+    uses: projectbluefin/actions/.github/workflows/reusable-release-gate.yml@45dc35dd6f6fb0d6fa791352970b02934de31b50 # v1
     with:
       repo: ${{ github.repository }}
       registry: ghcr.io/projectbluefin
