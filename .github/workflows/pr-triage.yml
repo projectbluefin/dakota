@@ -13,6 +13,7 @@ on:
 
 permissions:
   pull-requests: write
+  contents: write
 
 jobs:
   ensure-labels:
@@ -141,8 +142,7 @@ jobs:
           gh pr edit "$PR_URL" --remove-label "pr/needs-review" 2>/dev/null || true
 
           # Enable auto-merge — squash-merges once required checks pass.
-          # Requires 'validate' in branch protection required_status_checks.
-          gh pr merge "$PR_URL" --auto --squash 2>/dev/null \
+          gh pr merge "$PR_URL" --auto --squash \
             && echo "✅ Auto-merge enabled" \
             || echo "::warning::Auto-merge unavailable — PR will need manual merge"
 
@@ -151,16 +151,6 @@ jobs:
           gh pr update-branch "$PR_URL" 2>/dev/null \
             && echo "✅ Branch updated" \
             || echo "Branch already up-to-date or conflict — pr-autoupdate will handle it"
-
-          cat << 'EOF' > /tmp/comment.md
-          Approved. Auto-merge enabled — the PR will squash-merge once `validate` passes.
-
-          After it ships in nightly, users can confirm the fix with:
-          ```bash
-          ujust verify <issue-number>
-          ```
-          EOF
-          gh pr comment "$PR_URL" --body-file /tmp/comment.md
 
       - name: Changes requested — re-add label and tell the author what to do
         if: >-
