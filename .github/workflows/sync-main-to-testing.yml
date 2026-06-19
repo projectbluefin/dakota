@@ -5,6 +5,8 @@ name: Sync main → testing
 # main back into testing automatically so the next promotion PR is not blocked.
 #
 # Reusable logic lives in projectbluefin/actions. This is a thin caller.
+# No GitHub App token needed — GITHUB_TOKEN can push to testing (same as the
+# promote job in publish.yml which already fast-forwards testing directly).
 
 on:
   push:
@@ -16,27 +18,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  generate-token:
-    name: Generate GitHub App token
-    runs-on: ubuntu-latest
-    outputs:
-      token: ${{ steps.app-token.outputs.token }}
-    steps:
-      - name: Generate token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
-        with:
-          client-id: ${{ secrets.BLUEFINBOT_APP_ID }}
-          private-key: ${{ secrets.BLUEFINBOT_PRIVATE_KEY }}
-
   sync:
     name: Keep testing up-to-date with main
-    needs: [generate-token]
     uses: projectbluefin/actions/.github/workflows/reusable-sync-branches.yml@v1
     permissions:
       contents: write
-    secrets:
-      GH_TOKEN: ${{ needs.generate-token.outputs.token }}
 
   cleanup-squash-branch:
     name: Delete squash promotion branch

@@ -477,7 +477,16 @@ jobs:
             -o BatchMode=yes -p 2222 bluefin-test@127.0.0.1)
 
           echo "==> systemd multi-user.target"
-          "${SSH[@]}" sudo systemctl is-active multi-user.target
+          # SSH becomes reachable before systemd finishes activating multi-user.target.
+          # Poll for up to 60 s (6 × 10 s) before declaring failure.
+          for _i in $(seq 1 6); do
+            if "${SSH[@]}" sudo systemctl is-active multi-user.target 2>/dev/null; then
+              break
+            fi
+            [[ ${_i} -lt 6 ]] || { echo "ERROR: multi-user.target not active after 60s"; exit 1; }
+            echo "  multi-user.target not yet active (attempt ${_i}/6), retrying in 10s…"
+            sleep 10
+          done
 
           echo "==> gdm.service"
           # In headless QEMU (-display none) GDM is 'inactive' — no display device,
