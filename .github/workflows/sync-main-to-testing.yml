@@ -37,6 +37,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Guard: do not delete the squash branch while a promotion PR is open.
+          # Every push to main triggers this workflow — including normal PR merges.
+          # Deleting the branch with an open PR leaves the PR pointing at a ghost
+          # ref, causing permanent UNKNOWN mergeability that requires manual recovery.
+          OPEN=$(gh pr list \
+            --repo "${{ github.repository }}" \
+            --head auto/promote-testing-to-main \
+            --state open \
+            --json number \
+            --jq 'length')
+          if [[ "$OPEN" -gt 0 ]]; then
+            echo "Open promotion PR exists — skipping branch deletion"
+            exit 0
+          fi
           gh api repos/${{ github.repository }}/git/refs/heads/auto/promote-testing-to-main \
             -X DELETE 2>/dev/null \
             && echo "✅ Deleted squash promotion branch" \
