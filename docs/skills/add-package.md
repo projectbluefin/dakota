@@ -1,70 +1,76 @@
 ---
 name: add-package
-description: End-to-end workflow for adding a new software package to the Dakota image. Covers element creation, deps.bst wiring, systemd service installation, and common mistakes. Load for any "add package to Dakota" task.
+description: End-to-end workflow for adding a new package to Dakota. Use when a task adds software, services, config-only elements, or new image content via BuildStream elements.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
-# Adding a Package
+# Add a Package
 
-Entry-point workflow for adding any software package to the Dakota image.
+## Overview
+
+This skill is the **end-to-end path** for new Dakota packages.
+Use it after `not-bluefin.md` has reset the repo model.
+
+## When to Use
+
+Use when you need to:
+- add a new package to the image
+- add a new service or preset shipped by a package
+- add a config-only/import element
+- wire new software into `deps.bst`
 
 ## When NOT to Use
 
-- Removing a package → `remove-package.md`
-- Updating an existing package's version → `update-refs.md`
-- Debugging a build failure → `debugging.md`
-- BST variable/kind reference only → `buildstream.md`
+- Remove an existing package → `remove-package.md`
+- Update an existing package version → `update-refs.md`
+- Debug a failing build → `debugging.md`
+- Need only BST syntax or element-kind reference → `buildstream.md`
 
-## Agent Quick-Start
+## Core Process
+
+1. **Pick the right element kind.**
+2. **Copy a similar element as the starting point.** There is no scaffold generator.
+3. **Create the new element under `elements/bluefin/`.**
+4. **Wire it into the correct stack** (usually `elements/bluefin/deps.bst`).
+5. **Add a source alias if the download domain is new.**
+6. **Validate the graph before building.**
+7. **Build the element, then the full image if needed.**
+
+## Quick Start
 
 ```bash
-# Create element file manually at elements/bluefin/<name>.bst
-# Use an existing element as a template, e.g.:
 cp elements/bluefin/glow.bst elements/bluefin/<name>.bst
-# Edit to match the new package's source and install paths
+# edit the new element
+just bst show oci/bluefin.bst
+just bst build bluefin/<name>.bst
 ```
-
-There are no scaffold scripts. Copy an existing element of the appropriate kind as a starting point.
-
-**Historical path note:** new Dakota packages still live under
-`elements/bluefin/` and are added to `elements/bluefin/deps.bst`. That path
-name is historical only — do not translate package work into dnf, RPM, or
-Containerfile-overlay steps.
 
 ## Choose Element Kind
 
-| Source type | BuildStream kind | Sub-skill |
+| Source type | BuildStream kind | Next skill |
 |---|---|---|
 | Pre-built binary/tarball | `manual` + tar/remote source | `packaging-binaries.md` |
-| Source with Meson build | `meson` | — |
-| Source with Makefile | `make` | — |
-| Source with autotools | `autotools` | — |
-| Source with CMake | `cmake` | — |
+| Meson project | `meson` | — |
+| Makefile project | `make` | — |
+| Autotools project | `autotools` | — |
+| CMake project | `cmake` | — |
 | Rust/Cargo project | `make` + `cargo2` sources | `packaging-rust.md` |
-| Go project | `make` or `manual` + GOPATH/go_module | `packaging-go.md` |
+| Go project | `make` or `manual` + `go_module` | `packaging-go.md` |
 | Zig project | `manual` + offline cache | `packaging-zig.md` |
-| GNOME Shell extension | `import`/`meson`/`make` + extension layout | `packaging-gnome-extensions.md` |
+| GNOME Shell extension | extension-specific layout | `packaging-gnome-extensions.md` |
 | Config files only | `import` | — |
 
-## Workflow
+## Service Installation Rules
 
-1. **Create element** at `elements/bluefin/<name>.bst` (copy a similar existing element as a base)
-2. **Add to deps** — add `bluefin/<name>.bst` to `depends:` in `elements/bluefin/deps.bst`
-3. **Add source alias** — if the download domain is new, add an alias to `include/aliases.yml`
-4. **Validate graph** — `just validate` (full graph check)
-5. **Build element** — `just bst build bluefin/<name>.bst`
-6. **Full image test** — `just build` or `just show-me-the-future`
+Enable services with **preset files**, never `systemctl enable`.
 
-## Systemd Service Installation
-
-Services bundled with a package need three things:
-
-| What | Where | Notes |
+| What | Where | Rule |
 |---|---|---|
-| Service file | `%{indep-libdir}/systemd/system/` | Patch `/usr/sbin` to `/usr/bin`; remove `EnvironmentFile=/etc/default/*` lines |
-| Preset file | `%{indep-libdir}/systemd/system-preset/80-<name>.preset` | Content: `enable <service-name>.service` |
-| Binaries | `%{bindir}` | Never `/usr/sbin` — GNOME OS uses merged-usr |
-
-Enable services via preset files, never `systemctl enable`.
+| service unit | `%{indep-libdir}/systemd/system/` | patch `/usr/sbin` → `/usr/bin`; remove `/etc/default/*` usage |
+| preset file | `%{indep-libdir}/systemd/system-preset/80-<name>.preset` | `enable <service>.service` |
+| binaries | `%{bindir}` | merged-usr means `/usr/bin`, not `/usr/sbin` |
 
 ```yaml
 install-commands:
@@ -73,8 +79,6 @@ install-commands:
         -e '/^EnvironmentFile=/d' \
         upstream.service > upstream.service.patched
     install -Dm644 -t "%{install-root}%{indep-libdir}/systemd/system" upstream.service.patched
-    mv "%{install-root}%{indep-libdir}/systemd/system/upstream.service.patched" \
-       "%{install-root}%{indep-libdir}/systemd/system/upstream.service"
   - |
     install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system-preset/80-name.preset" <<'PRESET'
     enable service-name.service
@@ -85,14 +89,37 @@ install-commands:
 
 | Mistake | Fix |
 |---|---|
-| Missing `strip-binaries: ""` | Required for non-ELF elements — build fails otherwise |
-| Using `/usr/sbin` | Always `/usr/bin` — GNOME OS merged-usr |
-| `EnvironmentFile=/etc/default/...` | GNOME OS doesn't use `/etc/default/`; remove from upstream service files |
-| Variables in source URLs | BuildStream doesn't support this; use literal URLs with aliases |
-| Missing `%{install-extra}` | Must be last install-command |
-| Trying to add the package in `Containerfile`/`Justfile` | Package and image-content changes belong in `.bst` elements plus `deps.bst` |
-| Forgot to add element to `deps.bst` | Element builds but won't be in the image |
-| Wrong dependency stack | Use `freedesktop-sdk.bst:public-stacks/runtime-minimal.bst` for runtime deps |
+| Forgot `strip-binaries: ""` for non-ELF payloads | disable stripping in `variables:` |
+| Used `/usr/sbin` or `/lib` | merged-usr means `/usr/bin` and `/usr/lib` |
+| Left `EnvironmentFile=/etc/default/...` in unit | remove it |
+| Used variables in `sources[].url` | use literal URLs plus aliases |
+| Forgot to add the element to `deps.bst` | package builds but never lands in the image |
+| Tried to solve it in `Containerfile` or `Justfile` | package/image-content changes belong in `.bst` + stack wiring |
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll just copy a package in through the Containerfile." | Wrong layer. The image graph is owned by BST. |
+| "The element builds, so I'm done." | Not if it never got wired into the stack. |
+| "Upstream service files are probably fine as-is." | Dakota repeatedly trips on `/usr/sbin` and `/etc/default` assumptions. |
+| "I can skip graph validation and let CI tell me." | Local graph checks are cheaper than burning CI time. |
+
+## Red Flags
+
+- New package file exists but `deps.bst` was not touched
+- Unit files install into old FHS paths
+- Source URLs use fake variable expansion
+- The plan mentions Containerfile or RPM steps
+
+## Verification
+
+- [ ] New element exists under `elements/bluefin/`
+- [ ] Correct stack file was updated
+- [ ] New source alias was added if needed
+- [ ] `just bst show oci/bluefin.bst` passes
+- [ ] The element builds successfully
+- [ ] Service/preset files follow merged-usr and preset rules
 
 ## Lessons Learned
 
@@ -111,30 +138,4 @@ variables:
 
 ### BST variables cannot be used in source URL fields (2026-06-07)
 
-Unlike install commands where `%{version}` expands correctly, BuildStream does NOT expand variables inside `sources[].url:` fields. Use `include/aliases.yml` to define a URL alias, then reference the alias:
-
-```yaml
-# ❌ WRONG — variable expansion does not work in source URLs
-sources:
-- kind: tar
-  url: https://github.com/owner/project/releases/v%{version}.tar.gz
-
-# ✅ CORRECT — use an alias
-sources:
-- kind: tar
-  url: alias:project-releases/v%{version}.tar.gz
-  # alias defined in include/aliases.yml as:
-  #   project-releases: https://github.com/owner/project/releases/
-```
-
-### Service preset files must use /usr/lib path, not /etc (2026-06-07)
-
-Dakota is a GNOME OS-model image. Service preset files installed at `/etc/systemd/system-preset/` are ignored at boot. Presets must be at the `%{indep-libdir}` path:
-
-```yaml
-# ✅ correct
-install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system-preset/80-name.preset"
-
-# ❌ wrong — ignored at boot
-install -Dm644 /dev/stdin "%{install-root}%{sysconfdir}/systemd/system-preset/80-name.preset"
-```
+Unlike install commands where `%{version}` expands correctly, BuildStream does NOT expand variables inside `sources[].url:` fields. Use `include/aliases.yml` to define a URL alias, then reference the alias.

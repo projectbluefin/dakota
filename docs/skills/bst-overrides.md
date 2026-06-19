@@ -1,11 +1,33 @@
 ---
+
 name: bst-overrides
 description: Governs when and how to create junction overrides in dakota. Upstream-first principle — local overrides are last resort. Covers patch_queue overrides, exit conditions, and how to evaluate whether an override is justified.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
 # BST Junction Overrides
 
 Load when creating, evaluating, or removing BuildStream junction element overrides in `projectbluefin/dakota`.
+
+## When to Use
+
+Use when you need to decide whether a local override is justified, add a temporary junction override, or remove one after upstream catches up.
+
+## When NOT to Use
+
+- End-to-end patch lifecycle work after deciding an override is required → `patch-junctions.md`
+- Routine package updates that stay inside Dakota-owned elements → `update-refs.md`
+- Generic BuildStream syntax reference → `buildstream.md`
+
+## Core Process
+
+1. Check whether upstream already fixed the problem.
+2. Prefer an upstreamable patch or junction bump.
+3. Use a local override only as a last resort.
+4. Record the exit condition so the override can die.
+5. Revisit overrides whenever junction refs move.
 
 ## Core Principle: Upstream-First
 
@@ -74,6 +96,28 @@ gh api repos/GNOME/gnome-build-meta/commits?sha=gnome-50 | jq '.[].commit.messag
 # Check if fdsdk has the fix in their latest tag:
 gh api repos/freedesktop-sdk/freedesktop-sdk/releases/latest | jq '.tag_name'
 ```
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll just override it locally for now." | Local overrides are maintenance debt unless they have a clear exit path. |
+| "Editing the junction file directly is faster." | Faster to create debt, yes. Use the override mechanisms the repo expects. |
+| "We'll remember to drop the override later." | You won't unless the exit condition is written down. |
+
+## Red Flags
+
+- Local override with no upstream issue/PR reference
+- No stated exit condition
+- Direct edits to junction files as a convenience move
+- Override surviving multiple junction bumps without re-evaluation
+
+## Verification
+
+- [ ] Upstream was checked before creating the override
+- [ ] The local override mechanism is the narrowest one that works
+- [ ] An exit condition is documented
+- [ ] The override is discoverable and revisitable at the next junction bump
 
 ## Lessons Learned
 

@@ -1,87 +1,124 @@
-# docs/skills — In-Repo Knowledge Base
+---
+name: skills-index
+description: Routing table for Dakota's in-repo skills. Load this when you need to find the right skill fast instead of reading everything. Use when starting work, switching problem domains, or deciding which focused skill to load next.
+metadata:
+  context7-sources:
+    - /addyosmani/agent-skills
+---
 
-Accumulated lessons from real work on this repo. Every agent working here
-should read the relevant file before starting in that area.
+# docs/skills — In-Repo Skill Index
 
-If your first instinct is `dnf`, RPM/COPR, or a Containerfile package layer, you are in the wrong mental model. In this repo, historical `bluefin/` paths still contain Dakota's BuildStream elements; package changes happen there, not in Containerfile overlays.
+## Overview
 
-## Docs-and-code-first — no guessing
+This directory is Dakota's **working memory**.
+Read the smallest skill that answers the job. Do not load every file just because it exists.
 
-**This project is well-documented. Everything has a source of truth. Look it up.**
+The factory model depends on this discipline:
+- **Work** lands as code or docs
+- **Learning** lands as a focused skill update in the same PR
 
-Before implementing anything, in this order:
-1. **Check `docs/skills/`** — the relevant skill file likely already has the answer, including known failure modes and correct patterns.
-2. **Read the actual file or workflow** being changed — not just the file name.
-3. **Check upstream docs via Context7** for any external tool (bootc, BuildStream, skopeo, cosign, GitHub Actions). `resolve-library-id` → `query-docs`.
-4. **Check working reference implementations** in this org (e.g., `projectbluefin/testsuite`, `projectbluefin/actions`) before writing from scratch.
+## When to Use
 
-**If you are about to guess: stop.** Find the authoritative source. Guessing at CLI flags, API behavior, or workflow structure costs hours of CI time. The documented answer is almost always available and faster to find than to iterate toward.
+Use this file when:
+- starting a Dakota task
+- switching from one problem class to another
+- deciding which skill to load next
+- cleaning up or splitting an overgrown skill
 
-**Examples:**
-- `bootc install to-disk` → read `/bootc-dev/bootc` docs via Context7, or look at `testsuite/spike-uefi-boot.yml` for a working GHA reference
-- BuildStream element fields → `docs/skills/buildstream.md` + `/buildstream-project/buildstream` via Context7
-- cosign/skopeo/oras flags → Context7 before trying flags at random
-- GitHub Actions `needs:` vs `if:` behavior → `docs/skills/ci.md` first
+## When NOT to Use
 
-When you discover a new pattern or fix a recurring mistake, add it here in the
-same PR as your change. This is the Self-Improvement Loop: lessons land here and help
-every future agent and contributor — not just you, and not just on one machine.
+- You already know the exact focused skill you need
+- You are looking for raw project docs rather than agent workflow guidance
 
-Every agent session produces two outputs: **the work** (the PR) and **the learning** (the skill update). Output 1 without Output 2 leaves the system no smarter.
+## Core Process
 
-## Routing Table — load only what you need
+1. **Load `not-bluefin.md` first** if there is any chance you are drifting into dnf/RPM/Containerfile habits.
+2. **Pick the narrowest skill** that matches the task.
+3. **Read the actual file or workflow** before editing code.
+4. **Verify external tool behavior with Context7** before changing syntax, flags, or API usage.
+5. **Write back learnings** to the narrowest skill file, not the nearest giant dumping ground.
+
+## Fast Paths
+
+### Build / packaging
+- Add package → `add-package.md`
+- Remove package → `remove-package.md`
+- Update version or ref → `update-refs.md`
+- Need BST syntax or element kinds → `buildstream.md`
+- Need a language-specific packaging pattern → `packaging-*.md`
+
+### CI / release
+- Need to know which workflow owns the stage → `workflow-map.md`
+- Reusable workflow / token / cache weirdness → `ci-tooling.md`
+- boot-check, smoke, testsuite, QEMU → `e2e-ci.md`
+- promotion PRs and stable release flow → `release-promotion.md`
+- stale queue branches / conflicting bot PRs → `merge-queue.md`
+- historical deep cuts → `ci-reference.md`
+
+### Factory workflow
+- Issue lifecycle, data donation, slash commands → `actionadon.md`
+- Routine zero-context maintenance → `quickstart.md`
+- Review flow → `pr-review.md`
+- Repo/product context → `overview.md`
+
+## Routing Table
 
 | Task | Load |
-|------|------|
-| **Load the dakota build context first** | **⚠️ REQUIRED FIRST — [`not-bluefin.md`](not-bluefin.md) before any other skill, especially if you have bluefin context. If your plan mentions dnf/RPM/Containerfile overlays, reload it and translate the task into BST terms first.** |
-| Zero-context routine maintenance | [`quickstart.md`](quickstart.md) |
-| Adding a package | [`add-package.md`](add-package.md) |
-| Removing a package | [`remove-package.md`](remove-package.md) |
-| Updating a package version | [`update-refs.md`](update-refs.md) |
-| BST YAML reference, variables, kinds | [`buildstream.md`](buildstream.md) |
-| Debugging a build failure | [`debugging.md`](debugging.md) |
-| OCI image layer assembly | [`oci-layers.md`](oci-layers.md) |
-| Junction overrides (when to, when not to) | [`bst-overrides.md`](bst-overrides.md) |
-| Patching junction elements | [`patch-junctions.md`](patch-junctions.md) |
-| Pre-built binary packaging | [`packaging-binaries.md`](packaging-binaries.md) |
-| Go project packaging | [`packaging-go.md`](packaging-go.md) |
-| Rust/Cargo project packaging | [`packaging-rust.md`](packaging-rust.md) |
-| Zig project packaging | [`packaging-zig.md`](packaging-zig.md) |
-| GNOME Shell extension packaging | [`packaging-gnome-extensions.md`](packaging-gnome-extensions.md) |
-| Local OTA testing (QEMU or physical hardware) | [`local-ota.md`](local-ota.md) |
-| CI pipeline, remote cache, GHCR | [`ci.md`](ci.md) |
-| Manual promotion (testing → stable) and release | [`ci.md`](ci.md) — *Manual stable promotion flow* |
-| Reusable workflow `startup_failure` debugging | [`ci.md`](ci.md) — *`permissions: {}` at workflow level starves GITHUB_TOKEN*, *`pull_request: closed` trigger*, and *`sign-and-publish` cert identity regexp* |
-| CODEOWNERS: auto-managed file bypass | [`ci.md`](ci.md) — *CODEOWNERS: no-owner override for auto-managed files* |
-| Structured changelog / release notes (cliff.toml) | [`ci.md`](ci.md) — *`cliff.toml` required at repo root for structured release notes* |
-| `:next`/`:btw` rolling GNOME 51 stream | [`overview.md`](overview.md) — *Image Streams* + [`ci.md`](ci.md) |
-| Clearing stuck merge queue | [`merge-queue.md`](merge-queue.md) |
-| Actionadon lifecycle, issue queue, data donation | [`actionadon.md`](actionadon.md) |
-| Project overview and what Dakota is | [`overview.md`](overview.md) |
-| ujust recipes in `files/just-overrides/` | [`.github/skills/ujust-recipes.md`](../../.github/skills/ujust-recipes.md) |
-| VM stack (virt-manager + QEMU flatpaks) | [`vm-stack.md`](vm-stack.md) |
-| Installer (bootc-installer) | [`installer.md`](installer.md) |
-| Merging dep-update PRs into testing | [`merge-queue.md`](merge-queue.md) |
-| PR review workflow | [`pr-review.md`](pr-review.md) |
+|---|---|
+| **Reset the Dakota mental model first** | **`not-bluefin.md`** |
+| Routine maintenance with low context | `quickstart.md` |
+| Add a package | `add-package.md` |
+| Remove a package | `remove-package.md` |
+| Update a package version or source ref | `update-refs.md` |
+| BST YAML, kinds, variables, or structure | `buildstream.md` |
+| Debug an element build failure | `debugging.md` |
+| OCI image layer assembly | `oci-layers.md` |
+| Junction overrides | `bst-overrides.md` |
+| Patch junction elements | `patch-junctions.md` |
+| Package a pre-built binary | `packaging-binaries.md` |
+| Package a Go project | `packaging-go.md` |
+| Package a Rust project | `packaging-rust.md` |
+| Package a Zig project | `packaging-zig.md` |
+| Package a GNOME Shell extension | `packaging-gnome-extensions.md` |
+| Local OTA testing | `local-ota.md` |
+| Figure out which CI workflow owns the problem | `workflow-map.md` |
+| Reusable workflow / token / cache / startup failures | `ci-tooling.md` |
+| boot-check, smoke, testsuite wiring | `e2e-ci.md` |
+| Promotion PRs and stable release flow | `release-promotion.md` |
+| Historical CI edge cases | `ci-reference.md` |
+| Merge queue cleanup | `merge-queue.md` |
+| Issue lifecycle / Actionadon / data donation | `actionadon.md` |
+| Installer work | `installer.md` |
+| VM stack context | `vm-stack.md` |
+| Repo and product overview | `overview.md` |
+| PR review workflow | `pr-review.md` |
+| ujust recipes in `files/just-overrides/` | `.github/skills/ujust-recipes.md` |
 
-## Mandatory skill contribution
+## Common Rationalizations
 
-**All agents must improve skills.** If you discover a new pattern, fix a recurring
-mistake, or learn something that would help future contributors, update the
-relevant skill file in this directory — in the same PR as your change.
+| Rationalization | Reality |
+|---|---|
+| "I'll just read the biggest skill so I don't miss anything." | That's how agents waste context and still miss the relevant part. |
+| "This new lesson can go into the nearest large file." | Large files rot. Put the lesson in the narrowest skill or split a new one. |
+| "I know the tool well enough; I don't need docs." | The repo explicitly optimizes for source-driven work. Use Context7. |
+| "The router can hold one more giant subsection." | No. Route, then split. |
 
-- If no relevant skill file exists, create one and add it to the routing table above.
-- If your lesson applies to an existing skill, add it under `## Lessons Learned`.
-- Skills are living documents. Every agent and human contributor improves them.
+## Red Flags
 
-### How to add a lesson
+- A skill grows into a catch-all for multiple failure classes
+- New lessons land in a giant history dump instead of a focused skill
+- Agents load 500+ lines before they know which subsystem failed
+- The route table points to one file for three unrelated jobs
 
-1. Open the relevant skill file (or create a new one)
-2. Add a section under `## Lessons Learned`: `### <pattern name> (YYYY-MM-DD)`
-3. What failed → why → the fix → code example
-4. Commit it in the same PR as your change
+## Verification
+
+- [ ] The route table points to the narrowest useful skill
+- [ ] CI topics are split by workflow map, tooling, boot/e2e, and promotion
+- [ ] New skill growth reinforces the factory model instead of creating a second archive
+- [ ] External tool behavior is verified via Context7 before skills are updated
 
 ## Related
 
-- Role policies for Hive agents: [`../../files/hive/agent-policies/`](../../files/hive/agent-policies/)
-- Top-level agent rules: [`../../AGENTS.md`](../../AGENTS.md)
+- `../SKILL.md` — top-level skill router
+- `../../AGENTS.md` — repo rules and factory policy
+- `../../files/hive/agent-policies/` — Hive role policy files

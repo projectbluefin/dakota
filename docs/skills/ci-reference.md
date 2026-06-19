@@ -1,65 +1,58 @@
 ---
-name: ci
-description: CI entry point for Dakota. Routes agents to the right CI skill fast: workflow map, GitHub Actions tooling failures, e2e/boot checks, release promotion, or merge-queue recovery. Use when the task mentions CI, Actions, publish, promote, release, smoke, boot-check, or startup_failure.
+name: ci-reference
+description: Historical Dakota CI deep cuts and accumulated failure patterns. Use only after the focused CI skills when you need long-tail prior art or exact past failure signatures.
 metadata:
   context7-sources:
     - /websites/github_en_actions
     - /bootc-dev/bootc
 ---
 
-# CI Router
+# CI Reference
 
 ## Overview
 
-This is the **load-first** CI skill. Do not dump the whole CI history into context up front.
-Load this file, identify the failure class, then load only the next skill you need.
+This is the **deep-cut archive**, not the load-first CI skill.
+Route through `ci.md` first, then come here only when the focused skills do not cover the edge case.
 
 ## When to Use
 
-Use this skill when the task mentions:
-- GitHub Actions failures
-- `startup_failure`, `action_required`, missing jobs, or flaky checks
-- `publish.yml`, `build.yml`, `promote-testing-to-main.yml`, `execute-release.yml`
-- boot-check, smoke, testsuite, SBOM, or GHCR publish problems
-- merge queue, promotion PRs, or stable release flow
+- You have already classified the CI failure and still need prior-art details
+- You need an older exact failure signature, workaround, or recovery sequence
+- You are extracting a long-tail lesson into a newer focused skill
 
 ## When NOT to Use
 
-- Element build or packaging failures inside BST → `debugging.md`
-- BST syntax, element kinds, or project layout → `buildstream.md`
-- OCI image contents or layer assembly → `oci-layers.md`
-- Normal PR review → `pr-review.md`
+- Diagnosing an individual element build failure → `debugging.md`
+- Writing or modifying `.bst` element files → `buildstream.md`
+- Understanding what packages flow into the OCI image → `oci-layers.md`
 
 ## Core Process
 
-1. **Classify the failure before reading logs.**
-   - *Which workflow?* `build`, `publish`, `promote`, `release`, `e2e`, `merge queue`
-   - *Which phase?* trigger, setup, reusable workflow call, build/export, boot, smoke, promotion
-2. **Load one next skill, not five.**
-   - Need workflow/trigger map → `workflow-map.md`
-   - Need reusable workflow / permissions / cache-dir weirdness → `ci-tooling.md`
-   - Need boot-check / smoke / testsuite behavior → `e2e-ci.md`
-   - Need `:testing` → `:stable` / release flow → `release-promotion.md`
-   - Need stale PR or queue cleanup → `merge-queue.md`
-3. **Read the actual workflow file before editing.**
-4. **Verify tool behavior via Context7** for GitHub Actions or bootc when changing syntax/flags.
-5. **Write back the lesson** to the narrowest skill file, not this router, unless the routing itself changed.
+1. Route through the focused CI skills first.
+2. Come here only when you need historical prior art or an exact failure signature.
+3. If a pattern keeps recurring, extract it into a focused skill and stop adding load to this archive.
 
-## Skill Selection Table
+## Quick Reference
 
-| If the problem is about... | Load next |
+| What | Value |
 |---|---|
-| Which workflow owns this stage? | `workflow-map.md` |
-| `startup_failure`, `jobs: []`, token scopes, reusable workflows | `ci-tooling.md` |
-| `actions/cache`, podman bind mounts, runner/runtime quirks | `ci-tooling.md` |
-| boot-check, QEMU, `bootc install to-disk`, smoke placement | `e2e-ci.md` |
-| promotion PRs, release gate, `action_required`, stable release | `release-promotion.md` |
-| conflicting chore PRs, stale queue branches | `merge-queue.md` |
-| historical edge cases and deep cuts | `ci-reference.md` |
+| Workflow file | `.github/workflows/build.yml` |
+| Runner | `ubuntu-24.04` (standard GitHub-hosted) |
+| Build target | `oci/bluefin.bst` |
+| Build timeout | 330 min (job: 360 min) |
+| Remote cache server | `cache.projectbluefin.io:11002` |
+| Cache auth | mTLS — `CASD_CLIENT_CERT` (repo variable) + `CASD_CLIENT_KEY` (secret) |
+| Published image | `ghcr.io/projectbluefin/dakota:{testing,latest,stable}` and `:$SHA` |
+| Build logs artifact | `buildstream-logs-x86_64-<variant>` (7-day retention) |
+| Trigger (validate) | `pull_request` — `bst show --deps all`, no CAS |
+| Trigger (build) | `merge_group`, `workflow_dispatch` (no daily schedule) |
+**Nightly schedule rationale** — no longer applicable; schedule trigger was removed in favour of continuous builds on every merge.
 
-## Common Rationalizations
+**Merge queue path:** `build` fires on `merge_group` — full OCI build, real CI gate before merge. On success, `publish.yml` immediately promotes the new image to `:testing`.
 
-| Rationalization | Reality |
+## Workflow Files
+
+| File | Role |
 |---|---|
 | `.github/workflows/build.yml` | BST build + push artifacts to remote CAS. Fires on `merge_group` and `workflow_dispatch` only (no schedule). Does NOT push to GHCR directly. |
 | `.github/workflows/publish.yml` | 3-stage pipeline: setup → publish → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, then immediately promotes to `:testing` on every successful merge. No e2e gate — that lives only in the weekly promotion. |
@@ -201,6 +194,26 @@ At the start of every dakota session, check GNOME OS upstream status:
 gh pr list --repo gnome/gnome-build-meta --state open --limit 10
 gh run list --repo projectbluefin/dakota --limit 5
 ```
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll just add the new lesson to the big archive." | If it is reusable enough, it probably deserves a focused skill. |
+| "Loading the giant reference first is safer." | It is slower and usually less accurate for the active task. |
+| "Historical prior art is the same as current guidance." | The point of the focused skills is to keep current guidance small and sharp. |
+
+## Red Flags
+
+- New agents loading this before `ci.md`
+- Repeated patterns staying buried here instead of being split out
+- Fixes being applied from old lore without checking current workflow files
+
+## Verification
+
+- [ ] The focused CI skills were exhausted before using this archive
+- [ ] Any recurring pattern found here was considered for extraction into a focused skill
+- [ ] The archive is being used as prior art, not as the default CI entry point
 
 ## Cross-References
 
@@ -1589,25 +1602,22 @@ belongs in the action, not scattered across consumers.
 
 `actions/cache` only *restores* an existing archive; on a cache miss it does
 nothing and leaves the target path absent. If a subsequent `podman run` uses
-bind mounts such as `-v "${HOME}/.cache/pip:/root/.cache/pip:rw"` or
-`-v "${HOME}/.cache/buildstream:/root/.cache/buildstream:rw"` and the host-side
-directory does not exist, podman exits **125** (container failed to start)
-before any command runs.
+`-v "${HOME}/.cache/pip:/root/.cache/pip:rw"` and the host-side directory
+does not exist, podman exits **125** (container failed to start) before any
+command runs.
 
 ```
-Error: statfs /home/runner/.cache/buildstream: no such file or directory
+Error: statfs /home/runner/.cache/pip: no such file or directory
 error: recipe `sbom` failed with exit code 125
 ```
 
-**Fix:** `mkdir -p` every host cache directory in the Justfile recipe
-immediately before the `podman run`, not in the workflow step. This makes the
-fix unconditional regardless of where `just sbom` is invoked:
+**Fix:** `mkdir -p` the directory in the Justfile recipe immediately before
+the `podman run`, not in the workflow step. This makes the fix unconditional
+regardless of where `just sbom` is invoked:
 
 ```bash
-mkdir -p "${HOME}/.cache/buildstream" "${HOME}/.cache/pip"
-podman run --rm ... \
-  -v "${HOME}/.cache/buildstream:/root/.cache/buildstream:rw" \
-  -v "${HOME}/.cache/pip:/root/.cache/pip:rw" ...
+mkdir -p "${HOME}/.cache/pip"
+podman run --rm ... -v "${HOME}/.cache/pip:/root/.cache/pip:rw" ...
 ```
 
 **Rule:** Any `podman run -v HOST_PATH:...` where `HOST_PATH` is a cache
@@ -1629,7 +1639,7 @@ not AT-SPI tests).
 
 | Job | Gate type | What it checks | Target time |
 |---|---|---|---|
-| `boot-check` | **Hard** — blocks promote | bootc install → boot → SSH → GDM not-failed | ~10 min |
+| `boot-check` | **Hard** — blocks promote | bootc install → boot → SSH → `gdm active` | ~10 min |
 | `smoke` | Observational | Full testsuite smoke suite (AT-SPI etc.) | ~80 min |
 
 The `promote` job gates on `boot-check.result == 'success'`. Smoke
@@ -1638,37 +1648,8 @@ removing it from `needs` is what makes it truly non-blocking (an `if:`
 condition alone is insufficient; the job still waits if the dep is in `needs`).
 
 **Rule:** The per-merge gate should always be a deterministic boot
-check (SSH reachable + GDM not-crashed). The full AT-SPI suite belongs
-in the weekly pre-stable gate, not the per-merge pre-testing gate.
-
-**GDM headless caveat:** QEMU runs with `-display none` (no display
-device). GDM will be `inactive` in this environment — that is expected
-behavior, not a regression. The health check uses
-`systemctl show gdm.service --property=ActiveState` and fails only if
-the state is `failed` (GDM crashed). `inactive` / `activating` are
-both acceptable. Using `systemctl is-active gdm.service` was wrong:
-it exits 3 on `inactive`, which triggers `set -e` and blocks every
-promote run regardless of image health.
-
-### Observational reusable-workflow jobs must be split out of publish.yml (2026-06-16)
-
-`continue-on-error` is **not** supported on jobs that call a reusable workflow
-via `uses:`. That means an observational suite like `smoke` still makes the
-parent workflow red if it lives inside `publish.yml`, even when `promote` no
-longer depends on it.
-
-**Symptom:** publish pipeline lands `:testing` successfully, but
-`Publish Bluefin dakota` still ends red because the observational smoke job
-fails inside the same workflow run.
-
-**Fix:** move observational reusable-workflow jobs into a separate workflow
-triggered by `workflow_run` from the successful publish pipeline. Keep the
-hard gate (`boot-check`) in `publish.yml`; keep the flaky/slow signal in the
-follow-up workflow.
-
-**Rule:** If a GitHub Actions job is both (a) observational and
-(b) implemented as a reusable-workflow call, it does not belong in the
-critical publish workflow.
+check (SSH reachable + GDM active). The full AT-SPI suite belongs in
+the weekly pre-stable gate, not the per-merge pre-testing gate.
 
 ### OSTREE_PATH in boot-check kernel args must come from the BLS entry (2026-06-13)
 
@@ -1800,13 +1781,13 @@ type = "xfs"
 
 No behaviour change for users — xfs was always the implicit default. This makes it explicit.
 
-### `bootc install to-disk` correct approach for CI loop devices (2026-06-17)
+### `bootc install to-disk` — correct approach for CI loop devices (2026-06-16)
 
-**Use `--via-loopback` with the raw file path, and let the image's own bootc
-install config provide the xfs rootfs + systemd bootloader defaults.**
+**Use `--via-loopback` with the raw file path.** This is the documented bootc
+pattern for disk images. bootc manages the loop device lifecycle internally,
+eliminating all host-side partition-node race conditions.
 
-Working reference: `projectbluefin/testsuite/.github/actions/gnome-e2e/action.yml`
-Source docs: https://github.com/bootc-dev/bootc/blob/main/docs/src/bootc-install.md
+Source: https://github.com/bootc-dev/bootc/blob/main/docs/src/bootc-install.md
 
 ```bash
 fallocate -l 30G disk.raw
@@ -1834,21 +1815,11 @@ if ! sudo blkid "${LOOP}p3" &>/dev/null; then
 fi
 ```
 
-Dakota already ships the real install defaults in `files/bootc-install/00-defaults.toml`:
-
-```toml
-[install]
-bootloader = "systemd"
-
-[install.filesystem.root]
-type = "xfs"
-```
-
-**Why this shape matters:** `--via-loopback` keeps bootc in control of the loop
-lifecycle, avoiding host-side partition-node races. But the workflow should not
-re-specify `--generic-image` or `--filesystem xfs` ad hoc — that drifted away
-from the working testsuite flow and reintroduced `Creating rootfs: No such file
-or directory (os error 2)` in Dakota publish boot-checks on 2026-06-17.
+**Why `--via-loopback` works:** bootc creates and manages the loop device
+inside the container where it controls the full lifecycle. Partition nodes
+appear correctly because bootc owns the device end-to-end. After the container
+exits, attaching with `-P` on a file that already has a partition table triggers
+a synchronous kernel scan — nodes are ready immediately.
 
 **Do NOT:**
 - Pre-create a host loop device and pass it as a block device path — bootc's
@@ -1857,105 +1828,7 @@ or directory (os error 2)` in Dakota publish boot-checks on 2026-06-17.
   removing the nodes you just created.
 - Pre-partition with `sfdisk` before running bootc — bootc refuses with
   "Detected existing partitions".
-- Add `--generic-image` or `--filesystem xfs` back into the CI boot-check
-  command; Dakota already gets xfs/systemd from image install config.
 
 **Note:** The boot-check gate never passed from PR #849 (2026-06-13) through
-PR #895 (2026-06-16) due to iterating on the wrong approach. The first stable
-shape was `--via-loopback`; the 2026-06-17 regression came from drifting away
-from the working testsuite invocation, not from a need to go back to host-side
-loop handling.
-
-### `multi-user.target` timing race in boot-check (2026-06-19)
-
-**Symptom:** boot-check fails immediately after SSH becomes reachable with
-`exit code 3` from `systemctl is-active multi-user.target`, even though the
-image boots and SSH works.
-
-**Cause:** `systemctl is-active` exits 3 for both `inactive` and `activating`.
-SSH becomes reachable (sshd started) while systemd is still processing the rest
-of `multi-user.target`'s dependency graph. The check fires before the target
-finishes activating.
-
-**Fix:** Replace the single `is-active` call with a retry loop:
-
-```bash
-for _i in $(seq 1 6); do
-  if "${SSH[@]}" sudo systemctl is-active multi-user.target 2>/dev/null; then
-    break
-  fi
-  [[ ${_i} -lt 6 ]] || { echo "ERROR: multi-user.target not active after 60s"; exit 1; }
-  echo "  not yet active (attempt ${_i}/6), retrying in 10s…"
-  sleep 10
-done
-```
-
-**Log trap:** The GHA log interleaves the step's script preview with its output.
-In a failed boot-check run, lines showing `is-active gdm.service` in the preview
-column appear alongside `inactive` + `exit code 3` in the output column — making
-it look like GDM failed. The actual failing line is always
-`systemctl is-active multi-user.target` immediately above. Verify by checking
-which `==>` echo precedes the `inactive` output, not which command appears in the
-script preview.
-
----
-
-### Mergeraptor merges on `next` do not fire `push` events (2026-06-19)
-
-**Symptom:** Junction-bump PRs merge into `next` but `build.yml` never triggers.
-The branch can go days without a build despite multiple commits landing.
-
-**Cause:** Mergeraptor uses the GitHub API to merge PRs. Those merges do not
-create a `push` event that triggers GitHub Actions workflows.
-
-**Fix:** Add a scheduled dispatcher workflow (`nightly-next-build.yml`) that
-calls `gh workflow run build.yml --ref next` once per night. Set it to 03:00 UTC
-— after the 20:00 UTC junction tracker and its auto-merge window, and before US
-daytime when `main` builds compete for the BST remote executor.
-
-```yaml
-on:
-  schedule:
-    - cron: '0 3 * * *'
-jobs:
-  dispatch:
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    steps:
-      - run: gh workflow run build.yml --repo "${{ github.repository }}" --ref next
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
----
-
-### `sync-main-to-testing` does not need a GitHub App token (2026-06-19)
-
-`reusable-sync-branches.yml` declares `GH_TOKEN` as `required: false` and falls
-back to `github.token`. The `promote` job in `publish.yml` already fast-forwards
-the `testing` branch with `GITHUB_TOKEN` on every publish cycle — proof that no
-App token is needed. Remove the `generate-token` job and both `BLUEFINBOT_*`
-secret references entirely.
-
-| "I'll just load the giant CI file." | That's how agents waste context. Route first, then go narrow. |
-| "The workflow name tells me enough." | Wrong. Trigger type, branch filter, and reusable call semantics are usually the bug. |
-| "Smoke failed, publish is broken." | Not necessarily. First check whether the failure is in the hard gate or in observational signal. |
-| "I know GitHub Actions permissions from memory." | Good way to ship another `startup_failure`. Verify with Context7. |
-
-## Red Flags
-
-- Reading `ci-reference.md` before classifying the failure
-- Editing reusable-workflow callers without checking top-level `permissions:`
-- Treating AT-SPI smoke as the same class of signal as boot-check
-- Changing publish/promotion behavior without mapping the branch and trigger path first
-- Adding more prose to a router instead of splitting a focused skill
-
-## Verification
-
-After using this router, confirm:
-- [ ] You identified the exact CI failure class before deep reading
-- [ ] You loaded only the next relevant skill file
-- [ ] You read the actual workflow being changed
-- [ ] Any GitHub Actions or bootc syntax change was verified via Context7
-- [ ] The lesson landed in a focused skill, not as more sprawl in the router
+PR #895 (2026-06-16) due to iterating on the wrong approach. The fix was
+always to use `--via-loopback` as documented. The image works on real hardware.

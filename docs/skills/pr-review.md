@@ -1,11 +1,32 @@
 ---
+
 name: pr-review
 description: Consolidated review workflow for dakota pull requests. Covers review priorities, common rejection reasons, dep-update PR review, and ghost (agent-assisted PR) handling. Load when asked to review any PR in projectbluefin/dakota.
+metadata:
+  context7-sources:
+    - /websites/github_en_actions
 ---
 
 # PR Review
 
 Consolidated review workflow for dakota pull requests.
+
+## When to Use
+
+Use when asked to review any Dakota PR, including feature PRs, dep-update PRs, or agent-authored maintenance changes.
+
+## When NOT to Use
+
+- Queue cleanup or stale-branch repair without substantive review → `merge-queue.md`
+- General issue triage before any PR exists → `actionadon.md`
+
+## Core Process
+
+1. Read the workflow and checklist docs first.
+2. Check branch hygiene and diff scope.
+3. Verify the PR category-specific checklist items.
+4. Check required CI status and mergeability.
+5. Review correctness only after the workflow hygiene is sound.
 
 ## Before you review
 
@@ -64,6 +85,29 @@ Auto-generated dep-update PRs (`auto/track-*`, `renovate/*`) always target
    `:testing` issue, not a PR issue. Validate passing + correct diff is enough.
 
 See `merge-queue.md` for the full retarget/cherry-pick/merge flow.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "The code looks fine, so the workflow details can slide." | Dakota reviews start with branch hygiene and checklist compliance for a reason. |
+| "A giant diff is just a busy PR." | It often means the branch started from the wrong base. |
+| "CI hasn't run yet, but the change is obvious." | Required checks are part of correctness here. |
+
+## Red Flags
+
+- Reviewing code details before checking branch base and scope
+- Ignoring checklist category mismatches
+- Accepting junction bumps mixed with unrelated patch changes
+- Treating skipped/absent CI as equivalent without understanding why
+
+## Verification
+
+- [ ] Branch hygiene was checked first
+- [ ] Relevant checklist items were reviewed
+- [ ] Required CI/check state was examined
+- [ ] Scope is one logical change
+- [ ] Review comments align with Dakota workflow, not just generic code review taste
 
 ## Lessons Learned
 

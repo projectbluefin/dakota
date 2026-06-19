@@ -1,16 +1,32 @@
 ---
+
 name: patch-junctions
 description: Lifecycle for patches applied to upstream junctions (freedesktop-sdk, gnome-build-meta). Covers adding patches, required Upstream-Status headers, rebasing after junction bumps, and dropping upstreamed patches.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
 # Patching Junction Elements
 
 Load when modifying upstream freedesktop-sdk or gnome-build-meta elements in dakota, or when fixing bugs in junction dependencies.
 
+## When to Use
+
+Use when an upstream junction dependency needs a local patch in Dakota or when maintaining/rebasing an existing junction patch queue.
+
 ## When NOT to Use
 
 - Understanding when to override vs. not → `bst-overrides.md`
 - Bumping a junction ref without patch changes → `update-refs.md`
+
+## Core Process
+
+1. Confirm a patch is really needed and not just a junction bump.
+2. Add the patch with the required metadata/header.
+3. Track the upstream status explicitly.
+4. Rebase or drop the patch as upstream moves.
+5. Keep the queue minimal and ordered.
 
 ## Overview
 
@@ -136,6 +152,28 @@ When the upstream junction ref includes the fix:
 | Patch file not found / wrong name | Filenames are alphabetical order; check numbering |
 | `patch_queue` source not in junction `.bst` | Must be declared as a source in the junction element |
 | Multiple patches conflict | Check filename ordering — earlier patches may change context for later ones |
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll add the patch now and upstream it later." | That is how patch queues become permanent. |
+| "One more local patch is cheap." | Every local junction patch compounds rebase debt. |
+| "Filename order probably won't matter here." | The queue is order-sensitive. Treat it that way. |
+
+## Red Flags
+
+- Patch with no upstream tracking reference
+- Missing or weak `Upstream-Status` metadata
+- Queue growth without drop/rebase discipline
+- Local patch solving something a junction bump already fixed
+
+## Verification
+
+- [ ] Patch was justified over a simple junction bump
+- [ ] Upstream tracking/status is explicit
+- [ ] Queue ordering and rebase implications were considered
+- [ ] There is a clear path to drop the patch later
 
 ## Lessons Learned
 

@@ -1,15 +1,31 @@
 ---
+
 name: local-ota
 description: Tests bootc upgrades via a local zot registry — QEMU VM or physical hardware. Covers registry setup, insecure registry configuration, and the build-push-upgrade loop. Load when validating image changes without pushing to GHCR.
+metadata:
+  context7-sources:
+    - /bootc-dev/bootc
 ---
 
 # Local & Hardware OTA Testing
 
 Load when testing bootc upgrades via a local registry — QEMU VM or physical hardware.
 
+## When to Use
+
+Use when you need to validate a Dakota image upgrade locally before GHCR publish, reproduce bootc upgrade behavior on hardware, or test a boot path with a local registry.
+
 ## When NOT to Use
 
 - CI pipeline questions → `ci.md`
+
+## Core Process
+
+1. Start a local registry.
+2. Build and push the image to that registry.
+3. Point a VM or hardware target at the registry.
+4. Run `bootc upgrade` and reboot.
+5. Verify the upgraded system actually reaches the expected graphical state.
 
 ## Overview
 
@@ -111,6 +127,28 @@ sudo podman start egg-registry
 ```
 
 ---
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "CI passed, so I don't need local OTA." | This repo explicitly values real upgrade evidence. |
+| "A local registry is too much setup for one test." | It's cheaper than shipping a broken upgrade path. |
+| "Booted once" means success. | Success is upgrade + reboot + expected runtime state. |
+
+## Red Flags
+
+- Testing image contents without exercising `bootc upgrade`
+- Declaring success without a reboot
+- Using local host state as proof instead of a VM/hardware target
+- Skipping registry wiring and testing a different path than users take
+
+## Verification
+
+- [ ] Image was pushed to the local registry actually used by the target
+- [ ] `bootc upgrade` ran against that registry
+- [ ] The target rebooted successfully
+- [ ] Post-upgrade runtime state was checked, not assumed
 
 ## Lessons Learned
 
