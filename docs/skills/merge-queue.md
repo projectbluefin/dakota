@@ -1,13 +1,25 @@
 ---
+
 name: merge-queue
 description: Clears stuck dependency-update PRs, rebases chore branches against main, and handles fork PRs. Covers rebase loops, merge command, e2e retrigger, and cross-repository PR handling. Load when PRs are stuck, conflicting, or blocked.
+metadata:
+  context7-sources:
+    - /websites/github_en_actions
 ---
 
 # Merge Queue Operations
 
-## When to Load
+## When to Use
 
-Load when clearing stuck dependency-update PRs, rebasing chore branches against `main`, or finishing a batch of bot PR merges.
+Use when clearing stuck dependency-update PRs, rebasing chore branches against `main`, or finishing a batch of bot PR merges.
+
+## Core Process
+
+1. Identify which PRs are actually stale or conflicting.
+2. Rebase the minimal set needed.
+3. Merge ready PRs in small waves.
+4. Re-list and do a cleanup pass, because earlier merges will stale later branches.
+5. Handle fork PRs differently from same-repo branches.
 
 ## When NOT to Use
 
@@ -158,6 +170,28 @@ Each agent should own one branch and run exactly this sequence:
 5. `git push upstream HEAD:<branch> --force-with-lease` (or push to fork for cross-repo)
 
 Why pairs: it speeds up queue recovery without turning every branch into a moving target at once. After the first wave lands, run one more cleanup pass for any PRs that became stale during the earlier merges.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll just rebase everything at once." | That's how you turn the queue into a moving target. |
+| "`--auto` merge will sort it out." | Dakota's queue and ruleset behavior often require explicit handling. |
+| "A fork PR is just another branch." | Not if you can't push to it. Treat fork ownership as a first-class constraint. |
+
+## Red Flags
+
+- Rebasing without checking `isCrossRepository`
+- Merging a batch without a final stale-branch pass
+- Force-pushing to the wrong remote
+- Treating empty-after-rebase PRs as if they still need merging
+
+## Verification
+
+- [ ] Stale/conflicting PRs were identified before rebasing
+- [ ] Same-repo and fork PRs were handled with the correct push path
+- [ ] The queue was processed in waves, not one giant churn pass
+- [ ] Empty or already-landed PRs were detected and not merged blindly
 
 ## Cross-References
 

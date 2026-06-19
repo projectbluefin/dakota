@@ -1,4 +1,29 @@
+---
+name: vm-stack
+description: VM capability reference for Dakota's Flatpak-delivered virt-manager/QEMU stack. Use when deciding whether virtualization support belongs in the image, in Flatpaks, or outside the supported user-session model.
+metadata:
+  context7-sources:
+    - /bootc-dev/bootc
+---
+
 # VM Stack (virt-manager + QEMU flatpaks)
+
+## When to Use
+
+Use when answering VM capability questions, planning local virtualization support, or deciding whether a VM feature belongs in Dakota's image or in the Flatpak-delivered VM stack.
+
+## When NOT to Use
+
+- CI boot-check or testsuite VM wiring → `e2e-ci.md`
+- Image package additions unrelated to the user VM stack
+- Hardware/driver troubleshooting outside the VM capability model
+
+## Core Process
+
+1. Decide whether the capability belongs in the Flatpak VM stack or in Dakota itself.
+2. Check the user-session capability matrix.
+3. Distinguish user-session features from root/libvirt-only features.
+4. Avoid image changes when the Flatpak stack already owns the functionality.
 
 ## Overview
 
@@ -65,6 +90,26 @@ The canonical image-level mechanism is `brew bundle --file=...Brewfile` with `fl
 `flatpak install --system` works as a normal user — polkit handles privilege escalation internally. No `pkexec` wrapper needed.
 
 `flatpak override --system` requires root. We avoid it entirely here — the virt-manager manifest already declares `xdg-run/libvirt` and `devices=all`, so no override is needed.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "If users want VM support, we should add packages to the image." | This stack is intentionally Flatpak-delivered. |
+| "QEMU support means all virtualization features work." | User-session virtualization has real boundaries. |
+| "A missing root-only feature is a packaging bug." | It may simply be out of scope for the user-session model. |
+
+## Red Flags
+
+- Proposing BST/image changes for functionality already delivered by Flatpaks
+- Confusing user-session VM support with root/libvirt capabilities
+- Treating the VM stack as if it were part of Dakota's base image
+
+## Verification
+
+- [ ] The capability question was answered using the VM stack model, not guesswork
+- [ ] Flatpak-owned behavior was kept separate from image-owned behavior
+- [ ] User-session vs root-only boundaries were made explicit
 
 ## Lessons Learned
 

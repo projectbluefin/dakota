@@ -1,11 +1,33 @@
 ---
+
 name: packaging-binaries
 description: Packages a project using official pre-built static binaries (GitHub Releases). Use when upstream provides release binaries and building from source is unnecessary. Covers arch-conditional sources, kind:remote with filename, and strip-binaries placement.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
 # Packaging Pre-Built Binaries
 
 Load when packaging a project that provides official pre-built static binaries (GitHub Releases, official downloads), or when building from source is impractical.
+
+## When to Use
+
+Use when upstream ships trusted pre-built release binaries and a source build would add unnecessary complexity, bootstrap pain, or wasted CI time.
+
+## When NOT to Use
+
+- Source builds are straightforward and expected for this project
+- The binary provenance is unclear or unofficial
+- A language-specific source-packaging skill is the better fit
+
+## Core Process
+
+1. Confirm a pre-built binary is the right tradeoff.
+2. Fetch the official release artifact per architecture.
+3. Install into the correct merged-usr path.
+4. Disable stripping when the payload or layout needs it.
+5. Validate the installed files and runtime dependencies.
 
 ## When to Use Pre-Built Binaries
 
@@ -101,6 +123,28 @@ url: releases:owner/project/releases/download/v%{version}/binary.tar.gz
 - [ ] Element added to `elements/bluefin/deps.bst`
 - [ ] `just bst show bluefin/<name>.bst` passes
 - [ ] `just bst build bluefin/<name>.bst` passes
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "Source is available, but binaries are easier, so I'll always use binaries." | Use binaries when they reduce real complexity, not as a reflex. |
+| "One generic download URL is enough." | Multi-arch packaging fails fast if you do not model the real artifacts. |
+| "If the file lands in `/usr/bin`, we're done." | You still need to validate the final staged payload and execution model. |
+
+## Red Flags
+
+- Unofficial or mutable binary sources
+- Missing architecture split for release artifacts
+- Forgetting `strip-binaries: ""` when the payload needs it
+- Treating binary packaging as a way to dodge validation
+
+## Verification
+
+- [ ] Official binary source and per-arch artifacts are explicit
+- [ ] Install paths use merged-usr conventions
+- [ ] Stripping behavior is intentional
+- [ ] The packaged binary is actually runnable in the staged image model
 
 ## Lessons Learned
 

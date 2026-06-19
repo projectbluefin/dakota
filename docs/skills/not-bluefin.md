@@ -1,67 +1,82 @@
 ---
 name: not-bluefin
-description: Translates bluefin/RPM/dnf mental model to dakota BuildStream reality. Load FIRST on any dakota task if you have bluefin context, or if your plan mentions dnf, RPM, COPR, or Containerfile package layers.
+description: Reset the Dakota mental model before doing any package or image work. Use when your plan mentions dnf, RPM, COPR, spec files, or Containerfile package layers, or whenever bluefin habits are leaking into a Dakota task.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
-# NOT Bluefin — Dakota Build Context
+# Not Bluefin
 
-**Load this skill FIRST before any dakota task.** Dakota is fundamentally different from bluefin.
+## Overview
 
----
+Dakota is a **BuildStream-first** repo.
+It is not a Fedora/CentOS overlay repo, not an RPM repo, and not a Containerfile package-install repo.
 
-## Dakota uses BuildStream 2 (BST). Not dnf. Not RPM. Not Containerfile.
+This skill exists to kill the most expensive wrong turn early.
 
-| Bluefin Pattern | Dakota Reality | What to do instead |
-|---|---|---|
-| `dnf5 install <pkg>` | ❌ PROHIBITED | Write a `.bst` element file |
-| `dnf5 copr enable` | ❌ PROHIBITED | BST has no COPR concept |
-| `copr_install_isolated()` | ❌ PROHIBITED | Not applicable |
-| `copr-helpers.sh` | ❌ PROHIBITED | Does not exist in dakota |
-| Containerfile `RUN dnf5...` stage | ❌ PROHIBITED | Use BST elements for packages |
-| `.spec` files / RPM build | ❌ PROHIBITED | BST elements only |
-| Fedora package names (RPM) | ⚠️  May differ | Verify in BST element definitions |
+## When to Use
 
-## What dakota DOES use
+Use when:
+- your draft mentions `dnf`, RPM, COPR, `.spec`, or package repos
+- you are about to change image contents
+- you see `elements/bluefin/*` and start thinking "Bluefin workflow"
+- you are onboarding into Dakota from another Project Bluefin repo
 
-- **BuildStream 2** (`.bst` files) — the only way to add packages
-- **BST element kinds**: `autotools`, `cmake`, `meson`, `pip`, `manual`, `stack`, `junction`
-- **Upstream junctions**: `freedesktop-sdk.bst` and `gnome-build-meta.bst` provide most packages
-- **OCI assembly**: A `Containerfile` exists for final image assembly only — not for package installation
+## When NOT to Use
 
-## Historical name trap: `bluefin/` paths still mean Dakota
+- You already know you are editing the correct `.bst` element
+- You are debugging a CI trigger or GitHub workflow issue unrelated to packaging
 
-- `elements/bluefin/*.bst`, `elements/bluefin/deps.bst`, `elements/oci/bluefin.bst`, and `elements/oci/layers/bluefin.bst` are Dakota's main build paths.
-- Those names are historical carry-over from the broader Bluefin project. They do **not** mean "use the bluefin repo workflow" or "install packages with dnf in a Containerfile."
+## Core Process
 
-## Translate the request before acting
+1. **Translate the request into BST terms before doing anything else.**
+2. **Locate the actual Dakota path** (`elements/bluefin/*`, `elements/oci/*`, `Justfile`).
+3. **Choose the right next skill**:
+   - add/remove package → `add-package.md` / `remove-package.md`
+   - BST syntax → `buildstream.md`
+   - OCI assembly → `oci-layers.md`
+4. **Refuse the wrong mechanism** even if it feels faster.
 
-| If someone asks for... | In Dakota, do this |
+## Translation Table
+
+| If you are thinking... | In Dakota, do this instead |
 |---|---|
-| "Add/remove a package" | Add/remove a `.bst` element and wire/unwire it in `elements/bluefin/deps.bst` |
-| "Enable a service by default" | Ship the unit/preset from a `.bst` element |
-| "Change what ends up in the image" | Edit BST elements or `elements/oci/*`, not the repo `Containerfile` |
-| "Enable a COPR / add an RPM repo" | Stop — Dakota has no COPR/RPM repo layer; package the software in BST terms |
+| `dnf install <pkg>` | create or edit a `.bst` element |
+| enable a COPR / package repo | package it in BST terms |
+| edit Containerfile to add packages | edit BST elements or OCI assembly elements |
+| RPM package names are the source of truth | verify the actual BuildStream element or upstream source |
+| `bluefin/` path means bluefin workflow | treat it as Dakota history, not process |
 
-## Adding a package to dakota
+## Hard Facts
 
-See `docs/skills/add-package.md`. Never reach for `dnf5`.
+- `elements/bluefin/*` are **Dakota** paths.
+- `elements/bluefin/deps.bst` is the package manifest for Dakota's build graph.
+- `Containerfile` is for final OCI/image helper flows, **not** package installation.
+- BuildStream element kinds such as `manual`, `meson`, `cmake`, `autotools`, `pip`, `stack`, `junction`, and `compose` are the real building blocks here.
 
-## The Containerfile is NOT for packages
+## Common Rationalizations
 
-Dakota has a `Containerfile` for final OCI image assembly (copying BST artifacts into the image). It does NOT install packages. Do not add `RUN dnf5 install` to it.
+| Rationalization | Reality |
+|---|---|
+| "It's probably easier to add one `dnf install`." | That is the wrong repo model and creates factory debt. |
+| "The path says bluefin, so it must use bluefin's process." | The name is legacy; the mechanism is Dakota. |
+| "Containerfile is right there, I'll patch the image there." | Package/image-content changes belong in BST elements. |
+| "I can translate later after I inspect the files." | Translate first, or you'll inspect the wrong files. |
 
-## Common file traps
+## Red Flags
 
-| File / path | What it actually is | What it is **not** |
-|---|---|---|
-| `Containerfile` | Local bootc lint helper for an already-built Dakota image | A package overlay or install stage |
-| `Justfile` `build-containerfile` recipe | Convenience wrapper around that lint helper | The primary image build path |
-| `elements/bluefin/deps.bst` | Dakota's package manifest | An RPM package list |
-| `elements/oci/bluefin.bst` | Final BuildStream OCI assembly step | A signal to switch to bluefin repo habits |
+- Draft plan mentions dnf/RPM/COPR
+- Editing `Containerfile` to change package content
+- Treating `.spec` files or Fedora naming as the source of truth
+- Reaching for bluefin habits because of the `bluefin` directory name
 
-## The Justfile is NOT the same as bluefin's
+## Verification
 
-Dakota's `Justfile` has different semantics. `just lint` validates BST templates. There is no `just check` equivalent.
+- [ ] The task is expressed in BST terms before implementation starts
+- [ ] The next skill loaded is package/buildstream/OCI-specific, not an RPM workflow
+- [ ] No package or image-content change is routed through `Containerfile`
+- [ ] The final plan names the actual Dakota files being changed
 
 ## Lessons Learned
 

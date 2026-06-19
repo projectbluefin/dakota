@@ -1,17 +1,33 @@
 ---
+
 name: packaging-rust
 description: Packages a Rust/Cargo project from source using BST cargo2 sources. Covers cargo2 generation, overlap-whitelist for conflicting binaries, and tracking group assignment. Use sudo-rs.bst as the reference template.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
 # Packaging Rust Projects
 
 Load when packaging a Rust project with Cargo for dakota/Bluefin BuildStream.
 
+## When to Use
+
+Use when a Rust/Cargo project must be built from source in Dakota and you need the cargo2/offline-vendoring pattern.
+
 ## When NOT to Use
 
 - Go project → `packaging-go.md`
 - Zig project → `packaging-zig.md`
 - Pre-built binary → `packaging-binaries.md`
+
+## Core Process
+
+1. Copy an existing Rust element as the template.
+2. Update metadata, binary naming, and source refs.
+3. Regenerate the cargo2 source block from `Cargo.lock`.
+4. Validate offline dependency completeness before blaming Cargo.
+5. Check overlap and installed binary names explicitly.
 
 ## Overview
 
@@ -133,6 +149,28 @@ install-commands:
 - [ ] Element added to `elements/bluefin/deps.bst`
 - [ ] `just validate` passes
 - [ ] `just bst build bluefin/<name>.bst` passes
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll hand-edit the cargo2 block; it's only a few crates." | That's how you ship a broken vendor graph. Generate it. |
+| "Cargo can fetch the rest during build." | Not in BST. Offline means offline. |
+| "If the binary name collides, it's probably fine." | Overlap and replacement behavior must be deliberate. |
+
+## Red Flags
+
+- Hand-written or half-updated cargo2 blocks
+- Missing `Cargo.lock`-driven regeneration after ref bumps
+- Offline build assumptions violated
+- Binary overlap not examined when packaging CLI replacements
+
+## Verification
+
+- [ ] cargo2 sources were regenerated, not hand-maintained
+- [ ] The Rust build is fully offline in BST
+- [ ] Installed binary names and overlap behavior were checked
+- [ ] The element still matches repo Rust packaging conventions
 
 ## Lessons Learned
 

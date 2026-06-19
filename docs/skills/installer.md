@@ -1,11 +1,32 @@
 ---
+
 name: installer
 description: bootc-installer (GTK4/Adwaita Flatpak) for Dakota. Covers two-component architecture (Python GUI + Go fisherman backend), dev setup, demo mode, and the dakota/dakota-iso boundary. Load when working on installer UI, recipe, or firstboot installer-cleanup behavior.
+metadata:
+  context7-sources:
+    - /bootc-dev/bootc
 ---
 
 # Installer (bootc-installer)
 
 Load when working on the Bluefin Dakota installer or debugging ISO installer integration.
+
+## When to Use
+
+Use when working on `projectbluefin/bootc-installer`, the Dakota ISO installer path, firstboot cleanup, or the boundary between the desktop image and the installer experience.
+
+## When NOT to Use
+
+- General Dakota package/image work unrelated to install flows
+- CI-only release pipeline debugging → CI skills
+- BST element authoring unrelated to installer behavior
+
+## Core Process
+
+1. Confirm whether the change belongs in `bootc-installer`, `dakota`, or `dakota-iso`.
+2. Respect the two-component split: Python GTK frontend vs Go backend.
+3. Preserve the repo boundary; do not hide installer policy inside the wrong repo.
+4. Validate demo mode / firstboot cleanup / integration points explicitly.
 
 ## What It Is
 
@@ -98,6 +119,28 @@ git remote add upstream https://github.com/tuna-os/tuna-installer
 git fetch upstream
 git merge upstream/main  # or cherry-pick relevant commits
 ```
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "It's all installer behavior, so I can fix it in any repo." | Wrong boundary decisions are how installer bugs become factory bugs. |
+| "The GUI and backend are basically one thing." | They fail differently and must be debugged that way. |
+| "A firstboot cleanup tweak is harmless." | Those are exactly the changes that strand bad state on installed systems. |
+
+## Red Flags
+
+- Mixing Dakota image policy with installer UI concerns
+- Changing firstboot cleanup without tracing its full lifecycle
+- Debugging the GTK frontend when the bug is clearly in fisherman/backend behavior
+- Treating ISO integration as if it were normal desktop runtime behavior
+
+## Verification
+
+- [ ] The change was made in the correct repo/layer
+- [ ] Frontend/backend ownership is clear
+- [ ] Firstboot/install cleanup behavior was explicitly considered
+- [ ] The integration path with Dakota or dakota-iso is still clear to future agents
 
 ## Lessons Learned
 
