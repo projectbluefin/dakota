@@ -1843,3 +1843,75 @@ PR #895 (2026-06-16) due to iterating on the wrong approach. The first stable
 shape was `--via-loopback`; the 2026-06-17 regression came from drifting away
 from the working testsuite invocation, not from a need to go back to host-side
 loop handling.
+
+### `multi-user.target` timing race in boot-check (2026-06-19)
+
+**Symptom:** boot-check fails immediately after SSH becomes reachable with
+`exit code 3` from `systemctl is-active multi-user.target`, even though the
+image boots and SSH works.
+
+**Cause:** `systemctl is-active` exits 3 for both `inactive` and `activating`.
+SSH becomes reachable (sshd started) while systemd is still processing the rest
+of `multi-user.target`'s dependency graph. The check fires before the target
+finishes activating.
+
+**Fix:** Replace the single `is-active` call with a retry loop:
+
+```bash
+for _i in $(seq 1 6); do
+  if "${SSH[@]}" sudo systemctl is-active multi-user.target 2>/dev/null; then
+    break
+  fi
+  [[ ${_i} -lt 6 ]] || { echo "ERROR: multi-user.target not active after 60s"; exit 1; }
+  echo "  not yet active (attempt ${_i}/6), retrying in 10s…"
+  sleep 10
+done
+```
+
+**Log trap:** The GHA log interleaves the step's script preview with its output.
+In a failed boot-check run, lines showing `is-active gdm.service` in the preview
+column appear alongside `inactive` + `exit code 3` in the output column — making
+it look like GDM failed. The actual failing line is always
+`systemctl is-active multi-user.target` immediately above. Verify by checking
+which `==>` echo precedes the `inactive` output, not which command appears in the
+script preview.
+
+---
+
+### Mergeraptor merges on `next` do not fire `push` events (2026-06-19)
+
+**Symptom:** Junction-bump PRs merge into `next` but `build.yml` never triggers.
+The branch can go days without a build despite multiple commits landing.
+
+**Cause:** Mergeraptor uses the GitHub API to merge PRs. Those merges do not
+create a `push` event that triggers GitHub Actions workflows.
+
+**Fix:** Add a scheduled dispatcher workflow (`nightly-next-build.yml`) that
+calls `gh workflow run build.yml --ref next` once per night. Set it to 03:00 UTC
+— after the 20:00 UTC junction tracker and its auto-merge window, and before US
+daytime when `main` builds compete for the BST remote executor.
+
+```yaml
+on:
+  schedule:
+    - cron: '0 3 * * *'
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - run: gh workflow run build.yml --repo "${{ github.repository }}" --ref next
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+---
+
+### `sync-main-to-testing` does not need a GitHub App token (2026-06-19)
+
+`reusable-sync-branches.yml` declares `GH_TOKEN` as `required: false` and falls
+back to `github.token`. The `promote` job in `publish.yml` already fast-forwards
+the `testing` branch with `GITHUB_TOKEN` on every publish cycle — proof that no
+App token is needed. Remove the `generate-token` job and both `BLUEFINBOT_*`
+secret references entirely.
