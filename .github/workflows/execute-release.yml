@@ -27,7 +27,7 @@ jobs:
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "is-promotion=true" >> "$GITHUB_OUTPUT"
-          elif echo "$COMMIT_MSG" | grep -q "^ci: promote testing images to stable"; then
+          elif echo "$COMMIT_MSG" | grep -qE "^ci\(promote\): dakota testing|^chore: promote testing to main"; then
             echo "is-promotion=true" >> "$GITHUB_OUTPUT"
           else
             echo "is-promotion=false" >> "$GITHUB_OUTPUT"
