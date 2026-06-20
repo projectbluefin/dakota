@@ -25,7 +25,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@main
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@f1236f70ee13e2e40d698609640123f3e2cf5df7 # main
     with:
       image: ${{ inputs.image }}
       suites: ${{ inputs.suites }}
