@@ -1,7 +1,8 @@
 name: Run Testsuite
 
 # Canonical wrapper — always call this, never call projectbluefin/testsuite e2e.yml directly.
-# Pin the testsuite SHA here; all callers inherit it automatically.
+# Uses @main (managed floating tag) — internal projectbluefin/ refs are never SHA-pinned.
+# See docs/skills/ci-tooling.md for the internal vs external pin policy.
 on:
   workflow_call:
     inputs:
@@ -24,8 +25,9 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@afb1505fd2b7f28de11ad7a1b531760efea635c3 # main
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@main
     with:
       image: ${{ inputs.image }}
       suites: ${{ inputs.suites }}
     secrets: inherit
+

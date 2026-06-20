@@ -50,7 +50,7 @@ jobs:
         uses: ./.github/actions/check-bst2-pin
 
       - name: Setup Just
-        uses: taiki-e/install-action@873c7452cadb7c034694a1282227095d93fbdf92 # v2
+        uses: taiki-e/install-action@8b3c737da4b541bf0fb5a3e0488ff20535badac9 # v2
         with:
           tool: just
 
@@ -132,7 +132,7 @@ jobs:
       # Note: setup-runner btrfs does not pass loopback-free; watch for disk
       # pressure and upstream the option if needed.
       - name: Setup runner
-        uses: projectbluefin/actions/bootc-build/setup-runner@v1
+        uses: projectbluefin/actions/bootc-build/setup-runner@99d867d662ab64a1f82b4f5f24f73b4051dbff01 # v1
         with:
           storage-backend: btrfs
           update-podman: true
@@ -210,7 +210,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Setup runner
-        uses: projectbluefin/actions/bootc-build/setup-runner@v1
+        uses: projectbluefin/actions/bootc-build/setup-runner@99d867d662ab64a1f82b4f5f24f73b4051dbff01 # v1
         with:
           storage-backend: btrfs
           update-podman: true
