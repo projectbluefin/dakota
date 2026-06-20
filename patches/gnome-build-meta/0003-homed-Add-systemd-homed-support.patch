@@ -1,0 +1,123 @@
+From efd777d188d7c40b7d920a87728b8e7c60b23f20 Mon Sep 17 00:00:00 2001
+From: Adrian Vovk <avovk@gnome.org>
+Date: Wed, 17 Jun 2026 22:01:35 -0400
+Subject: [PATCH] Add support for systemd-homed
+
+Enable homed unconditionally: drop malcontent from gnome-control-center,
+gnome-initial-setup, and gnome-software; disable parental controls flags;
+enable -Dcreate_homed=true in accountsservice; and configure the live
+generator to set DefaultStorage=subvolume for homed home directories.
+
+Port of gnome-build-meta!2681.
+
+Upstream-Status: Submitted https://gitlab.gnome.org/GNOME/gnome-build-meta/-/merge_requests/2681
+Exit condition: Drop after gnome-build-meta gnome-50 merges MR !2681
+---
+ elements/core-deps/accountsservice.bst  |  2 ++
+ elements/core/gnome-control-center.bst  |  2 --
+ elements/core/gnome-initial-setup.bst   | 10 +++++-----
+ elements/core/gnome-software.bst        |  2 +-
+ files/gnomeos/live/generator.c          |  6 ++++++
+ 5 files changed, 14 insertions(+), 8 deletions(-)
+
+diff --git a/elements/core-deps/accountsservice.bst b/elements/core-deps/accountsservice.bst
+index 95adcd1..b9ed662 100644
+--- a/elements/core-deps/accountsservice.bst
++++ b/elements/core-deps/accountsservice.bst
+@@ -24,3 +24,5 @@ depends:
+ variables:
+   local_flags: >-
+     -Wno-error=implicit-function-declaration
++  meson-local: >-
++    -Dcreate_homed=true
+diff --git a/elements/core/gnome-control-center.bst b/elements/core/gnome-control-center.bst
+index 1f1df8e..e3a275d 100644
+--- a/elements/core/gnome-control-center.bst
++++ b/elements/core/gnome-control-center.bst
+@@ -27,7 +27,6 @@ depends:
+ - core-deps/ibus-daemon.bst
+ - core-deps/libgtop.bst
+ - core-deps/libnma.bst
+-- core-deps/malcontent.bst
+ - core-deps/samba.bst
+ - core-deps/system-config-printer.bst
+ - core-deps/udisks2.bst
+@@ -52,4 +51,3 @@ depends:
+ variables:
+   meson-local: >-
+     -Ddocumentation=true
+-    -Dmalcontent=true
+diff --git a/elements/core/gnome-initial-setup.bst b/elements/core/gnome-initial-setup.bst
+index 1243705..d3f9a1c 100644
+--- a/elements/core/gnome-initial-setup.bst
++++ b/elements/core/gnome-initial-setup.bst
+@@ -1,7 +1,8 @@
+ kind: meson
+ 
+ sources:
+-- kind: tar
+-  url: gnome_downloads:gnome-initial-setup/50/gnome-initial-setup-50.0.tar.xz
+-  ref: 2da96b76a3434468a557fe481b8cfe606262f3537b00a4c20d4aa239a44e96e1
++- kind: git_repo
++  url: gnome_gitlab:AdrianVovk/gnome-initial-setup.git
++  track: homed
++  ref: 50.0-10-g952d28e3e3aefe67bc0dd2d37a0be964d2b69d66
+ build-depends:
+@@ -16,7 +17,6 @@ depends:
+ - core-deps/libgweather.bst
+ - core-deps/libnma.bst
+ - core-deps/librest.bst
+-- core-deps/malcontent.bst
+ - core-deps/upower.bst
+ - core/gdm.bst
+ - core/gnome-desktop.bst
+@@ -33,4 +33,4 @@ depends:
+ 
+ variables:
+   meson-local: >-
+-    -Dparental_controls=enabled
++    -Dparental_controls=disabled
+diff --git a/elements/core/gnome-software.bst b/elements/core/gnome-software.bst
+index c3d5398..86c0abc 100644
+--- a/elements/core/gnome-software.bst
++++ b/elements/core/gnome-software.bst
+@@ -15,7 +15,6 @@ depends:
+ - core-deps/glib-testing.bst
+ - core-deps/gnome-online-accounts.bst
+ - core-deps/liboauth.bst
+-- core-deps/malcontent.bst
+ - core-deps/snapd-glib.bst
+ - core/gnome-desktop.bst
+ - sdk/adwaita-icon-theme.bst
+@@ -44,3 +43,4 @@ variables:
+     -Dpackagekit=false
+     -Dsnap=true
+     -Dsystemd-sysupdate=true
++    -Dmalcontent=false
+diff --git a/files/gnomeos/live/generator.c b/files/gnomeos/live/generator.c
+index b44b546..1687750 100644
+--- a/files/gnomeos/live/generator.c
++++ b/files/gnomeos/live/generator.c
+@@ -107,6 +107,7 @@ static void mark_live() {
+ 
+ int main(int argc, char *argv[]) {
+         _cleanup_(fclosep) FILE* file = NULL;
++        _cleanup_(fclosep) FILE* file2 = NULL;
+         char *in_initrd_str;
+         int in_initrd;
+         bool is_live;
+@@ -143,6 +144,11 @@ int main(int argc, char *argv[]) {
+                 fprintf(file, "[zram1]\nmount-point=/\nfs-type=btrfs\n");
+                 fclosep(&file);
+ 
++                mkdir("/run/systemd/homed.conf.d", 0777);
++                file2 = fopen("/run/systemd/homed.conf.d/00-force-subvolume.conf", "w");
++                fprintf(file2, "[Home]\nDefaultStorage=subvolume\n");
++                fclosep(&file2);
++
+                 mark_live();
+ 
+                 if (!generate_unit(argv[1], "var-lib-gnomeos-installer\\x2desp.mount",
+-- 
+2.54.0
+
