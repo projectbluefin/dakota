@@ -1,6 +1,8 @@
 name: Track BuildStream Sources
 
 on:
+  repository_dispatch:
+    types: [common-updated]
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:
@@ -41,6 +43,7 @@ jobs:
             element: bluefin/common.bst
             branch: auto/track-common
             title: "chore(deps): update common"
+            base_branch: testing
           - group: auto-merge
             element: bluefin/jetbrains-mono.bst
             branch: auto/track-jetbrains-mono
@@ -106,11 +109,20 @@ jobs:
       - name: Should this group run?
         id: gate
         run: |
-          GROUP="${{ github.event.inputs.group || 'all' }}"
-          if [ "$GROUP" = "all" ] || [ "$GROUP" = "${{ matrix.group }}" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            # Only track common when triggered by a common publish event
+            if [ "${{ matrix.element }}" = "bluefin/common.bst" ]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+            fi
           else
-            echo "run=false" >> "$GITHUB_OUTPUT"
+            GROUP="${{ github.event.inputs.group || 'all' }}"
+            if [ "$GROUP" = "all" ] || [ "$GROUP" = "${{ matrix.group }}" ]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Get mergeraptor token
@@ -209,9 +221,9 @@ jobs:
           OLD_SHA=$(echo "$OLD_REF" | grep -oP '(?<=g)[0-9a-f]+$' || echo "$OLD_REF")
           NEW_SHA=$(echo "$NEW_REF" | grep -oP '(?<=g)[0-9a-f]+$' || echo "$NEW_REF")
 
-          # All PRs target main. Every merge to main triggers a build and
-          # publishes :testing immediately — no staging branch needed.
-          BASE_BRANCH="main"
+          # common targets testing so CI gates the merge (like Renovate does for bluefin).
+          # All other auto-merge elements target main for immediate publish.
+          BASE_BRANCH="${{ matrix.base_branch || 'main' }}"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -263,11 +275,13 @@ jobs:
           fi
           echo "PR: $PR_URL"
 
-          if [ "${{ matrix.group }}" = "auto-merge" ]; then
+          if [ "${{ matrix.group }}" = "auto-merge" ] && [ "${{ matrix.base_branch || 'main' }}" != "testing" ]; then
             # Direct merge via mergeraptor bypass. --auto uses GitHub's auto-merge
             # queue which does NOT honour bypass_pull_request_allowances — only
             # direct merges do. With no required status checks and mergeraptor in
             # bypass_pull_request_allowances, this merges immediately.
+            # Elements targeting testing are instead handled by renovate-automerge.yml
+            # after CI passes — no direct merge here.
             gh pr merge "$PR_URL" --squash || echo "::warning::Could not merge PR"
           fi
 
