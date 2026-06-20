@@ -20,7 +20,7 @@ concurrency:
 jobs:
   sync:
     name: Keep testing up-to-date with main
-    uses: projectbluefin/actions/.github/workflows/reusable-sync-branches.yml@99d867d662ab64a1f82b4f5f24f73b4051dbff01 # v1
+    uses: projectbluefin/actions/.github/workflows/reusable-sync-branches.yml@cbd8446f58a079e48f76d81d5bc1c2fdec95d592 # v1
     permissions:
       contents: write
 
