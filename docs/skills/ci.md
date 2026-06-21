@@ -2002,3 +2002,37 @@ gh pr view <n> --repo projectbluefin/dakota --json autoMergeRequest \
 ```
 If `false`, the `gh pr merge --auto` call failed — check the workflow's declared
 `permissions` first.
+
+### Redundant testing-branch build eliminated — remove testing from push triggers (2026-06-21)
+
+`publish.yml` fast-forwards the `testing` branch after every successful `main` build. That fast-forward is a push to `testing`, which re-triggers `build.yml` on the `testing` branch — a second identical 5h BST build for every main merge, wasting a runner and blocking the queue.
+
+**Fix:** Remove `testing` from `push: branches:` in `build.yml`. PRs targeting testing still get full BST validation via `pull_request` and `merge_group` triggers, which are unchanged.
+
+```yaml
+# build.yml — CORRECT
+on:
+  push:
+    branches: [main, next]   # testing intentionally omitted
+  pull_request:
+    branches: [main, testing, next]
+  merge_group:
+```
+
+(Dakota PR 997, 2026-06-21)
+
+### Junction bumps always cause a cold rebuild of OCI elements (expected)
+
+When `gnome-build-meta.bst` or `freedesktop-sdk.bst` is bumped to a new commit, BST recomputes cache keys for every element downstream. This invalidates all cached Dakota-specific artifacts (`oci/bluefin.bst`, `bluefin/` elements, etc.).
+
+**What "cold rebuild" looks like in logs:**
+```
+[pull:oci/bluefin.bst] INFO Remote (https://cache.projectbluefin.io:11002) does not have artifact f112d916 cached
+[pull:oci/bluefin.bst] INFO Remote (https://gbm.gnome.org:11003) does not have artifact f112d916 cached
+```
+
+**What is NOT rebuilt from source:** gnome-build-meta and freedesktop-sdk component artifacts. These are pulled from `cache.projectbluefin.io:11002` (populated by a previous run at the same junction version) or from `gbm.gnome.org:11003` (GNOME's upstream cache). Only Dakota-specific assembly elements rebuild.
+
+**Why it still takes ~5h:** The OCI assembly pulls hundreds of gnome/freedesktop artifacts and assembles them. Even with cache hits on individual elements, the assembly step for `oci/bluefin.bst` itself must run.
+
+**Automation status:** Core junction PRs (`auto/track-core-junctions`) are created automatically by `track-bst-sources.yml` at 06:00 UTC daily but require **manual merge** — junction bumps can break downstream elements. The PR body says "Manual review required." This is intentional.
