@@ -1,7 +1,7 @@
 ---
 
 name: patch-junctions
-description: Lifecycle for patches applied to upstream junctions (freedesktop-sdk, gnome-build-meta). Covers adding patches, required Upstream-Status headers, rebasing after junction bumps, and dropping upstreamed patches. Use when patching junction content, rebasing patch queues after a bump, or removing patches that landed upstream.
+description: Lifecycle for patches applied to upstream junctions (freedesktop-sdk, gnome-build-meta). Covers adding patches, required Upstream-Status headers, rebasing after junction bumps, and dropping upstreamed patches. Use when patching junction content, rebasing patch queues after a bump, or removing patches that landed upstream. Includes next-branch-specific patch rules.
 metadata:
   context7-sources:
     - /apache/buildstream
@@ -14,6 +14,26 @@ Load when modifying upstream freedesktop-sdk or gnome-build-meta elements in dak
 ## When to Use
 
 Use when an upstream junction dependency needs a local patch in Dakota or when maintaining/rebasing an existing junction patch queue.
+
+## next-Branch Patches
+
+The `:next` branch tracks GNOME master and may carry patches that are **not on main**. These are intentional — they backport or enable features that exist in GNOME master but have not yet landed in the stable GNOME release.
+
+**Current next-specific patches:**
+
+| Patch | What it does | Exit condition |
+|-------|-------------|----------------|
+| `0003-homed-Add-systemd-homed-support.patch` | Enables systemd-homed in accountsservice, gnome-control-center, gnome-initial-setup, gnome-software | Drop when gnome-build-meta stable ships homed support |
+
+**Rules for next-specific patches:**
+
+1. They live in `patches/gnome-build-meta/` on the `next` branch only.
+2. They must NOT be added to `main` — the sync workflow (`sync-next-from-main.yml`) runs `main → next`, not the reverse, so they are safe from accidental overwrites.
+3. Use `Upstream-Status: Not-applicable` if the feature targets GNOME master only and will never be backported. Use `Upstream-Status: Submitted` if you've opened an upstream MR.
+4. When the feature lands in the stable GNOME release and ships in a `main` junction bump, drop the patch from `next` (it will be in the upstream junction).
+5. After a gnome-build-meta master bump on `next`, rebase all next-specific patches — they are the most likely to drift since they touch GNOME master code in active development.
+
+**The sync workflow does NOT propagate next patches to main** — `sync-next-from-main.yml` uses `-X theirs` (main wins on conflict) but the merge is one-directional: main changes flow to next, not the reverse. Next-specific patches stay isolated.
 
 ## When NOT to Use
 
