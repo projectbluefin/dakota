@@ -32,7 +32,7 @@ concurrency:
 
 jobs:
   e2e:
-    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@f1236f70ee13e2e40d698609640123f3e2cf5df7 # main
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@v1
     with:
       image: ${{ github.event.inputs.image || 'ghcr.io/projectbluefin/dakota:testing' }}
       suites: ${{ github.event.inputs.suites || 'smoke' }}
