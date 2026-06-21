@@ -14,6 +14,7 @@ public:
   bst:
     overlap-whitelist:
     - /usr/bin/ublue-motd
+    - /usr/share/ublue-os/motd/env.sh
     - /usr/share/ublue-os/motd/template.md
     - /usr/share/ublue-os/motd/tips/10-tips.md
     - /etc/profile.d/bluefin-shell-defaults.sh
@@ -21,6 +22,7 @@ public:
 config:
   install-commands:
   - install -Dm755 ublue-motd "%{install-root}%{bindir}/ublue-motd"
+  - install -Dm644 env.sh "%{install-root}/usr/share/ublue-os/motd/env.sh"
   - install -Dm644 template.md "%{install-root}/usr/share/ublue-os/motd/template.md"
   - install -Dm644 tips/10-tips.md "%{install-root}/usr/share/ublue-os/motd/tips/10-tips.md"
   - |

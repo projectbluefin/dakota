@@ -11,7 +11,7 @@ on:
     branches:
       - testing
   schedule:
-    - cron: '0 23 * * *'
+    - cron: '0 4 * * 2'
   workflow_dispatch:
 
 concurrency:
@@ -30,13 +30,14 @@ permissions:
 
 jobs:
   promote:
-    uses: projectbluefin/actions/.github/workflows/reusable-promote-squash.yml@99d867d662ab64a1f82b4f5f24f73b4051dbff01 # v1
+    uses: projectbluefin/actions/.github/workflows/reusable-promote-squash.yml@v1
     with:
       variants: >-
         [{"image":"dakota"},{"image":"dakota-nvidia"}]
       cosign_identity_regexp: >-
         ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
       run_e2e: false
+      use_merge_queue: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
       # run_e2e is intentionally false for dakota. The e2e quality gate lives
       # at the weekly-testing-promotion.yml level with a GitHub 'production'
       # Environment requiring 2 explicit human approvals — not at the PR gate
