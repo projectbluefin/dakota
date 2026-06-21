@@ -22,6 +22,9 @@ config:
     # Replace the element so the OCI image doesn't have any apps
     core/meta-gnome-core-apps.bst: core/meta-gnome-core-apps.bst
 
+    # Override to track bootc ahead of gnome-build-meta upstream
+    gnomeos-deps/bootc.bst: gnomeos-deps/bootc.bst
+
     gnomeos-deps/plymouth-gnome-theme.bst: bluefin/plymouth-bluefin-theme.bst
 
     # Replace the element so the OCI image generates Bluefin's os-release file

@@ -1,15 +1,13 @@
 name: Sync next branch from main
 
-# Keeps next up to date with all non-junction changes from main:
-# Renovate action pins, BST source bumps for Tailscale/fonts/etc., CI fixes.
+# Keeps next identical to main except for junction refs.
+# next = main + (track: master, GNOME master ref, freedesktop-sdk ref).
 #
-# Strategy: git merge -X ours
-#   - All non-conflicting main changes land on next automatically.
-#   - Conflicts (only expected in junction ref files) resolve in favour of
-#     next — keeping the gnome-build-meta master ref intact.
-#
-# If the merge fails (e.g. structural conflict beyond junction files), the
-# workflow fails visibly — no silent corruption.
+# Strategy: merge main normally, then restore next's junction ref/track lines.
+# This ensures ALL config/overrides/CI changes from main land on next
+# automatically — including bootc override additions, new elements, etc.
+# Only the ref: and track: lines for gnome-build-meta and freedesktop-sdk
+# are pinned to next's values.
 
 on:
   push:
@@ -30,19 +28,39 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Merge main into next (keep junction refs)
+      - name: Merge main into next (restore junction refs after merge)
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # Save next's junction-specific values before merging.
+          GNOME_TRACK=$(grep -m1 '^\s*track:' elements/gnome-build-meta.bst | awk '{print $2}')
+          GNOME_REF=$(grep -m1 '^\s*ref:' elements/gnome-build-meta.bst | awk '{print $2}')
+          FDO_TRACK=$(grep -m1 '^\s*track:' elements/freedesktop-sdk.bst | awk '{print $2}')
+          FDO_REF=$(grep -m1 '^\s*ref:' elements/freedesktop-sdk.bst | awk '{print $2}')
+
+          echo "Preserving gnome-build-meta: track=$GNOME_TRACK ref=$GNOME_REF"
+          echo "Preserving freedesktop-sdk:  track=$FDO_TRACK ref=$FDO_REF"
+
           git fetch origin main
-          # -X ours: on conflict keep next's version (protects junction refs).
-          # --no-edit: use the default merge commit message.
-          if git merge origin/main -X ours --no-edit; then
-            git push origin next
-            echo "Synced main → next"
-          else
-            echo "ERROR: merge conflict beyond junction files — manual intervention required"
+
+          # Merge main — accept everything from main on conflict (-X theirs).
+          # Junction config/overrides should now always match main.
+          if ! git merge origin/main -X theirs --no-edit; then
+            echo "ERROR: merge failed — manual intervention required"
             git merge --abort
             exit 1
           fi
+
+          # Restore next's junction ref/track (the only intentional divergence).
+          sed -i "0,/track:/{s|track:.*|track: $GNOME_TRACK|}" elements/gnome-build-meta.bst
+          sed -i "0,/^\s*ref:/{s|ref:.*|ref: $GNOME_REF|}" elements/gnome-build-meta.bst
+          sed -i "0,/track:/{s|track:.*|track: $FDO_TRACK|}" elements/freedesktop-sdk.bst
+          sed -i "0,/^\s*ref:/{s|ref:.*|ref: $FDO_REF|}" elements/freedesktop-sdk.bst
+
+          # Amend the merge commit to include the ref restoration.
+          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst
+          git commit --amend --no-edit
+
+          git push origin next
+          echo "Synced main → next (junction refs preserved)"
