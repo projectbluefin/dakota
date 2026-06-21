@@ -552,7 +552,7 @@ jobs:
             element: oci/bluefin.bst
             image_suffix: ''
             sbom_filename: dakota.spdx.json
-            continue: true
+            continue: false
           - variant: nvidia
             element: oci/bluefin-nvidia.bst
             image_suffix: '-nvidia'
