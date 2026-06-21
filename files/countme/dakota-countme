@@ -1,0 +1,50 @@
+#!/bin/bash
+# Report Dakota to Fedora's countme infrastructure.
+# Mimics the libdnf5 countme protocol: a GET to Fedora's metalink with
+# countme=N in the query string and a libdnf5-format User-Agent carrying
+# the OS name. Fedora's metalink servers log this and the ublue-os/countme
+# pipeline reads it from Fedora's public countme dataset.
+#
+# We identify as "Dakota" so it shows up distinctly in the data.
+# Ref: coreos/rpm-ostree#5464, projectbluefin/dakota
+
+set -euo pipefail
+
+# shellcheck source=/dev/null
+. /usr/lib/os-release
+
+COOKIE_FILE=/var/lib/dakota-countme-epoch
+
+# Create cookie on first run to track installation age
+if [[ ! -f "$COOKIE_FILE" ]]; then
+    printf '%s\n' "$(date +%s)" > "$COOKIE_FILE"
+fi
+
+INSTALL_EPOCH=$(< "$COOKIE_FILE")
+NOW=$(date +%s)
+DAYS=$(( (NOW - INSTALL_EPOCH) / 86400 ))
+
+# Fedora countme age buckets (matches libdnf5 spec):
+#   1 = first 7 days, 2 = 8–27 days, 3 = 28–140 days, 4 = 141+ days
+if   (( DAYS <   8 )); then COUNTME=1
+elif (( DAYS <  28 )); then COUNTME=2
+elif (( DAYS < 141 )); then COUNTME=3
+else                        COUNTME=4
+fi
+
+ARCH=$(uname -m)
+
+# User-Agent in libdnf5 format — Fedora's metalink server parses NAME and
+# VERSION_ID from this field to populate os_name/os_version in countme data.
+# Using "Dakota" as NAME makes Dakota's users distinguishable from Bluefin.
+UA="libdnf5/5.2.9 (Dakota;${VERSION_ID};${ARCH}) hawkey"
+
+# Extract Fedora base version from PLATFORM_ID (e.g. "platform:f42" → "42").
+# PLATFORM_ID is written to os-release by os-release.bst and updated alongside
+# the gnome-build-meta junction when the Fedora base bumps.
+FEDORA_VER="${PLATFORM_ID#platform:f}"
+
+exec /usr/bin/curl -sf --max-time 30 \
+    -A "$UA" \
+    "https://mirrors.fedoraproject.org/metalink?repo=fedora-${FEDORA_VER}&arch=${ARCH}&countme=${COUNTME}" \
+    -o /dev/null
