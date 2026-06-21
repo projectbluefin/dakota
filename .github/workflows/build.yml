@@ -6,7 +6,11 @@ on:
   merge_group:
     branches: [main, next, testing]
   push:
-    branches: [main, next, testing]
+    # testing is excluded: publish.yml fast-forwards testing after every main
+    # build, which would re-trigger an identical 5h BST build. :testing is
+    # already published by the main build. PRs targeting testing still build
+    # via pull_request and merge_group above.
+    branches: [main, next]
   workflow_dispatch:
     # WARNING: Do not manually dispatch immediately after auto/track-* ref bumps
     # (e.g. Renovate PRs updating gnome-build-meta.bst). Cold builds of GNOME
