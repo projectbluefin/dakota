@@ -27,6 +27,7 @@ jobs:
           ref: next
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
       - name: Merge main into next (restore junction refs after merge)
         run: |
@@ -38,6 +39,15 @@ jobs:
           GNOME_REF=$(grep -m1 '^\s*ref:' elements/gnome-build-meta.bst | awk '{print $2}')
           FDO_TRACK=$(grep -m1 '^\s*track:' elements/freedesktop-sdk.bst | awk '{print $2}')
           FDO_REF=$(grep -m1 '^\s*ref:' elements/freedesktop-sdk.bst | awk '{print $2}')
+
+          # Fail fast if any extraction is empty — prevents sed from corrupting files.
+          for var_name in GNOME_TRACK GNOME_REF FDO_TRACK FDO_REF; do
+            val="${!var_name}"
+            if [ -z "$val" ]; then
+              echo "ERROR: failed to extract $var_name from junction file — aborting"
+              exit 1
+            fi
+          done
 
           echo "Preserving gnome-build-meta: track=$GNOME_TRACK ref=$GNOME_REF"
           echo "Preserving freedesktop-sdk:  track=$FDO_TRACK ref=$FDO_REF"
@@ -53,10 +63,11 @@ jobs:
           fi
 
           # Restore next's junction ref/track (the only intentional divergence).
-          sed -i "0,/track:/{s|track:.*|track: $GNOME_TRACK|}" elements/gnome-build-meta.bst
-          sed -i "0,/^\s*ref:/{s|ref:.*|ref: $GNOME_REF|}" elements/gnome-build-meta.bst
-          sed -i "0,/track:/{s|track:.*|track: $FDO_TRACK|}" elements/freedesktop-sdk.bst
-          sed -i "0,/^\s*ref:/{s|ref:.*|ref: $FDO_REF|}" elements/freedesktop-sdk.bst
+          # Use ^\s* anchor on track: to avoid matching comments or URLs.
+          sed -i "0,/^\s*track:/{s|^\(\s*\)track:.*|\1track: $GNOME_TRACK|}" elements/gnome-build-meta.bst
+          sed -i "0,/^\s*ref:/{s|^\(\s*\)ref:.*|\1ref: $GNOME_REF|}" elements/gnome-build-meta.bst
+          sed -i "0,/^\s*track:/{s|^\(\s*\)track:.*|\1track: $FDO_TRACK|}" elements/freedesktop-sdk.bst
+          sed -i "0,/^\s*ref:/{s|^\(\s*\)ref:.*|\1ref: $FDO_REF|}" elements/freedesktop-sdk.bst
 
           # Amend the merge commit to include the ref restoration.
           git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst
