@@ -1,7 +1,7 @@
 ---
 
 name: patch-junctions
-description: Lifecycle for patches applied to upstream junctions (freedesktop-sdk, gnome-build-meta). Covers adding patches, required Upstream-Status headers, rebasing after junction bumps, and dropping upstreamed patches.
+description: Lifecycle for patches applied to upstream junctions (freedesktop-sdk, gnome-build-meta). Covers adding patches, required Upstream-Status headers, rebasing after junction bumps, and dropping upstreamed patches. Use when patching junction content, rebasing patch queues after a bump, or removing patches that landed upstream.
 metadata:
   context7-sources:
     - /apache/buildstream

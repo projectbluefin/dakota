@@ -1,7 +1,7 @@
 ---
 
 name: packaging-zig
-description: Packages a Zig build system project from source. Covers two-stage cache population (zig fetch for HTTP deps, manual placement for git deps), DESTDIR pattern, and -Dcpu=baseline requirement. ghostty.bst is the reference implementation.
+description: Packages a Zig build system project from source. Covers two-stage cache population (zig fetch for HTTP deps, manual placement for git deps), DESTDIR pattern, and -Dcpu=baseline requirement. ghostty.bst is the reference implementation. Use when a Zig-based project must be packaged from source in Dakota.
 metadata:
   context7-sources:
     - /apache/buildstream

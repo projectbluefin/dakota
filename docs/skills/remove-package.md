@@ -1,7 +1,7 @@
 ---
 
 name: remove-package
-description: Workflow for removing a software package from the Dakota image. Covers element deletion, deps.bst unwiring, dangling reference checks, and validation. Load for any "remove package from Dakota" task.
+description: Workflow for removing a software package from the Dakota image. Covers element deletion, deps.bst unwiring, dangling reference checks, and validation. Use when removing a package, service, shell extension, or other image content from Dakota.
 metadata:
   context7-sources:
     - /apache/buildstream

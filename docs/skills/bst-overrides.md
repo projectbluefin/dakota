@@ -1,7 +1,7 @@
 ---
 
 name: bst-overrides
-description: Governs when and how to create junction overrides in dakota. Upstream-first principle — local overrides are last resort. Covers patch_queue overrides, exit conditions, and how to evaluate whether an override is justified.
+description: Governs when and how to create junction overrides in dakota. Upstream-first principle — local overrides are last resort. Covers patch_queue overrides, exit conditions, and how to evaluate whether an override is justified. Use when deciding whether to override gnome-build-meta or freedesktop-sdk content, adding temporary local overrides, or removing override debt after upstream catches up.
 metadata:
   context7-sources:
     - /apache/buildstream

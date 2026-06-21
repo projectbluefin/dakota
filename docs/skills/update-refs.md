@@ -1,7 +1,7 @@
 ---
 
 name: update-refs
-description: Workflow for updating an existing package version in dakota. Covers tarball ref tracking, git ref tracking, and cargo2 regeneration for Rust elements. Load for any "update package version" task.
+description: Workflow for updating an existing package version in dakota. Covers tarball ref tracking, git ref tracking, and cargo2 regeneration for Rust elements. Use when bumping package versions, refreshing tracked refs, or regenerating derived lock/vendor data after an upstream release.
 metadata:
   context7-sources:
     - /apache/buildstream

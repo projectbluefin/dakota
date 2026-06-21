@@ -1,7 +1,7 @@
 ---
 
 name: packaging-rust
-description: Packages a Rust/Cargo project from source using BST cargo2 sources. Covers cargo2 generation, overlap-whitelist for conflicting binaries, and tracking group assignment. Use sudo-rs.bst as the reference template.
+description: Packages a Rust/Cargo project from source using BST cargo2 sources. Covers cargo2 generation, overlap-whitelist for conflicting binaries, and tracking group assignment. Use sudo-rs.bst as the reference template. Use when adding or updating a Rust package that must build from source in Dakota.
 metadata:
   context7-sources:
     - /apache/buildstream

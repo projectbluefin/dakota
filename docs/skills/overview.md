@@ -1,7 +1,7 @@
 ---
 
 name: dakota-overview
-description: Provides context on what Dakota is, how it differs from bluefin/bluefin-lts, current package gaps, and build optimization notes. Load when planning new package additions or when someone asks what Dakota is.
+description: Provides context on what Dakota is, how it differs from bluefin/bluefin-lts, current package gaps, and build optimization notes. Use when planning new package additions, scoping whether a feature belongs in Dakota, or when someone asks what Dakota is.
 metadata:
   context7-sources:
     - /bootc-dev/bootc
