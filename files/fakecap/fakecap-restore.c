@@ -7,9 +7,12 @@
  * Reads a TSV manifest (path\tcomponent\tinterval) and calls lsetxattr
  * on each file under <rootfs>.  Skips missing files silently.
  *
- * This is the interim workaround while chunkah uses raw Linux syscalls
- * for xattr reads (bypassing libc / LD_PRELOAD).  Once coreos/chunkah#113
- * lands, fakecap.so LD_PRELOAD alone will be sufficient.
+ * Physical xattr injection for BST images.
+ * chunkah uses rustix raw syscalls for xattr reads (bypassing libc / LD_PRELOAD),
+ * so xattrs must be physically applied before chunkah runs.
+ * coreos/chunkah#113 is closed — the resolution is this overlay approach,
+ * not a libc fallback. Used by `just chunkify` for local dev; CI uses
+ * the bootc-build/chunka action (inject-xattrs.py) instead.
  *
  * Copyright (c) 2025  contributors
  * SPDX-License-Identifier: MIT

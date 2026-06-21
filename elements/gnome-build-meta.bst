@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: gnome:gnome-build-meta.git
   track: master
-  ref: 49-branchpoint-736-g528af16d740c830045312774be441b0bb8205076
+  ref: 49-branchpoint-737-gae406a663457caacba127c2d28e8df48969427dc
 - kind: patch_queue
   path: patches/gnome-build-meta
 
@@ -21,6 +21,9 @@ config:
 
     # Replace the element so the OCI image doesn't have any apps
     core/meta-gnome-core-apps.bst: core/meta-gnome-core-apps.bst
+
+    # Override to track bootc ahead of gnome-build-meta upstream
+    gnomeos-deps/bootc.bst: gnomeos-deps/bootc.bst
 
     gnomeos-deps/plymouth-gnome-theme.bst: bluefin/plymouth-bluefin-theme.bst
 

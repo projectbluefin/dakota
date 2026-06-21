@@ -13,6 +13,7 @@ on:
 
 permissions:
   pull-requests: write
+  contents: write
 
 jobs:
   ensure-labels:
@@ -45,9 +46,27 @@ jobs:
       - name: Block PRs not targeting main
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Allow mergeraptor's automated next-branch junction bumps.
+          if [ "$BASE_REF" = "next" ] && [ "$HEAD_REF" = "auto/track-next-junction" ]; then
+            echo "Automated next-branch junction update — skipping main-target gate."
+            exit 0
+          fi
+          # Allow all PRs targeting next — next is a legitimate development branch
+          # (GNOME master stream). Unlike stable/latest, next accepts direct PRs.
+          if [ "$BASE_REF" = "next" ]; then
+            echo "PR targets next development branch — skipping main-target gate."
+            exit 0
+          fi
+          # Allow Renovate PRs targeting testing — testing is the staging branch
+          # for the testing→main promotion pipeline (parity with bluefin).
+          if [ "$BASE_REF" = "testing" ] && [[ "$HEAD_REF" == renovate/* ]]; then
+            echo "Renovate update targeting testing staging branch — skipping main-target gate."
+            exit 0
+          fi
           if [ "$BASE_REF" != "main" ]; then
             echo "ERROR: PRs must target 'main', not '$BASE_REF'."
             echo "Branches like 'stable' and 'latest' are managed by the promotion pipeline — never target them directly."
@@ -58,6 +77,7 @@ jobs:
           fi
 
       - name: Add pr/needs-review and post instructions
+        if: github.event.pull_request.head.ref != 'auto/track-next-junction'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
@@ -117,7 +137,7 @@ jobs:
             *) echo "is_maintainer=false" >> "$GITHUB_OUTPUT" ;;
           esac
 
-      - name: Approved — clear label
+      - name: Approved — clear label, enable auto-merge, update branch
         if: >-
           steps.perm.outputs.is_maintainer == 'true' &&
           github.event.review.state == 'approved'
@@ -126,15 +146,17 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           gh pr edit "$PR_URL" --remove-label "pr/needs-review" 2>/dev/null || true
-          cat << 'EOF' > /tmp/comment.md
-          Approved. Auto-merge is now eligible — the PR will enter the merge queue once all required checks pass.
 
-          After it ships in nightly, users can confirm the fix with:
-          ```bash
-          ujust verify <issue-number>
-          ```
-          EOF
-          gh pr comment "$PR_URL" --body-file /tmp/comment.md
+          # Enable auto-merge — squash-merges once required checks pass.
+          gh pr merge "$PR_URL" --auto --squash \
+            && echo "✅ Auto-merge enabled" \
+            || echo "::warning::Auto-merge unavailable — PR will need manual merge"
+
+          # Bring the branch current with main so CI runs on the latest state.
+          # Non-fatal — pr-autoupdate.yml retries on the next push to main.
+          gh pr update-branch "$PR_URL" 2>/dev/null \
+            && echo "✅ Branch updated" \
+            || echo "Branch already up-to-date or conflict — pr-autoupdate will handle it"
 
       - name: Changes requested — re-add label and tell the author what to do
         if: >-

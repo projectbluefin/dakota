@@ -1,117 +1,120 @@
 ---
 name: quickstart
-description: Zero-context entry point for routine dakota maintenance. Provides 5 always-rules, 6 never-rules, task routing table, and the end-to-end PR workflow. Load first for add/remove/update tasks when you have no other context.
+description: Zero-context Dakota maintenance guide. Use when doing routine add/remove/update work and you need the shortest safe path through branch setup, validation, and the factory workflow.
+metadata:
+  context7-sources:
+    - /apache/buildstream
+    - /websites/github_en_actions
 ---
 
-# Agent Quickstart
+# Quickstart
 
-Zero-context entry point for routine dakota maintenance — add package, remove package, update refs.
+## Overview
 
-Historical path note: `elements/bluefin/*` is Dakota's package tree. The name
-is legacy. Do not use it as a cue to reach for dnf, RPM/COPR, or Containerfile
-overlay workflows.
+This is the **smallest safe default** for routine Dakota work.
+It is not the full reference manual. It is the path that prevents the most common factory mistakes.
 
-## 5 Always Rules
+## When to Use
 
-1. **Always run `just --list` first** — the Justfile is the ground truth for available recipes
-2. **Always run `just validate`, `just lint`, and `just boot-test` before opening a PR** — graph check, image lint, and automated boot smoke test
-3. **Always add new elements to `deps.bst`** (binary) or `gnome-shell-extensions.bst` (extensions)
-4. **Always grep for all references before removing** — `grep -r <name> elements/ .github/workflows/ files/`
-5. **Always use `just bst` not bare `bst`** — BST must run inside the pinned container
+Use when:
+- adding, removing, or updating a package
+- doing small maintenance with little repo context
+- you want the standard branch → edit → validate → PR flow
 
-## 6 Never Rules
+## When NOT to Use
 
-1. **Never edit** `elements/freedesktop-sdk.bst` or `elements/gnome-build-meta.bst` without human review
-2. **Never open a PR** to `projectbluefin/dakota` without running `just validate` first
-3. **Never add Renovate entries** for elements already in the `track-tarballs` CI job — causes racing PRs
-4. **Never call `bst` directly** — always `just bst ...`
-5. **Never skip `just validate`** even if `just bst build` "looks right"
-6. **Never solve package/image-content changes in `Containerfile`** — those belong in `.bst` elements and `elements/bluefin/deps.bst`
+- CI failure needs workflow-specific debugging → CI skills
+- complex packaging needs a language-specific skill → `packaging-*.md`
+- you are still leaking bluefin habits → `not-bluefin.md` first
+
+## Core Process
+
+1. **Load `not-bluefin.md` if needed.**
+2. **Branch from `upstream/main`.**
+3. **Pick the focused skill for the change.**
+4. **Use `just` recipes, not ad-hoc host commands.**
+5. **Run the lightest validation that proves the change.**
+6. **Commit with `Assisted-by:` and update the relevant skill in the same PR.**
+
+## Always Rules
+
+1. Run `just --list` first.
+2. Use `just bst ...`, not bare `bst`.
+3. Grep all references before removing a package or file.
+4. Add new package elements to the correct stack.
+5. Validate before opening the PR.
+6. Push to `upstream`, never the fork workflow by accident.
+
+## Never Rules
+
+1. Never solve package/image-content changes in `Containerfile`.
+2. Never open a Dakota PR without validation evidence.
+3. Never edit junctions casually; treat them as human-review territory.
+4. Never add duplicate automation when an existing recipe or workflow already owns it.
+5. Never skip the skill update if you discovered a reusable lesson.
 
 ## Task Routing
 
-| Task | Command | Skill |
-|------|---------|-------|
-| Add binary package | Create `elements/bluefin/<name>.bst` manually | `add-package.md` |
-| Add Rust package | Create element + run `generate_cargo_sources.py` | `add-package.md` + `packaging-rust.md` |
-| Add GNOME extension | Create `elements/bluefin/shell-extensions/<name>.bst` | `packaging-gnome-extensions.md` |
-| Remove package | `grep -r <name> elements/ .github/workflows/` then delete | `remove-package.md` |
-| Update tarball version | Edit version var, then `just bst source track bluefin/<name>.bst` | `update-refs.md` |
-| Update git ref | `just bst source track bluefin/<name>.bst` | `update-refs.md` |
-| Build failure | `just bst shell --build bluefin/<name>.bst` | `debugging.md` |
-| BST YAML reference | — | `buildstream.md` |
-| CI failure | — | `ci.md` |
+| Task | Load |
+|---|---|
+| Add package | `add-package.md` |
+| Remove package | `remove-package.md` |
+| Update source ref/version | `update-refs.md` |
+| Debug element build | `debugging.md` |
+| BST syntax/reference | `buildstream.md` |
+| CI failure | `ci.md` |
 
-## Tracking Groups
-
-| Group | When to use |
-|-------|-------------|
-| `auto-merge` | App packages, shell extensions — low-risk, squash-merged automatically |
-| `manual-merge` | Junctions, Rust elements — requires human review |
-
-## Fix an Issue — End-to-End
+## Default Workflow
 
 ```bash
-# 1. Claim the issue
-gh issue comment 635 --repo projectbluefin/dakota --body "/claim"
-
-# 2. Branch from upstream/main
+# branch
 git checkout upstream/main -b fix/short-description
 
-# 3. Make changes, validate
-just validate && just lint
+# inspect recipes
+just --list
 
-# 4. Commit with correct trailer
+# make the change
+
+# validate with the lightest checks that match the scope
+just bst show oci/bluefin.bst
+just lint
+
+# commit
 git commit -m "fix(bluefin): short description
 
-Closes #635
+Closes #NNN
 
-Assisted-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+Assisted-by: OpenAI GPT-5 via pi"
 
-# 5. Push to upstream (never castrojo fork)
+# push
 git push upstream fix/short-description
-
-# 6. Open PR with checklist checkbox checked
-gh pr create --repo projectbluefin/dakota ...
 ```
 
-If the issue is still `status/triage` (not yet `status/approved`), ask the user before claiming — agents don't self-approve issues.
+## Common Rationalizations
 
-## Commit Conventions
+| Rationalization | Reality |
+|---|---|
+| "I'll use bare bst just this once." | That's how environment drift sneaks in. |
+| "This is small; I don't need validation." | Small changes still waste CI if the graph is broken. |
+| "I learned something, but I'll document it later." | Later means never. The factory loop breaks immediately. |
+| "The fork is fine for this push." | Not for Dakota's normal upstream PR flow. |
 
-```text
-feat(bluefin): add <name>
-chore(deps): update <name>
-fix(bluefin): <description>
-chore: remove <name>
-```
+## Red Flags
 
-**Trailer:** Always `Assisted-by:` or `Signed-off-by:` — never `Co-authored-by:`. This is a hard rule from `docs/pr-checklist.md`.
+- Starting from local `main` instead of `upstream/main`
+- Using host-installed bst or random shell commands instead of `just`
+- No evidence attached to the PR
+- A skill-worthy lesson discovered but not written back
 
-## Key Paths
+## Verification
 
-```text
-elements/bluefin/                           All Bluefin-specific elements
-elements/bluefin/deps.bst                   Central dependency manifest
-elements/bluefin/shell-extensions/          GNOME Shell extensions
-elements/bluefin/gnome-shell-extensions.bst Extension stack
-include/aliases.yml                         URL aliases
-.github/workflows/track-bst-sources.yml    Tracking matrix
-.github/renovate.json5                      Renovate config
-```
-
-## Throughput Rule
-
-If working through a backlog of issues, do not stop after the first fix. Work from the issue backlog in this order:
-
-1. Issues labeled `status/queued`
-2. Issues labeled `kind:bug`
-3. Issues explicitly named by the user
+- [ ] Branch started from `upstream/main`
+- [ ] Correct focused skill was loaded for the task
+- [ ] Validation matched the scope of the change
+- [ ] Commit uses repo conventions including `Assisted-by:`
+- [ ] Skill update is included when a new pattern was learned
 
 ## Lessons Learned
-
-> Add entries here when you discover a new pattern or fix a recurring mistake.
-> Format: `### <pattern name> (YYYY-MM-DD)`
 
 ### Restarting the publish factory after a pause (2026-06-05)
 
@@ -119,7 +122,7 @@ When publishing has been intentionally paused (e.g., post-repo-refactor), the
 factory restart sequence is:
 
 1. Fix any `startup_failure` in `publish.yml` — check for invalid `permissions:` scopes
-   (e.g., `artifact-metadata: write` is not a valid GITHUB_TOKEN scope) and
+   (e.g. `artifact-metadata: write` is not a valid GITHUB_TOKEN scope) and
    job-level `permissions:` on reusable workflow call jobs.
 2. Dispatch `build.yml --ref main` to populate the remote CAS.
 3. Wait ~60–90 minutes for the build to complete.
@@ -128,4 +131,4 @@ factory restart sequence is:
    2 human approvals at https://github.com/projectbluefin/dakota/deployments
    to promote `:testing` → `:latest` + `:stable`.
 
-Full details: `docs/ci.md` → "Restarting the factory".
+Full details: `release-promotion.md` and `ci-tooling.md`.

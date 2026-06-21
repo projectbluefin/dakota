@@ -1,0 +1,44 @@
+name: Promote testing to main
+
+# Thin caller — logic lives in projectbluefin/actions/reusable-promote-squash.yml
+# Replaces the previous 183-line promote-testing-to-main.yml.
+#
+# Key improvement: squash branch is always rebuilt fresh on every run —
+# no staleness, no conflict drift, no merge friction.
+
+on:
+  push:
+    branches:
+      - testing
+  schedule:
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: promote-testing-to-main
+  cancel-in-progress: false
+
+# The called reusable workflow needs write access to push the squash branch,
+# open/update PRs, and write issues. Caller-level permissions set the maximum
+# grants available to the called workflow's jobs.
+permissions:
+  contents: write       # push squash promotion branch
+  pull-requests: write  # create / update / auto-merge the promotion PR
+  issues: write         # open / close failure-tracking issues
+  packages: read        # read image digests in release-gate checks
+  actions: read         # inspect workflow-run statuses in release-gate
+
+jobs:
+  promote:
+    uses: projectbluefin/actions/.github/workflows/reusable-promote-squash.yml@99d867d662ab64a1f82b4f5f24f73b4051dbff01 # v1
+    with:
+      variants: >-
+        [{"image":"dakota"},{"image":"dakota-nvidia"}]
+      cosign_identity_regexp: >-
+        ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
+      run_e2e: false
+      # run_e2e is intentionally false for dakota. The e2e quality gate lives
+      # at the weekly-testing-promotion.yml level with a GitHub 'production'
+      # Environment requiring 2 explicit human approvals — not at the PR gate
+      # level. The promotion PR here gets cosign verification only.
+    secrets: inherit

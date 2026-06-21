@@ -1,17 +1,32 @@
 ---
+
 name: dakota-overview
-description: Provides context on what Dakota is, how it differs from bluefin/bluefin-lts, current package gaps, and build optimization notes. Load when planning new package additions or when someone asks what Dakota is.
+description: Provides context on what Dakota is, how it differs from bluefin/bluefin-lts, current package gaps, and build optimization notes. Use when planning new package additions, scoping whether a feature belongs in Dakota, or when someone asks what Dakota is.
+metadata:
+  context7-sources:
+    - /bootc-dev/bootc
+    - /apache/buildstream
 ---
 
 # Dakota Overview
 
 Load when you need context on what dakota is, how it differs from production Bluefin, what unique features it has, or when planning new package additions.
 
+## When to Use
+
+Use when you need product/repo context before planning work, when someone asks what Dakota is, or when deciding whether a package or feature fits Dakota's scope.
+
 ## When NOT to Use
 
 - Authoring `.bst` element files → use `buildstream.md` or `add-package.md`
 - Debugging CI pipeline failures → use `ci.md`
 - Looking up specific packaging patterns → use the relevant `packaging-*.md` skill
+
+## Core Process
+
+1. Confirm whether the question is about Dakota's identity, architecture, or scope.
+2. Use the hard facts here to avoid importing bluefin or OSTree assumptions.
+3. Route into a packaging or CI skill once the repo context is clear.
 
 ## Hard Facts — Violations Recorded 3+ Times
 
@@ -31,6 +46,7 @@ Load when you need context on what dakota is, how it differs from production Blu
 
 **Production image = `ghcr.io/projectbluefin/dakota:stable`.**
 - Streams: `:testing` (nightly, e2e-gated), `:latest` + `:stable` (weekly promotion)
+- Rolling nightly stream: `:next` / `:btw` (GNOME 51 master — see below)
 - When someone says "is X in the image", check the GHCR image via `skopeo inspect` or `podman run --rm` — not a local machine unless explicitly asked.
 
 **Verify hypothesis before stating root cause.**
@@ -44,38 +60,44 @@ freedesktop-sdk provides glibc/systemd/kernel, gnome-build-meta provides GNOME S
 
 **Key positioning:** Dakota is a **curated subset** of production Bluefin, not a 1:1 clone. It intentionally includes things production Bluefin doesn't have (sudo-rs, uutils-coreutils, GNOME nightly) and intentionally omits things that don't make sense for a from-source build (Nvidia drivers, ZFS, enterprise AD/Kerberos).
 
-Published image: `ghcr.io/projectbluefin/dakota:{testing,latest,stable}`
+Published image: `ghcr.io/projectbluefin/dakota:{testing,latest,stable,:next,:btw}`
 
-## GNOME Version Streams
+## Image Streams
 
-Dakota currently maintains two GNOME version streams:
+| Tag | Branch | GNOME | Cadence | Stability |
+|-----|--------|-------|---------|-----------|
+| `:testing` | `main` | GNOME 50 (stable) | Every merged PR | e2e-gated |
+| `:latest` / `:stable` | `main` | GNOME 50 (stable) | Weekly promotion | Production |
+| `:next` | `next` | GNOME 51 (master) | On junction bump (~nightly) | Experimental |
+| `:btw` | `next` | GNOME 51 (master) | Same as `:next`, nvidia variant | Experimental |
 
-- `main` — the default Dakota stream. It publishes the normal `:testing`, `:latest`, and `:stable` tags.
-- `gnome-51` — a forward-looking development stream for GNOME 51 work. It is intentionally separate from `main` so GNOME pre-release churn does not change the default Dakota stream.
+### `:next` / `:btw` — Rolling GNOME 51 stream
 
-### Current `gnome-51` tracking target
+`:next` is dakota's fastest variant — tracks gnome-build-meta `master` (GNOME 51
+development branch). It is positioned as the arch-competitor stream: newest
+GNOME Shell, newest GTK, newest everything.
 
-`gnome-51` currently tracks `gnome-build-meta` `master` because upstream has not cut a dedicated `gnome-51` branch yet.
+**Key differences from `main`:**
+- `gnome-build-meta.bst` tracks `master` (not `gnome-50`)
+- No bootc override (GNOME 51 master ships current bootc)
+- Junction bumps are **fully automated** — `track-next-junctions.yml` at 20:00
+  UTC opens auto-merge PRs; no human review required
+- **No promotion to `:stable`** — ever. This stream does not feed the weekly
+  release pipeline.
+- Fixes from `main` (sbom, CI) must be **manually cherry-picked** to `next` —
+  they do not land automatically.
 
-### When upstream cuts `gnome-51`
+**When working on `next`:**
+```bash
+git checkout upstream/next -b fix/my-next-fix
+git push upstream fix/my-next-fix:next   # push directly, no PR needed for fixes
+```
 
-Once `gnome-build-meta` creates its `gnome-51` branch, update `elements/gnome-build-meta.bst` on Dakota's `gnome-51` branch so `track: master` becomes `track: gnome-51`. After that, future junction bumps on Dakota `gnome-51` should follow the new upstream branch instead of `master`.
-
-### Published tags
-
-The `gnome-51` stream publishes to:
-- `ghcr.io/projectbluefin/dakota:next` — primary rolling tag
-- `ghcr.io/projectbluefin/dakota:btw` — permanent alias ("btw I use dakota")
-
-### Arch competitor positioning
-
-`:next`/`:btw` is Dakota's arch competitor stream:
-- **Latest GNOME** — tracks gnome-build-meta `master` the moment it lands
-- **Memory-safe defaults** — sudo-rs, uutils-coreutils (no other Bluefin variant ships these)
-- **Rolling, zero maintenance** — daily auto-merge from `main` + daily junction tracker at 20:00 UTC; auto-merges on passing CI
-- **Built from source** — hermetic BST build, reproducible, auditable
-
-The naming is intentional: `:btw` = "btw I use dakota".
+**Sync fixes from main:**
+```bash
+git log upstream/next..upstream/main --oneline -- Justfile .github/
+git cherry-pick <shas>
+```
 
 **Historical path note:** the repo still uses `bluefin` in key filenames such as
 `elements/bluefin/*` and `oci/bluefin.bst`. Those are Dakota paths, not proof
@@ -164,6 +186,26 @@ Heavy build contributors:
 2. **GRUB** — built in 3 variants (i386-pc, i386-efi, x86_64-efi). Required because upstream GNOME OS uses systemd-boot only; Bluefin needs GRUB for bootc compatibility.
 3. **Junction patches** — patches to freedesktop-sdk and gnome-build-meta modify junction identity hashes, which may affect upstream cache hit rates. Upstreaming patches would improve this.
 4. **Pre-built binary pattern** — used for Tailscale, Zig, Homebrew, Go CLI tools. New packages should follow this pattern where possible.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "Dakota is basically bluefin with different packaging." | No. The build and runtime model differ in important ways. |
+| "If it works in OSTree land, the advice carries over." | Dakota runtime is composefs/bootc-focused. |
+| "CI green is enough to say the image is fixed." | Hardware confirmation still matters here. |
+
+## Red Flags
+
+- Suggesting RPM, rpm-ostree, or OSTree-specific remediation for Dakota runtime problems
+- Treating `:next` as a stable-promotion stream
+- Describing Dakota as a 1:1 clone of production Bluefin
+
+## Verification
+
+- [ ] The answer reflects Dakota's actual runtime and build model
+- [ ] Bluefin/OSTree assumptions were explicitly filtered out
+- [ ] The scope advice matches Dakota's intended positioning
 
 ## Lessons Learned
 
