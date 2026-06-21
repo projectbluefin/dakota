@@ -1,7 +1,7 @@
 name: Run Testsuite
 
 # Canonical wrapper — always call this, never call projectbluefin/testsuite e2e.yml directly.
-# Uses @main (managed floating tag) — internal projectbluefin/ refs are never SHA-pinned.
+# Uses @v1 (managed rolling tag) — internal projectbluefin/ refs use @v1, never SHA-pinned or @main.
 # See docs/skills/ci-tooling.md for the internal vs external pin policy.
 on:
   workflow_call:
@@ -25,7 +25,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@main
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@v1
     with:
       image: ${{ inputs.image }}
       suites: ${{ inputs.suites }}
