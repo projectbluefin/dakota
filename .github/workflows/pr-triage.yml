@@ -55,6 +55,12 @@ jobs:
             echo "Automated next-branch junction update — skipping main-target gate."
             exit 0
           fi
+          # Allow all PRs targeting next — next is a legitimate development branch
+          # (GNOME master stream). Unlike stable/latest, next accepts direct PRs.
+          if [ "$BASE_REF" = "next" ]; then
+            echo "PR targets next development branch — skipping main-target gate."
+            exit 0
+          fi
           # Allow Renovate PRs targeting testing — testing is the staging branch
           # for the testing→main promotion pipeline (parity with bluefin).
           if [ "$BASE_REF" = "testing" ] && [[ "$HEAD_REF" == renovate/* ]]; then
