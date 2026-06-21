@@ -29,12 +29,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Find all open PRs targeting main that are BEHIND and not from bots.
+          # Find all open PRs targeting main that are BEHIND and need updating.
           # Renovate PRs target testing, not main — skip them.
-          # Mergeraptor manages its own branches — skip those too.
           # auto/promote-testing-to-main is always rebuilt fresh by promote-testing-to-main.yml;
           # a merge commit here changes the tree, defeats the tree-identity check, triggers a
           # force-push, and dismisses approvals. Let the promote workflow keep it current.
+          # Mergeraptor PRs (distrobox, junction bumps) DO target main and need auto-update
+          # so renovate-automerge can fire. They are intentionally included here.
           STALE_PRS=$(gh pr list \
             --repo "$REPO" \
             --base main \
@@ -44,7 +45,6 @@ jobs:
               .[] |
               select(.mergeStateStatus == "BEHIND") |
               select(.author.login != "renovate[bot]") |
-              select(.author.login != "app/mergeraptor") |
               select(.headRefName != "auto/promote-testing-to-main") |
               .number
             ')
