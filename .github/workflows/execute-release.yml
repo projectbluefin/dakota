@@ -42,7 +42,7 @@ jobs:
       issues: write
       packages: write
       pull-requests: write
-    uses: projectbluefin/actions/.github/workflows/reusable-execute-release.yml@99d867d662ab64a1f82b4f5f24f73b4051dbff01 # v1
+    uses: projectbluefin/actions/.github/workflows/reusable-execute-release.yml@v1
     with:
       registry: ghcr.io/projectbluefin
       variants: >-
@@ -61,11 +61,15 @@ jobs:
       contents: write
       id-token: write
       packages: read
-    uses: projectbluefin/actions/.github/workflows/reusable-release.yml@99d867d662ab64a1f82b4f5f24f73b4051dbff01 # v1
+    uses: projectbluefin/actions/.github/workflows/reusable-release.yml@v1
     with:
       stream_name: stable
       image: ghcr.io/projectbluefin/dakota
-      generate_sbom_inline: true
+      # Use the BST-native SBOM from publish.yml's publish-sbom job.
+      # Inline syft with rpm cataloger returns 0 packages on BST images.
+      build_workflow: publish.yml
+      build_branch: main
+      sbom_artifact: sbom-dakota
       checkout_ref: main
       project_name: Dakota
       badge_label: Stable
@@ -74,10 +78,52 @@ jobs:
         ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
       notable_packages: >-
         [
-          {"sbom_name": "kernel", "label": "Kernel"},
+          {"sbom_name": "linux",       "label": "Kernel"},
           {"sbom_name": "gnome-shell", "label": "GNOME Shell"},
-          {"sbom_name": "flatpak", "label": "Flatpak"},
-          {"sbom_name": "bootc", "label": "bootc"}
+          {"sbom_name": "flatpak",     "label": "Flatpak"},
+          {"sbom_name": "bootc",       "label": "bootc"}
         ]
       docs_url: https://docs.projectbluefin.io/changelogs
     secrets: inherit
+
+  post-release-variants:
+    needs: [execute, release-notes]
+    if: always() && needs.release-notes.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Resolve promoted digests
+        id: digests
+        run: |
+          set -euo pipefail
+          for image in dakota dakota-nvidia; do
+            digest=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/${image}:stable" \
+              | jq -r '.Digest' | cut -c1-19)
+            echo "${image}=${digest}" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Prepend variants table to release
+        env:
+          DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota }}
+          NVIDIA_DIGEST: ${{ steps.digests.outputs.dakota-nvidia }}
+        run: |
+          set -euo pipefail
+          TAG=$(gh release list --repo "${{ github.repository }}" --limit 1 --json tagName --jq '.[0].tagName')
+          CURRENT=$(gh release view "$TAG" --repo "${{ github.repository }}" --json body --jq '.body')
+
+          VARIANTS_SECTION=$(printf '%s\n' \
+            '## Variants promoted' \
+            '' \
+            '| Variant | Tag | Digest |' \
+            '|---|---|---|' \
+            "| \`dakota\` | \`:stable\` | \`${DAKOTA_DIGEST}\` |" \
+            "| \`dakota-nvidia\` | \`:stable\` | \`${NVIDIA_DIGEST}\` |" \
+            '' \
+            '---' \
+            '')
+          printf '%s\n%s' "$VARIANTS_SECTION" "$CURRENT" > /tmp/updated-body.md
+          gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file /tmp/updated-body.md
