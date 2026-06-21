@@ -86,6 +86,14 @@ Agent works on task
 - Obvious things any developer would know
 - Ephemeral state ("currently broken, fix pending")
 
+### What is banned
+
+These patterns actively harm the factory. **Delete them on sight.**
+
+- **Changelog files** (`IMPROVEMENTS.md`, `CHANGELOG.md`, `CHANGES.md`, `SESSION.md`, agent-authored progress logs) — agents append to them instead of updating skill files. The result: a stale changelog, skill files that never get updated.
+- **"Append here" instructions** — any doc saying "append when you ship something" is a hallucination magnet. Route to `docs/skills/<file>.md` instead.
+- **Session notes committed to the repo** (`NOTES.md`, `PLAN.md`, `TODO.md`) — these become stale context that misleads every future agent. Session state lives in `~/.copilot/session-state/` only, never committed.
+
 ### Where learnings live
 
 | You are working in... | Write to |

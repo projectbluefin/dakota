@@ -1,7 +1,7 @@
 ---
 
 name: oci-layers
-description: Explains how packages flow from BST elements into the final OCI image layer. Covers compose vs stack kinds, BST weak-key caching bug, and layer verification. Load when packages go missing from the built image or when modifying layer assembly.
+description: Explains how packages flow from BST elements into the final OCI image layer. Covers compose vs stack kinds, BST weak-key caching bug, and layer verification. Use when packages go missing from the built image, when modifying layer assembly, or when checking why a successful build produced an empty layer.
 metadata:
   context7-sources:
     - /apache/buildstream
