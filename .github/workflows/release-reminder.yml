@@ -13,7 +13,7 @@ jobs:
       contents: read
       issues: write
       pull-requests: write
-    uses: projectbluefin/actions/.github/workflows/reusable-release-reminder.yml@99d867d662ab64a1f82b4f5f24f73b4051dbff01 # v1
+    uses: projectbluefin/actions/.github/workflows/reusable-release-reminder.yml@1ca13a7cb0645b9dae56df739b856291b5f39853 # v1
     with:
       days_warn: 7
       days_escalate: 14
