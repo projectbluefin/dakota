@@ -1,7 +1,7 @@
 ---
 
 name: packaging-go
-description: Packages a Go project from source using BST go_module sources or a vendored GOPATH tarball. Note: all current Go tools in Dakota use pre-built binaries — load packaging-binaries.md first to confirm source build is truly needed.
+description: Packages a Go project from source using BST go_module sources or a vendored GOPATH tarball. Note: all current Go tools in Dakota use pre-built binaries — load packaging-binaries.md first to confirm source build is truly needed. Use when a Go project must be built from source in Dakota instead of consuming an upstream release binary.
 metadata:
   context7-sources:
     - /apache/buildstream

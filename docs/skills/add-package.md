@@ -139,3 +139,22 @@ variables:
 ### BST variables cannot be used in source URL fields (2026-06-07)
 
 Unlike install commands where `%{version}` expands correctly, BuildStream does NOT expand variables inside `sources[].url:` fields. Use `include/aliases.yml` to define a URL alias, then reference the alias.
+
+### lsp-plugins 1.1.x is self-contained; 1.2.x requires network module fetching (2026-06-21)
+
+The `sadko4u/lsp-plugins` GitHub repo (redirects to `lsp-plugins/lsp-plugins`) switched to a modular
+build system in the 1.2.x series that runs `make fetch` to download ~12 submodules at build time.
+The 1.1.x series (latest: 1.1.26) is monolithic and BST-safe. Use 1.1.x for BST packaging.
+
+Build LV2 only (no UI, no JACK, no standalone):
+
+```yaml
+variables:
+  make-args: >-
+    BUILD_MODULES=lv2
+    LV2_UI=0
+    BUILD_R3D_BACKENDS=
+    PREFIX=%{prefix}
+```
+
+External dep: `freedesktop-sdk.bst:components/sndfile.bst`. No external LV2 headers needed — bundled.

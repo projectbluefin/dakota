@@ -1,7 +1,7 @@
 ---
 
 name: installer
-description: bootc-installer (GTK4/Adwaita Flatpak) for Dakota. Covers two-component architecture (Python GUI + Go fisherman backend), dev setup, demo mode, and the dakota/dakota-iso boundary. Load when working on installer UI, recipe, or firstboot installer-cleanup behavior.
+description: bootc-installer (GTK4/Adwaita Flatpak) for Dakota. Covers two-component architecture (Python GUI + Go fisherman backend), dev setup, demo mode, and the dakota/dakota-iso boundary. Use when working on installer UI, the Flatpak recipe, fisherman integration, or firstboot installer-cleanup behavior.
 metadata:
   context7-sources:
     - /bootc-dev/bootc

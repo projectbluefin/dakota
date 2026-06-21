@@ -1,6 +1,6 @@
 ---
 name: ci-reference
-description: Historical Dakota CI deep cuts and accumulated failure patterns. Use only after the focused CI skills when you need long-tail prior art or exact past failure signatures.
+description: Historical Dakota CI deep cuts and accumulated failure patterns. Use when the focused CI skills did not explain a failure and you need long-tail prior art, exact past failure signatures, or old workflow behavior that still shapes today's pipeline.
 metadata:
   context7-sources:
     - /websites/github_en_actions
