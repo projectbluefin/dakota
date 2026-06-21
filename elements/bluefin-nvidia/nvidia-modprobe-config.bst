@@ -18,6 +18,10 @@ config:
     options nvidia-drm modeset=1 fbdev=1
     options nvidia NVreg_OpenRmEnableUnsupportedGpus=0
     options nvidia NVreg_EnableGpuFirmware=1
+    # Required for nvidia-suspend/hibernate/resume services to save and
+    # restore GPU memory. Without this the services run but GPU context
+    # is lost on resume, causing hard locks. See gnome-build-meta !4685.
+    options nvidia NVreg_PreserveVideoMemoryAllocations=1
     EOF
 
     # Order matters: nvidia → nvidia-modeset → nvidia-drm. Loading early

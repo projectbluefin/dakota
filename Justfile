@@ -62,7 +62,12 @@ bst *ARGS:
 
 # Validate BST element graph — mirrors CI validate job.
 [group('dev')]
+check-publish-workflow:
+    python3 scripts/check_publish_workflow.py
+
+[group('dev')]
 validate:
+    just check-publish-workflow
     just bst show --deps all oci/bluefin.bst
     just bst show --deps all oci/bluefin-nvidia.bst
 
@@ -160,6 +165,10 @@ export variant="default":
     # Squash, inject build-date VERSION_ID, and apply dynamic labels.
     # BST has no string option type, so VERSION_ID is set to "0" in os-release.bst
     # and replaced here at export time — after the BST cache key is already fixed.
+    # Reverts the buildah mount+commit approach from f8b80d4: buildah is not
+    # available in quay.io/podman/stable (breaks local builds and Argo pipeline)
+    # and the multi-layer output breaks composefs xattr injection in chunka.
+    # Fixes: projectbluefin/dakota#841 (boot failure on :testing 2026-06-13)
     DATE_TAG="$(date -u +%Y%m%d)"
     # shellcheck disable=SC2086
     printf 'FROM %s\nRUN sed -i "s/^VERSION_ID=.*/VERSION_ID=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\\"%s\\"/" /usr/lib/os-release\n' "$IMAGE_ID" "$DATE_TAG" "$DATE_TAG" \
@@ -546,10 +555,11 @@ show-me-the-future:
     fi
 
 # ── Chunkah ──────────────────────────────────────────────────────────
-# Use the pre-built chunkah image from quay.io
-# TODO: once coreos/chunkah#113 lands (libc fallback for xattr reads),
-# the overlay + xattr-apply step can be removed. chunkah can then be run
-# with LD_PRELOAD=fakecap.so FAKECAP_MANIFEST=.../fakecap-manifest.tsv.
+# Use the pre-built chunkah image from quay.io (v0.6.0).
+# coreos/chunkah#113 is closed — the resolution is this physical overlay+xattr
+# approach, not a libc fallback in chunkah. The overlay+fakecap-restore path
+# remains required because chunkah's rustix xattr backend uses raw syscalls that
+# bypass LD_PRELOAD, so xattrs must be physically applied to a writable overlay.
 # See also: projectbluefin/dakota#231.
 chunkify image_ref:
     #!/usr/bin/env bash
@@ -593,7 +603,21 @@ chunkify image_ref:
     }
     trap cleanup EXIT
 
-    UPPER=$(mktemp -d -p /var/tmp); WORK=$(mktemp -d -p /var/tmp); MERGED=$(mktemp -d -p /var/tmp)
+    # Pick the tmpdir with the most free space for the overlay work dirs.
+    # fakecap-restore triggers overlayfs copy-up for every file it touches
+    # (700K+ entries); copy-ups can exhaust /var/tmp on machines where root
+    # has little free space (e.g. CI runners with a BTRFS loopback for
+    # /var/lib/containers).  Mirror the same logic used in chunka@v1.
+    _OVERLAY_TMPDIR="/var/tmp"
+    for _candidate in /var/lib/containers /var/tmp; do
+        if [ -d "$_candidate" ]; then
+            _free=$(df --output=avail "$_candidate" 2>/dev/null | tail -1 || echo 0)
+            _best=$(df --output=avail "$_OVERLAY_TMPDIR" 2>/dev/null | tail -1 || echo 0)
+            if (( _free > _best )); then _OVERLAY_TMPDIR="$_candidate"; fi
+        fi
+    done
+    echo "==> overlay tmpdir: ${_OVERLAY_TMPDIR} ($(df -h --output=avail "${_OVERLAY_TMPDIR}" | tail -1 | tr -d ' ') free)"
+    UPPER=$(mktemp -d -p "$_OVERLAY_TMPDIR"); WORK=$(mktemp -d -p "$_OVERLAY_TMPDIR"); MERGED=$(mktemp -d -p "$_OVERLAY_TMPDIR")
     $SUDO_CMD chmod 755 "$UPPER" "$WORK" "$MERGED"
     $SUDO_CMD mount -t overlay overlay \
         -o "lowerdir=${LOWER},upperdir=${UPPER},workdir=${WORK}" \
@@ -605,9 +629,11 @@ chunkify image_ref:
     # Run chunkah against the overlay (bind-mounted read-only).
     # --max-layers 120 balances layer granularity with registry storage space.
     # CHUNKAH_CONFIG_STR preserves OCI labels (containers.bootc=1).
-    # chunkah image pinned by tag+digest for reproducibility
+    # chunkah image pinned by tag+digest for reproducibility.
     # Pre-pull with retries so transient registry 5xx errors don't abort the run.
-    CHUNKAH_REF="quay.io/coreos/chunkah:v0.5.0@sha256:352097f3d32186ac11082f8b74cd544678b00388b50c96ba5c8e79503a454fe3"
+    # Note: coreos/chunkah#113 was closed — the resolution is this overlay+xattr approach,
+    # not a libc fallback in chunkah. The overlay+fakecap path stays required.
+    CHUNKAH_REF="quay.io/coreos/chunkah:v0.6.0@sha256:ff8b8b466a942ec6000445d4001fc661e2fc5a952ad9ee29b4de9ab09d1d1708"
     for attempt in 1 2 3; do
         $SUDO_CMD podman pull "$CHUNKAH_REF" && break
         echo "==> chunkah pull attempt $attempt failed, retrying in 10s..."
@@ -933,7 +959,9 @@ sbom variant="default":
         *) echo "ERROR: unknown variant '{{variant}}' (expected: default | nvidia)" >&2; exit 1 ;;
     esac
 
-    # Persist the snakeoil key cache so bst show runs silently (see bst recipe).
+    # Persist host-side caches before bind-mounting them into podman.
+    # actions/cache restores archives but does not create missing directories on a cold miss.
+    mkdir -p "${HOME}/.cache/buildstream"
     mkdir -p "${HOME}/.config/buildstream-generate"
     GIT_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
     # Prime the generated source plugin cache (snakeoil secureboot keys).
@@ -954,6 +982,10 @@ sbom variant="default":
         2>/dev/null || true
 
     echo "==> Generating BST-native SBOM with buildstream-sbom (${ELEMENT} → ${OUTFILE})..."
+    # Ensure pip cache directory exists before podman bind-mount.
+    # actions/cache does not create the path on a cold cache miss; podman
+    # refuses to start (exit 125) if the host-side directory is absent.
+    mkdir -p "${HOME}/.cache/pip"
     # Pinned to commit 0706fec3 (2026-04-01) — latest main, includes element
     # names in SPDX output (issue #9 fix). Switch to a versioned PyPI release
     # once the project publishes one.
@@ -963,6 +995,7 @@ sbom variant="default":
         -v "{{justfile_directory()}}:/src:rw" \
         -v "${HOME}/.cache/buildstream:/root/.cache/buildstream:rw" \
         -v "${HOME}/.config/buildstream-generate:/root/.config/buildstream-generate:rw" \
+        -v "${HOME}/.cache/pip:/root/.cache/pip:rw" \
         -w /src \
         -e ELEMENT="${ELEMENT}" \
         -e SPDX_NAME="${SPDX_NAME}" \

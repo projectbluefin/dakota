@@ -1,0 +1,33 @@
+name: Run Testsuite
+
+# Canonical wrapper — always call this, never call projectbluefin/testsuite e2e.yml directly.
+# Uses @main (managed floating tag) — internal projectbluefin/ refs are never SHA-pinned.
+# See docs/skills/ci-tooling.md for the internal vs external pin policy.
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: "Full image reference to test (e.g. ghcr.io/projectbluefin/dakota:testing)"
+        required: true
+        type: string
+      suites:
+        description: "Comma-separated list of test suites to run"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  e2e:
+    name: ${{ inputs.suites }}
+    permissions:
+      contents: read
+      packages: write
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@main
+    with:
+      image: ${{ inputs.image }}
+      suites: ${{ inputs.suites }}
+    secrets: inherit
+

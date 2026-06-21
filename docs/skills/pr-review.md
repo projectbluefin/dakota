@@ -1,11 +1,32 @@
 ---
+
 name: pr-review
-description: Consolidated review workflow for dakota pull requests. Covers review priorities, common rejection reasons, dep-update PR review, and ghost (agent-assisted PR) handling. Load when asked to review any PR in projectbluefin/dakota.
+description: Consolidated review workflow for dakota pull requests. Covers review priorities, common rejection reasons, dep-update PR review, and ghost (agent-assisted PR) handling. Use when asked to review any PR in projectbluefin/dakota or to sanity-check a branch before requesting maintainer review.
+metadata:
+  context7-sources:
+    - /websites/github_en_actions
 ---
 
 # PR Review
 
 Consolidated review workflow for dakota pull requests.
+
+## When to Use
+
+Use when asked to review any Dakota PR, including feature PRs, dep-update PRs, or agent-authored maintenance changes.
+
+## When NOT to Use
+
+- Queue cleanup or stale-branch repair without substantive review → `merge-queue.md`
+- General issue triage before any PR exists → `actionadon.md`
+
+## Core Process
+
+1. Read the workflow and checklist docs first.
+2. Check branch hygiene and diff scope.
+3. Verify the PR category-specific checklist items.
+4. Check required CI status and mergeability.
+5. Review correctness only after the workflow hygiene is sound.
 
 ## Before you review
 
@@ -65,6 +86,29 @@ Auto-generated dep-update PRs (`auto/track-*`, `renovate/*`) always target
 
 See `merge-queue.md` for the full retarget/cherry-pick/merge flow.
 
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "The code looks fine, so the workflow details can slide." | Dakota reviews start with branch hygiene and checklist compliance for a reason. |
+| "A giant diff is just a busy PR." | It often means the branch started from the wrong base. |
+| "CI hasn't run yet, but the change is obvious." | Required checks are part of correctness here. |
+
+## Red Flags
+
+- Reviewing code details before checking branch base and scope
+- Ignoring checklist category mismatches
+- Accepting junction bumps mixed with unrelated patch changes
+- Treating skipped/absent CI as equivalent without understanding why
+
+## Verification
+
+- [ ] Branch hygiene was checked first
+- [ ] Relevant checklist items were reviewed
+- [ ] Required CI/check state was examined
+- [ ] Scope is one logical change
+- [ ] Review comments align with Dakota workflow, not just generic code review taste
+
 ## Lessons Learned
 
 ### Rubber duck CI changes against bluefin/bluefin-lts before merging (2026-06-07)
@@ -89,5 +133,21 @@ rubber duck the release pipeline for consistency with projectbluefin/bluefin and
 Then pipe the findings directly into fixes before the PR lands. This session
 caught 4 issues from rubber duck + 1 interaction bug (TOCTOU guard) from
 doublecheck — all fixed before merging.
+
+### Check new service/file additions are wired into BST install-commands (2026-06-10)
+
+Dropping a file into `files/firstboot/` (or any source directory) does not make
+it land in the OCI image. `elements/bluefin/firstboot-services.bst` only installs
+files explicitly listed in `install-commands`. A PR that adds a new file but no
+corresponding `install -Dm644 ... "%{install-root}/..."` line is silently incomplete
+— the file exists in the source tree but never reaches the image.
+
+**Review checklist for PRs adding new files:**
+1. Find the `.bst` element that owns the directory (grep `path: files/<dir>` in `elements/`)
+2. Confirm the element's `install-commands` block has an entry for the new file
+3. If the file should be enabled at boot, also check for a `ln -sf` symlink step
+
+PR 750 added `files/firstboot/keyring-unlock.service` with no install-commands
+entry — the service would never land in the image.
 
 ---

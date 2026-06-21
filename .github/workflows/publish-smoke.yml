@@ -1,0 +1,29 @@
+name: Publish Smoke
+
+# Observational smoke must live in a separate workflow. A reusable-workflow call
+# job cannot be marked continue-on-error, so keeping smoke inside publish.yml
+# turns flaky desktop assertions into a red publish pipeline.
+on:
+  workflow_run:
+    workflows: ["Publish Bluefin dakota"]
+    types: [completed]
+    branches:
+      - main
+      - 'gh-readonly-queue/main/**'
+      - next
+      - 'gh-readonly-queue/next/**'
+      - testing
+      - 'gh-readonly-queue/testing/**'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  smoke:
+    if: github.event.workflow_run.conclusion == 'success'
+    uses: ./.github/workflows/run-testsuite.yml
+    with:
+      image: ghcr.io/${{ github.repository_owner }}/dakota:${{ github.event.workflow_run.head_sha }}
+      suites: smoke
+    secrets: inherit

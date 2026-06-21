@@ -1,0 +1,83 @@
+name: Execute Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+  id-token: write
+  issues: write
+  packages: write
+  pull-requests: write
+
+jobs:
+  check-trigger:
+    runs-on: ubuntu-latest
+    outputs:
+      is-promotion: ${{ steps.check.outputs.is-promotion }}
+    steps:
+      - id: check
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "is-promotion=true" >> "$GITHUB_OUTPUT"
+          elif echo "$COMMIT_MSG" | grep -qE "^ci\(promote\): dakota testing|^chore: promote testing to main"; then
+            echo "is-promotion=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is-promotion=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  execute:
+    needs: [check-trigger]
+    if: needs.check-trigger.outputs.is-promotion == 'true'
+    permissions:
+      actions: read
+      contents: write
+      issues: write
+      packages: write
+      pull-requests: write
+    uses: projectbluefin/actions/.github/workflows/reusable-execute-release.yml@99d867d662ab64a1f82b4f5f24f73b4051dbff01 # v1
+    with:
+      registry: ghcr.io/projectbluefin
+      variants: >-
+        [
+          {"image":"dakota","source_tag":"testing","target_tag":"stable"},
+          {"image":"dakota-nvidia","source_tag":"testing","target_tag":"stable"}
+        ]
+      cosign_identity_regexp: ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
+    secrets: inherit
+
+  release-notes:
+    needs: [execute]
+    if: always() && needs.execute.result == 'success'
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+      packages: read
+    uses: projectbluefin/actions/.github/workflows/reusable-release.yml@99d867d662ab64a1f82b4f5f24f73b4051dbff01 # v1
+    with:
+      stream_name: stable
+      image: ghcr.io/projectbluefin/dakota
+      generate_sbom_inline: true
+      checkout_ref: main
+      project_name: Dakota
+      badge_label: Stable
+      accent_color: "#0ea5e9"
+      cert_identity_regexp: >-
+        ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
+      notable_packages: >-
+        [
+          {"sbom_name": "kernel", "label": "Kernel"},
+          {"sbom_name": "gnome-shell", "label": "GNOME Shell"},
+          {"sbom_name": "flatpak", "label": "Flatpak"},
+          {"sbom_name": "bootc", "label": "bootc"}
+        ]
+      docs_url: https://docs.projectbluefin.io/changelogs
+    secrets: inherit

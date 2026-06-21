@@ -1,0 +1,37 @@
+name: Nightly next build
+
+# Dispatches a build on the next branch every night at 03:00 UTC.
+#
+# Why a separate workflow instead of a schedule in build.yml:
+#   GitHub schedule events always run on the default branch. build.yml on
+#   main cannot directly trigger a build on next via schedule.
+#
+# Timing rationale:
+#   - gnome-build-meta nightly finishes  ~08:00 UTC
+#   - track-next-junctions opens PR       20:00 UTC  (artifacts confirmed in CAS)
+#   - junction PR auto-merges             ~21:00 UTC
+#   - this workflow fires                  03:00 UTC  (+6 h margin, US off-hours)
+#
+# The build triggered here runs through the normal build.yml → publish.yml
+# chain, so :next and :btw tags are updated automatically on success.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  dispatch:
+    name: Trigger next branch build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch build.yml on next
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run build.yml \
+            --repo "${{ github.repository }}" \
+            --ref next
+          echo "Build dispatched on next branch"

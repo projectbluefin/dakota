@@ -15,6 +15,7 @@ common ────────────────────────�
 bluefin  (main→stable)       ←── images ──→ testsuite (e2e gate)
 bluefin-lts (main→lts)       ←── images ──→ testsuite (e2e gate)
 dakota  (main→testing→latest/stable) ←── images ──→ testsuite (e2e gate)
+dakota  (next→:next/:btw, rolling nightly, no stable promotion)
                                  │
                                  ▼
                                 iso (installation media)
@@ -22,6 +23,10 @@ dakota  (main→testing→latest/stable) ←── images ──→ testsuite (e
 
 Each image repo pulls `ghcr.io/projectbluefin/common:latest` as a base layer.
 testsuite gates `:testing` promotion nightly and `:latest`/`:stable` promotion weekly.
+
+**Dakota image streams:**
+- `:testing` / `:latest` / `:stable` — `main` branch, GNOME 50 stable, e2e-gated weekly promotion
+- `:next` / `:btw` — `next` branch, GNOME 51 master, fully automated rolling nightly, **no promotion to stable ever**
 
 **`elements/bluefin/common.bst` strips bluefin-only content from common.** Any file added to `common/system_files/shared/` that does not apply to a fresh dakota install must be explicitly `rm -f`'d in the `install-commands` block of that element. Current stripped files: `rechunker-group-fix` script, service, and preset (chunka migration aid — not needed on fresh dakota).
 
@@ -81,6 +86,14 @@ Agent works on task
 - Obvious things any developer would know
 - Ephemeral state ("currently broken, fix pending")
 
+### What is banned
+
+These patterns actively harm the factory. **Delete them on sight.**
+
+- **Changelog files** (`IMPROVEMENTS.md`, `CHANGELOG.md`, `CHANGES.md`, `SESSION.md`, agent-authored progress logs) — agents append to them instead of updating skill files. The result: a stale changelog, skill files that never get updated.
+- **"Append here" instructions** — any doc saying "append when you ship something" is a hallucination magnet. Route to `docs/skills/<file>.md` instead.
+- **Session notes committed to the repo** (`NOTES.md`, `PLAN.md`, `TODO.md`) — these become stale context that misleads every future agent. Session state lives in `~/.copilot/session-state/` only, never committed.
+
 ### Where learnings live
 
 | You are working in... | Write to |
@@ -107,11 +120,23 @@ Non-compliance = automatic rejection.
 
 **Read-First:** Read `README.md`, `AGENTS.md`, `.github/copilot-instructions.md`, and `docs/SKILL.md` before modifying anything. Do not assume project structure or patterns.
 
+**Docs-and-code-first — no guessing:** This project and every tool it uses is well-documented. Before writing any implementation:
+1. Check `docs/skills/` for the relevant skill file — it likely already has the answer.
+2. If the answer involves an external tool (bootc, BuildStream, GitHub Actions, skopeo, cosign, etc.), look up the official docs via Context7 (`resolve-library-id` → `query-docs`) or read the source. Both are faster and more accurate than iterating blind.
+3. If the answer involves a workflow or script in this repo, read the file before touching it.
+4. **If you are about to guess, stop.** Find the authoritative source first. Guessing costs hours of CI time and human attention. There is almost always a documented answer.
+
+Examples of what "check the docs" means in practice:
+- `bootc install to-disk` behavior → read `bootc-dev/bootc` docs or source, or check `projectbluefin/testsuite` for a working reference implementation
+- BuildStream element syntax → `docs/skills/buildstream.md` + Context7 `/buildstream-project/buildstream`
+- GitHub Actions workflow behavior → `docs/skills/ci.md` first, then Context7
+- cosign/skopeo flags → Context7 before trying flags at random
+
 **Operator accountability:** The human deploying the agent is responsible for all decisions. PR template checkbox: `[ ] I am using an agent and I take responsibility for this PR`
 
 **Verification:** Every PR must confirm `just lint` passed and the image booted. Use `just boot-test` for automated pass/fail. No WIP PRs.
 
-**Pre-commit guard:** `no-floating-action-tags` blocks third-party `@main`/`@v*` floating action tags at commit time. `projectbluefin/` refs (`@v1`, `@main`) are intentional managed tags and are exempted.
+**Pre-commit guard:** `no-floating-action-tags` blocks third-party `@main`/`@v*` floating action tags at commit time. `projectbluefin/actions/` refs (`@v1`) are intentional managed tags and are exempted.
 
 **Justfile integrity:** All maintenance tasks must be `just` recipes. No loose shell commands. If a task isn't covered by an existing recipe, add one alongside your change.
 
@@ -179,6 +204,8 @@ Do not request review without evidence. Before opening a PR for review:
 
 **Production promotion** (`weekly-testing-promotion.yml`) requires 2 distinct human approvals in the GitHub `production` Environment. No agent may trigger, approve, or bypass this gate. Admin bypasses are permanently logged in Environment deployment history.
 
+**Dakota promotion PR has no e2e gate by design.** `promote-testing-to-main.yml` passes `run_e2e: false` to `reusable-promote-squash.yml` — the promotion PR gets cosign verification only. The e2e quality gate is at the weekly-testing-promotion level (2 human approvals in the `production` Environment). Do not add `run_e2e: true` to the promote caller.
+
 **Promotion pipeline — cosign verify pattern:** When adding cosign verification to a promotion workflow, anchor the `--certificate-identity-regexp` with `^...$` and restrict it to the specific publishing workflow file and allowed ref patterns (e.g. `^https://github.com/<repo>/.github/workflows/publish\.yml@refs/heads/(main|gh-readonly-queue/main/.+)$`). An unanchored wildcard accepts signatures from any workflow in the repo.
 
 **cosign install on GHA runners:** Never write directly to `/usr/local/bin` without `sudo`. Use `curl -fsSL ... -o "$RUNNER_TEMP/cosign"` then `sudo install -m 0755 "$RUNNER_TEMP/cosign" /usr/local/bin/cosign`. The runner user cannot write to `/usr/local/bin` on GitHub-hosted runners.
@@ -238,4 +265,4 @@ Per `docs/pr-checklist.md`: always `Assisted-by:` — **never `Co-authored-by:`*
 
 ### SHA pinning (actions only)
 
-All `uses:` references to external actions must be pinned to a full commit SHA with a version comment. Never use floating tags. `projectbluefin/` refs (`@v1`, `@main`) are intentional managed tags and are exempted.
+All `uses:` references to external actions must be pinned to a full commit SHA with a version comment. Never use floating tags. `projectbluefin/actions` refs (`@v1`) are intentional managed tags and are exempted.

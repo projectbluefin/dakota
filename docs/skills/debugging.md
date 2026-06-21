@@ -1,155 +1,147 @@
 ---
 name: debugging
-description: Diagnoses BST element build failures, YAML errors, source fetch failures, compile failures, and image build failures. Load when a `just bst build` fails or when reading CI build logs.
+description: Debug Dakota BuildStream build failures. Use when `just bst build` fails, `bst show` errors, source fetch breaks, or a package builds but does not land correctly in the image.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
 # Debugging Build Failures
 
-Load when a BST element build fails, or when diagnosing element errors from CI logs.
+## Overview
+
+This skill is for **element-level debugging**.
+Use it when the package/build graph is the problem, not when GitHub Actions plumbing is the problem.
+
+## When to Use
+
+Use when:
+- `just bst build ...` fails
+- `just bst show ...` errors
+- source fetch or ref tracking fails
+- compile/install/staging steps fail
+- the element builds but the final image is missing content
 
 ## When NOT to Use
 
-- Diagnosing CI pipeline failures (cache, GHCR, mTLS) → `ci.md`
-- Writing or modifying element files → `buildstream.md`
-- Debugging OCI layer content issues → `oci-layers.md`
+- CI trigger, token, cache, or workflow problems → CI skills
+- Writing a new element from scratch → `add-package.md` or `buildstream.md`
+- OCI layer design questions → `oci-layers.md`
+
+## Core Process
+
+1. **Classify the failure first.**
+   - graph/YAML
+   - fetch/ref
+   - compile
+   - install/staging
+   - image composition
+2. **Use the cheapest inspection command first.**
+   - `bst show` before `bst build`
+   - `artifact log` before guessing
+   - `artifact list-contents` before blaming compose layers
+3. **Reproduce in the sandbox if needed.**
+4. **Only escalate to full-image build after the element is clean.**
 
 ## Quick Reference
 
 | Action | Command |
-|--------|---------|
+|---|---|
 | Build one element | `just bst build bluefin/<name>.bst` |
 | Enter build sandbox | `just bst shell --build bluefin/<name>.bst` |
-| Inspect element sources | `just bst show bluefin/<name>.bst` |
-| Find what depends on an element | `grep -r "<name>" elements/` |
-| View last build log | `just bst artifact log bluefin/<name>.bst` |
-| List files in built element | `just bst artifact list-contents bluefin/<name>.bst` |
+| Inspect sources/graph | `just bst show bluefin/<name>.bst` |
+| View build log | `just bst artifact log bluefin/<name>.bst` |
+| List built files | `just bst artifact list-contents bluefin/<name>.bst` |
 | Delete cached failure | `just bst artifact delete bluefin/<name>.bst` |
-| Full image build (after fixing) | `just build` |
+| Full image build after fix | `just build` |
 
-## Debugging Workflow
+## Failure Classes
 
-1. **Read the build log** — The exact failure is in the last 20-50 lines. Look for `[FAILURE]` lines.
+### 1) Graph / YAML errors
 
-2. **Enter build sandbox** — Drop into the BST sandbox to reproduce manually:
-   ```bash
-   just bst shell --build bluefin/<name>.bst
-   ```
-   Inside the sandbox: run the failing configure/build command step-by-step.
+Symptom: `Error loading project` before any real build starts.
 
-3. **Check BST show output** — Verify all deps resolve and the element parses correctly:
-   ```bash
-   just bst show bluefin/<name>.bst
-   ```
-   A `Error loading project` here is a YAML/option error, not a build failure.
+Typical causes:
+- bad indentation
+- invalid option names or types
+- missing source alias
+- malformed element structure
 
-4. **List element content** — Verify installed files after a successful build:
-   ```bash
-   just bst artifact list-contents bluefin/<name>.bst
-   ```
+Start with:
+```bash
+just bst show bluefin/<name>.bst
+```
 
-## Common Failures
+### 2) Source fetch failures
 
-### YAML / Option Errors
+Typical causes:
+- stale `ref:`
+- moved upstream URL
+- tarball layout mismatch
 
-Symptom: `Error loading project` — element never starts building.
+Useful fixes:
+- `just bst source track bluefin/<name>.bst`
+- add/update alias in `include/aliases.yml`
+- use `base-dir: ""` for tarballs without a wrapping directory
 
-| Cause | Fix |
-|-------|-----|
-| Hyphenated option name | Options only allow alphanumeric + underscores (`my_option`, not `my-option`) |
-| Invalid type for `options:` | Valid types: `bool`, `enum`, `flags`, `element-mask`, `arch`, `os` (not `string`) |
-| Indentation error | Run `just bst show` to pinpoint the line |
-| Missing alias | Add to `include/aliases.yml` |
+### 3) Compile failures
 
-### Source Fetch Failures
+Typical causes:
+- missing build dependency
+- upstream path assumptions (`/usr/sbin`, `/lib`)
+- pkg-config visibility problems
 
-| Cause | Fix |
-|-------|-----|
-| Wrong `ref:` hash | Run `just bst source track bluefin/<name>.bst` to update |
-| URL changed upstream | Update URL + alias in `include/aliases.yml` |
-| Tarball has no wrapping directory | Add `base-dir: ""` to `kind: tar` source |
+### 4) Install / staging failures
 
-### Compile Failures
+Typical causes:
+- missing `strip-binaries: ""` for non-ELF payloads
+- forgot `mkdir -p` before symlink or install path creation
+- overlap conflict
+- files landing outside `/usr`
 
-| Cause | Fix |
-|-------|-----|
-| Missing build dep | Add to `build-depends:` in element YAML |
-| Wrong path assumption | GNOME OS is merged-usr; `/usr/sbin` → `/usr/bin`, `/lib` → `/usr/lib` |
-| `/usr/sbin` hardcoded in upstream | Patch the configure or Makefile |
-| Autotools can't find pkg | Check `PKG_CONFIG_PATH` and that the dep is in `build-depends:` |
+### 5) Image composition failures
 
-### Install / Staging Failures
+Typical causes:
+- element never wired into `deps.bst`
+- downstream compose cache did not invalidate
+- OCI layer is `stack` when it should be `compose`
 
-| Cause | Fix |
-|-------|-----|
-| Missing `strip-binaries: ""` | Required for non-ELF elements (fonts, pre-built binaries, configs) |
-| `mkdir` before `ln -sf` missing | Always `mkdir -p` before any symlink creation |
-| Overlap conflict | Add conflicting path to `overlap-whitelist:` |
-| File installed outside `/usr` | GNOME OS: everything must be under `/usr`. Patch install paths. |
-
-### Image Build Failures
-
-| Cause | Fix |
-|-------|-----|
-| New package not appearing in image | `deps.bst` cache invalidation bug — see BST Weak-Key Caching Bug in `buildstream.md` |
-| `ldconfig` error in OCI script | Run `ldconfig -r %{install-root}` after all installs, before `build-oci` |
-| Missing compose element content | OCI layer must be `kind: compose`, not `kind: stack` |
-
-## BST Shell Tips
+## Sandbox Workflow
 
 ```bash
-# Enter build sandbox for failing element
 just bst shell --build bluefin/<name>.bst
-
-# Inside the sandbox, run the failing step manually:
-./configure --prefix=/usr   # or whatever configure step is failing
-make -j$(nproc)
-make install DESTDIR=/path/to/staging
-
-# Check what's already installed in staging:
-find %{install-root} -type f | head -50
-
-# Check pkg-config sees expected deps:
-pkg-config --list-all | grep <libname>
+# inside the sandbox, rerun the failing configure/build/install step
 ```
+
+Use the sandbox when you know which phase failed and need to replay it interactively.
+Do not open the sandbox before you even know whether the graph parses.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "The build failed, so I need the sandbox immediately." | Not if `bst show` is already telling you it's YAML. |
+| "CI failed, so this must be a CI problem." | Many CI failures are just element failures surfacing remotely. Classify first. |
+| "The package is missing from the image, so the build must have failed." | It may have built fine and never been wired into the stack or compose step. |
+| "I'll skip straight to a full image build." | That's the slowest possible feedback loop. |
+
+## Red Flags
+
+- opening the sandbox before reading the log
+- debugging compile flags when the graph does not even parse
+- assuming missing image content means source fetch failure
+- rerunning full image builds for single-element syntax mistakes
+
+## Verification
+
+- [ ] The failure class is identified before deep debugging
+- [ ] `bst show` is clean before sandbox work begins
+- [ ] Logs or artifact contents were inspected before guessing
+- [ ] Single-element debugging was exhausted before full image rebuilds
+- [ ] The fix explains why the failure happened, not just how it was silenced
 
 ## Lessons Learned
 
 ### `Error loading project` before any build step = YAML error, not a build failure (2026-06-07)
 
 When BST exits with `Error loading project` before any `[build]` output appears, the element has a YAML/option error — it never even started building. Run `just bst show bluefin/<name>.bst` (no build) to pinpoint the exact line. Common causes: hyphenated option names, wrong option type, missing alias, bad indentation. Do not reach for `just bst shell` until `bst show` exits cleanly.
-
-### Delete the cached artifact before retrying a failed install step (2026-06-07)
-
-After fixing an `install-commands` error, BST may still report "cache hit" and skip the re-run. This is because the failed-build artifact is cached. Delete it before retrying:
-
-```bash
-just bst artifact delete bluefin/<name>.bst
-just bst build bluefin/<name>.bst
-```
-
-### Overlap conflicts block the final image build even when individual elements succeed (2026-06-07)
-
-When two elements install the same file path, `oci/bluefin.bst` fails with an overlap error even though each element builds fine individually. Fix by adding the conflicting path to `overlap-whitelist:` in `project.conf` or in the element's `public: bst:` section. Use `just bst show --format '%{name}: %{overlap-whitelist}' oci/bluefin.bst` to inspect current whitelist state.
-
-
-### meson `dependency("systemd")` fails with systemd-libs in build-depends (2026-06-07)
-
-If a meson element fails with:
-
-```
-meson.build:N: ERROR: Dependency "systemd" not found, tried pkgconfig
-```
-
-The element has `freedesktop-sdk.bst:components/systemd-libs.bst` in `build-depends`
-but the upstream `meson.build` calls `dependency('systemd')`, which needs `systemd.pc`
-— not `libsystemd.pc`. `systemd-libs.bst` only provides the library, not the pkgconfig
-descriptor for the systemd service itself.
-
-**Fix:** Replace `systemd-libs.bst` with `systemd.bst` in `build-depends`:
-
-```yaml
-build-depends:
-- freedesktop-sdk.bst:components/systemd.bst   # was systemd-libs.bst
-```
-
-`systemd.bst` ships `systemd.pc` and is a superset of `systemd-libs.bst`.

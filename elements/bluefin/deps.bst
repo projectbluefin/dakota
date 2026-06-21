@@ -17,14 +17,12 @@ depends:
 
   - bluefin/ghostty.bst
 
-  - bluefin/glow.bst
   - bluefin/gum.bst
-  - bluefin/fzf.bst
   - bluefin/tealdeer.bst
+  - bluefin/umotd.bst
 
   - bluefin/common.bst
   - bluefin/just-overrides.bst
-  - bluefin/motd.bst
   - bluefin/firstboot-date.bst
   - bluefin/firstboot-services.bst
   - bluefin/wallpaper-month.bst
@@ -34,9 +32,6 @@ depends:
   - bluefin/papers-thumbnailer.bst
   - bluefin/wallpapers.bst
 
-  - bluefin/jetbrains-mono.bst
-  - bluefin/jetbrains-mono-nerd-font.bst
-
   - bluefin/uutils-coreutils.bst
   - bluefin/sudo-rs.bst
   - bluefin/efibootmgr.bst
@@ -45,6 +40,7 @@ depends:
   - bluefin/gnome-ponytail-daemon.bst
   - bluefin/network.bst
   - bluefin/countme.bst
+  - bluefin/lsp-plugins-lv2.bst
 
   # Include things missing from the gnomeos base image
   - gnome-build-meta.bst:core-deps/fwupd.bst

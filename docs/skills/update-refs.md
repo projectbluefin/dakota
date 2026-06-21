@@ -1,11 +1,19 @@
 ---
+
 name: update-refs
-description: Workflow for updating an existing package version in dakota. Covers tarball ref tracking, git ref tracking, and cargo2 regeneration for Rust elements. Load for any "update package version" task.
+description: Workflow for updating an existing package version in dakota. Covers tarball ref tracking, git ref tracking, and cargo2 regeneration for Rust elements. Use when bumping package versions, refreshing tracked refs, or regenerating derived lock/vendor data after an upstream release.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
 # Updating Package Refs
 
 Load when updating an existing package's version in `projectbluefin/dakota`.
+
+## When to Use
+
+Use when bumping a package version, refreshing a tracked source ref, or regenerating lock/vendor data after an upstream release.
 
 ## When NOT to Use
 
@@ -13,6 +21,14 @@ Load when updating an existing package's version in `projectbluefin/dakota`.
 - Bumping junction refs (gnome-build-meta, freedesktop-sdk) → `patch-junctions.md`
   - **Exception:** Dakota's `gnome-51` branch has a dedicated `gnome-build-meta` tracking flow documented below.
 - Debugging a post-update build failure → `debugging.md`
+
+## Core Process
+
+1. Identify the source type and update path.
+2. Change the version metadata or track the source.
+3. Regenerate any derived vendor/lock blocks.
+4. Validate the graph and rebuild the affected element.
+5. Confirm the update changed what you intended, and nothing more.
 
 ## Quick Reference
 
@@ -113,6 +129,28 @@ Once `gnome-build-meta` creates a real `gnome-51` branch, first update `elements
 ## Junction Bumps
 
 For `elements/gnome-build-meta.bst` or `elements/freedesktop-sdk.bst` ref updates outside the Dakota `gnome-51` special case above, see `patch-junctions.md`. Junction bumps require patch verification and are a separate workflow.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "`source track` did the ref bump, so the job is finished." | Not for Rust and other ecosystems with generated dependency material. |
+| "I'll bump the version and skip the targeted rebuild." | That's how bad ref bumps survive until CI. |
+| "A junction bump is basically the same thing." | It is not; junctions have their own review and maintenance rules. |
+
+## Red Flags
+
+- Ref updated without rebuilding the affected element
+- Generated dependency blocks left stale after the version bump
+- Treating all source types as if they update the same way
+- Using this skill for junction maintenance
+
+## Verification
+
+- [ ] Correct update path was chosen for the source type
+- [ ] Any generated vendor/lock material was refreshed
+- [ ] The affected element graph validates and rebuilds cleanly
+- [ ] The diff reflects the intended update and no unrelated drift
 
 ## Lessons Learned
 
