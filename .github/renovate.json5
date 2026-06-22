@@ -23,7 +23,8 @@
       "matchUpdateTypes": ["digest", "pin", "patch", "minor"],
       "automerge": true,
       "automergeType": "pr",
-      "automergeStrategy": "squash"
+      "automergeStrategy": "squash",
+      "labels": ["chore/deps", "automerge"]
     },
     {
       "description": "Pin all GitHub Actions to full SHA digests",
