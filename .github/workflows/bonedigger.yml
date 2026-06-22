@@ -21,4 +21,3 @@ jobs:
     with:
       brand_name: "Dakota"
     secrets: inherit
-
