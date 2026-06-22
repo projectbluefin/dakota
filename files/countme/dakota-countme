@@ -24,11 +24,13 @@ INSTALL_EPOCH=$(< "$COOKIE_FILE")
 NOW=$(date +%s)
 DAYS=$(( (NOW - INSTALL_EPOCH) / 86400 ))
 
-# Fedora countme age buckets (matches libdnf5 spec):
-#   1 = first 7 days, 2 = 8–27 days, 3 = 28–140 days, 4 = 141+ days
-if   (( DAYS <   8 )); then COUNTME=1
+# Fedora countme age buckets (matches libdnf5 week-based logic):
+#   libdnf5 computes age_weeks = (now - epoch) / 604800 (integer division)
+#   bucket 1 = weeks 0 (days 0–6), 2 = weeks 1–3 (days 7–27),
+#   3 = weeks 4–19 (days 28–139), 4 = weeks 20+ (days 140+)
+if   (( DAYS <   7 )); then COUNTME=1
 elif (( DAYS <  28 )); then COUNTME=2
-elif (( DAYS < 141 )); then COUNTME=3
+elif (( DAYS < 140 )); then COUNTME=3
 else                        COUNTME=4
 fi
 
