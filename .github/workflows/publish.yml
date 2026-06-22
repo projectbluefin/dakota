@@ -736,7 +736,10 @@ jobs:
           $PUSH_OK || { echo "ERROR: all copy attempts failed for :btw"; exit 1; }
 
       - name: Fast-forward testing branch
-        if: matrix.image_suffix == '' && (needs.setup.outputs.branch == 'main' || startsWith(needs.setup.outputs.branch, 'gh-readonly-queue/main/'))
+        # Removed: testing is now an independent branch (like bluefin/bluefin-lts).
+        # BST-changing merges to testing trigger their own build and :testing publish.
+        # Fast-forwarding testing from main caused a redundant 5h rebuild (PR 997 / PR 1004).
+        if: false
         env:
           BUILD_SHA: ${{ needs.setup.outputs.sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

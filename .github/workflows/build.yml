@@ -6,11 +6,15 @@ on:
   merge_group:
     branches: [main, next, testing]
   push:
-    # testing is excluded: publish.yml fast-forwards testing after every main
-    # build, which would re-trigger an identical 5h BST build. :testing is
-    # already published by the main build. PRs targeting testing still build
-    # via pull_request and merge_group above.
-    branches: [main, next]
+    branches: [main, next, testing]
+    paths-ignore:
+      # Workflow files and docs don't affect the built image.
+      # .github/actions/** is intentionally NOT ignored — local composite
+      # actions (check-bst2-pin, generate-bst-ci-config) are used in the build.
+      - '.github/workflows/**'
+      - 'docs/**'
+      - '**.md'
+      - 'AGENTS.md'
   workflow_dispatch:
     # WARNING: Do not manually dispatch immediately after auto/track-* ref bumps
     # (e.g. Renovate PRs updating gnome-build-meta.bst). Cold builds of GNOME

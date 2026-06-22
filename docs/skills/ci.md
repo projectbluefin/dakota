@@ -2002,3 +2002,34 @@ gh pr view <n> --repo projectbluefin/dakota --json autoMergeRequest \
 ```
 If `false`, the `gh pr merge --auto` call failed — check the workflow's declared
 `permissions` first.
+
+### testing branch is independent — no fast-forward from main (2026-06-21)
+
+`testing` is an independent branch, identical to bluefin/bluefin-lts. It does NOT get
+fast-forwarded from `main`. BST-changing merges to `testing` trigger their own build
+and `:testing` publish. GHA-only merges (Renovate workflow pins) are filtered out.
+
+**Push trigger paths-ignore** in `build.yml`:
+```yaml
+push:
+  branches: [main, next, testing]
+  paths-ignore:
+    - '.github/workflows/**'   # workflows don't affect the image
+    # .github/actions/** intentionally NOT ignored — local composite actions are used in build
+    - 'docs/**'
+    - '**.md'
+    - 'AGENTS.md'
+```
+
+**Flow:**
+```
+BST PR → testing → build → :testing published
+GHA-only PR → testing → filtered, no build
+promote PR: testing → main → build → stable
+```
+
+The previous `Fast-forward testing branch` step in `publish.yml` was disabled (`if: false`)
+in PR 1004. It caused a redundant 5h rebuild: main build → fast-forward testing → push
+to testing → second full rebuild of identical content. Fix: PR 997 removed testing from
+push triggers entirely (broke :testing publishing); PR 1004 restored push trigger with
+paths-ignore and removed the fast-forward instead.
