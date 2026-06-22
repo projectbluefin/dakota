@@ -84,7 +84,7 @@ Use this skill when the task mentions:
 
 **Merge queue path:** `build` fires on `merge_group` — full OCI build, real CI gate before merge.
 
-**Cache-warm path:** `cache-warm.yml` runs Monday and Thursday at 06:00 UTC and on manual dispatch. Builds the default variant against the remote CAS so merge-queue builds land on cache hits even after junction ref bumps or upstream `gnome-build-meta` rebuilds. Failures are non-blocking — the warm build is best-effort. Addresses the cold-start non-determinism documented in [common automation-audit ND1](https://github.com/projectbluefin/common/blob/main/docs/factory/automation-audit/non-deterministic-steps.md).
+**Cache-warm path:** `cache-warm.yml` runs Monday and Thursday at 06:00 UTC and on manual dispatch. Two parallel jobs — `warm-cache` (x86_64) and `warm-cache-aarch64` — run independently with no `needs:` dependency between them. Each has its own concurrency group (`dakota-cache-warm` and `dakota-cache-warm-aarch64`) so they never serialise. Both use `continue-on-error: true` and failures are non-blocking — best-effort. Addresses the cold-start non-determinism documented in [common automation-audit ND1](https://github.com/projectbluefin/common/blob/main/docs/factory/automation-audit/non-deterministic-steps.md).
 
 ## Remote Cache Architecture
 
@@ -212,6 +212,24 @@ gh run list --repo projectbluefin/dakota --limit 5
 | `update-refs.md` | Understanding the source tracking workflow |
 
 ## Lessons Learned
+
+### ARM warm-cache must be a parallel job with its own concurrency group (2026-06-22)
+
+The `cache-warm.yml` originally had only an x86_64 job. Adding ARM as a second
+step inside the same job would serialise the two architectures and block x86 on
+ARM failures. The correct pattern:
+
+- Add a **second top-level job** (`warm-cache-aarch64`) — no `needs:` dependency.
+- Use a **separate `concurrency.group`** (`dakota-cache-warm-aarch64`) so the two
+  jobs never queue behind each other.
+- Set `continue-on-error: true` on the ARM job — ARM failures never block x86.
+- Use `BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf --option arch aarch64`
+  — the `--config` flag is required for the generated BST CI config (and the
+  remote CAS push) to actually take effect.
+- Use `enable-remote-execution: false`, `enable-push: true` — no RE service for
+  ARM yet, but artifacts should still be pushed to the remote CAS.
+- Use a distinct BST workspace cache key: `bst-warm-aarch64-${{ hashFiles(...) }}`
+  — sharing a key with x86 will cause cross-arch cache pollution.
 
 ### crun 1.21 (resolute) breaks just sbom on GHA — use --runtime runc (2026-06-08)
 

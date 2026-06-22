@@ -89,3 +89,73 @@ jobs:
           CACHED=$(just bst show --deps all --format '%{name} %{state}' oci/bluefin.bst 2>/dev/null \
             | grep -c "cached" || echo 0)
           echo "::notice::Cached elements after warm: ${CACHED}"
+
+  # ── aarch64 warm cache ────────────────────────────────────────────────────
+  # Parallel to warm-cache — no `needs:` dependency, separate concurrency group.
+  # ARM failures are non-blocking (continue-on-error: true).
+  # Uses enable-remote-execution: false (no RE service for ARM yet) but
+  # enable-push: true so artifacts land in the remote CAS for subsequent builds.
+  warm-cache-aarch64:
+    name: Build to warm remote CAS (aarch64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    continue-on-error: true
+    concurrency:
+      group: dakota-cache-warm-aarch64
+      cancel-in-progress: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Check bst2 image pin consistency
+        uses: ./.github/actions/check-bst2-pin
+
+      - name: Setup runner
+        uses: projectbluefin/actions/bootc-build/setup-runner@v1
+        with:
+          storage-backend: btrfs
+          update-podman: true
+          install-tools: '["just"]'
+
+      - name: Restore BST workspace cache (aarch64)
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.cache/buildstream
+          key: bst-warm-aarch64-${{ hashFiles('elements/gnome-build-meta.bst', 'elements/freedesktop-sdk.bst', 'Justfile') }}
+          restore-keys: |
+            bst-warm-aarch64-
+            bst-show-
+
+      - name: Generate BuildStream CI config
+        env:
+          CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
+          CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
+        uses: ./.github/actions/generate-bst-ci-config
+        with:
+          enable-remote-execution: false
+          enable-push: true
+
+      - name: Build default variant (aarch64 warm-cache mode, non-blocking)
+        env:
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf --option arch aarch64
+        run: |
+          set +e
+          just bst build oci/bluefin.bst
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::aarch64 cache warm build failed (rc=${rc}) — non-blocking."
+            echo "::warning::Likely causes: gnome-build-meta upstream rebuilding, junction ref skew."
+          fi
+          exit 0
+
+      - name: Report cache state (aarch64)
+        if: always()
+        run: |
+          echo "::notice::aarch64 cache warm completed at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          CACHED=$(just bst show --deps all --format '%{name} %{state}' \
+            --option arch aarch64 oci/bluefin.bst 2>/dev/null \
+            | grep -c "cached" || echo 0)
+          echo "::notice::Cached aarch64 elements after warm: ${CACHED}"
