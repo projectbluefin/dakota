@@ -8,49 +8,6 @@ bluefin-cli:
     @ublue-bling
     brew bundle --file=/usr/share/ublue-os/homebrew/cli.Brewfile
 
-# alias for toggle-devmode
-[group('System')]
-devmode:
-    @ujust toggle-devmode
-
-# Toggle between Bluefin and the Developer Experience
-[group('System')]
-toggle-devmode:
-    #!/usr/bin/env bash
-    set -e
-    BOOTED_JSON=$(sudo bootc status --json 2>/dev/null || echo '{}')
-    CURRENT_IMAGE=$(echo "$BOOTED_JSON" | jq -r '.status.booted.image.image.image // empty')
-    if [[ -z "${CURRENT_IMAGE}" ]]; then
-        echo "ERROR: could not determine the booted image from bootc status"
-        exit 1
-    fi
-    # Extract image tag (everything after the last colon)
-    IMAGE_TAG="${CURRENT_IMAGE##*:}"
-    # Extract base name without tag
-    IMAGE_REPO="${CURRENT_IMAGE%:*}"
-    IMAGE_BASE_NAME="$(basename "${IMAGE_REPO}")"
-    set +e
-
-    if grep -q -E -e "dx$" <<< "${IMAGE_BASE_NAME}" ; then
-        gum confirm "Would you like to disable developer mode?" || exit 0
-        echo "Rebasing to a non developer image"
-        NEW_IMAGE="$(sed "s/\-dx//" <<< ${IMAGE_REPO}):${IMAGE_TAG}"
-        pkexec bootc switch --enforce-container-sigpolicy "${NEW_IMAGE}"
-        exit 0
-    fi
-
-    gum confirm "Would you like to enable developer mode?" || exit 0
-    echo "Rebasing to a developer image"
-    NEW_IMAGE="${IMAGE_REPO}-dx:${IMAGE_TAG}"
-    pkexec bootc switch --enforce-container-sigpolicy "${NEW_IMAGE}"
-    if gum confirm "Do you want to also install the default development flatpaks?" ; then
-        ADD_DEVMODE=1 ujust install-system-flatpaks 0 1
-    fi
-    if gum confirm "Do you want to install extra monospace fonts?" ; then
-        brew bundle install --file=/usr/share/ublue-os/homebrew/fonts.Brewfile
-    fi
-    echo "Use ujust dx-group to add your user to the correct groups and complete the installation after rebooting into the development image"
-
 # Configure docker,incus-admin,libvirt, container manager, serial permissions
 [group('System')]
 dx-group:
