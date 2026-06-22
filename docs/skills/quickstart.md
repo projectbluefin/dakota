@@ -127,8 +127,9 @@ factory restart sequence is:
 2. Dispatch `build.yml --ref main` to populate the remote CAS.
 3. Wait ~60–90 minutes for the build to complete.
 4. `publish.yml` auto-triggers via `workflow_run`. If not, dispatch manually.
-5. After `:testing` lands, dispatch `weekly-testing-promotion.yml` and get
+5. After `:testing` lands, `promote-testing-to-main.yml` runs automatically on Tuesdays
+   04:00 UTC. To trigger manually: dispatch `promote-testing-to-main.yml`. Then get
    2 human approvals at https://github.com/projectbluefin/dakota/deployments
-   to promote `:testing` → `:latest` + `:stable`.
+   to promote `:testing` → `:latest` + `:stable` via `execute-release.yml`.
 
 Full details: `release-promotion.md` and `ci-tooling.md`.

@@ -203,9 +203,9 @@ Do not request review without evidence. Before opening a PR for review:
 
 **Agents MUST NOT push directly to `main`.** All changes via PR from a feature branch. Branch protection enforces this.
 
-**Production promotion** (`weekly-testing-promotion.yml`) requires 2 distinct human approvals in the GitHub `production` Environment. No agent may trigger, approve, or bypass this gate. Admin bypasses are permanently logged in Environment deployment history.
+**Production promotion** requires 2 distinct human approvals in the GitHub `production` Environment. No agent may trigger, approve, or bypass this gate. Admin bypasses are permanently logged in Environment deployment history.
 
-**Dakota promotion PR has no e2e gate by design.** `promote-testing-to-main.yml` passes `run_e2e: false` to `reusable-promote-squash.yml` — the promotion PR gets cosign verification only. The e2e quality gate is at the weekly-testing-promotion level (2 human approvals in the `production` Environment). Do not add `run_e2e: true` to the promote caller.
+**Dakota promotion PR has no e2e gate by design.** `promote-testing-to-main.yml` passes `run_e2e: false` to `reusable-promote-squash.yml` — the promotion PR gets cosign verification only. The e2e quality gate is at the `production` Environment approval level (2 distinct human approvals). Do not add `run_e2e: true` to the promote caller.
 
 **Promotion pipeline — cosign verify pattern:** When adding cosign verification to a promotion workflow, anchor the `--certificate-identity-regexp` with `^...$` and restrict it to the specific publishing workflow file and allowed ref patterns (e.g. `^https://github.com/<repo>/.github/workflows/publish\.yml@refs/heads/(main|gh-readonly-queue/main/.+)$`). An unanchored wildcard accepts signatures from any workflow in the repo.
 

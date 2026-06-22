@@ -54,30 +54,28 @@ Route through `ci.md` first, then come here only when the focused skills do not 
 
 | File | Role |
 |---|---|
-| `.github/workflows/build.yml` | BST build + push artifacts to remote CAS. Fires on `merge_group` and `workflow_dispatch` only (no schedule). Does NOT push to GHCR directly. |
-| `.github/workflows/publish.yml` | 3-stage pipeline: setup → publish → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, then immediately promotes to `:testing` on every successful merge. No e2e gate — that lives only in the weekly promotion. |
-| `.github/workflows/promote-testing-to-main.yml` | Thin caller for `reusable-promote.yml` in `projectbluefin/actions`. Fires on `push: testing`, nightly schedule (23:00 UTC), and `workflow_dispatch`. Opens or updates the promotion PR that gates `:testing` → `:stable`. |
-| `.github/workflows/execute-release.yml` | Fires on `push: main` + `workflow_dispatch`. A `check-trigger` job reads the squash-merge commit message — only proceeds when it starts with `ci: promote testing images to stable`. Calls `reusable-execute-release.yml` (copies image tags) then `reusable-release.yml` (generates GitHub Release + SBOM diff). |
-| `.github/workflows/e2e.yml` | Smoke test via projectbluefin/testsuite. Fires on PR; `should-run` job skips the test when no image-affecting paths changed. |
+| `.github/workflows/build.yml` | BST build + push artifacts to remote CAS. Fires on `pull_request`, `merge_group`, `push` (main/next/testing, paths-ignore: docs/workflows), and `workflow_dispatch`. Does NOT push to GHCR directly. The `validate` job inside build.yml runs only on `pull_request`. |
+| `.github/workflows/publish.yml` | 4-stage pipeline: setup → publish-image → boot-check (QEMU hard gate) → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, boots in QEMU to verify GDM/SSH reachability, then promotes to `:testing` on success. |
+| `.github/workflows/promote-testing-to-main.yml` | Thin caller for `reusable-promote.yml` in `projectbluefin/actions`. Fires on `push: testing`, **weekly schedule (Tuesdays 04:00 UTC)**, and `workflow_dispatch`. Opens or updates the promotion PR that gates `:testing` → `:stable`. |
+| `.github/workflows/execute-release.yml` | Fires on `push: main` + `workflow_dispatch`. A `check-trigger` job reads the squash-merge commit message — only proceeds when it matches `ci(promote): dakota testing` OR `chore: promote testing to main`. Calls `reusable-execute-release.yml` (copies image tags) then `reusable-release.yml` (generates GitHub Release + SBOM diff). |
+| `.github/workflows/e2e.yml` | Testsuite check dispatched manually or by downstream callers. **Not triggered by `pull_request`** — PRs do not publish a testing build first, so running smoke here would test a stale `:testing` image. Trigger: `workflow_dispatch` only. |
 | `.github/workflows/vulnerability-scan.yml` | Weekly Monday 08:00 UTC CVE scan via `reusable-vulnerability-scan.yml`. Also available as `workflow_dispatch` with optional `image_ref` input. Results surface in the GitHub Security tab. |
 
 ## Trigger Behavior
 
-| Behavior | pull_request | merge_group | workflow_dispatch | schedule |
-|---|---|---|---|---|
-| `validate` job | Yes | No | No | No |
-| `e2e` job | Yes (change-detected) | No | Yes | No |
-| `build` job | No | Yes | Yes | No |
-| `cache-warm` job | No | No | Yes | Yes (Mon/Thu 06:00 UTC) |
-| Push to GHCR? | No | Via publish.yml | Via publish.yml | No |
+| Behavior | pull_request | merge_group | push | workflow_dispatch | schedule |
+|---|---|---|---|---|---|
+| `validate` job | Yes (inside build.yml) | No | No | No | No |
+| `e2e` job | No | No | No | Yes | No |
+| `build` job | No | Yes | Yes (paths-ignore: docs/workflows) | Yes | No |
+| `cache-warm` job | No | No | No | Yes | Yes (Mon–Fri 06:00 UTC) |
+| Push to GHCR? | No | Via publish.yml | Via publish.yml | Via publish.yml | No |
 
-**PR path:** `validate` + `e2e` (change-detected) — zero remote execution. ~15 min cached, ~30 min cold.
+**PR path:** `validate` job only — zero remote execution. ~15 min cached, ~30 min cold.
 
-**e2e change detection:** `e2e` uses a `should-run` job that diffs the PR branch against its base. It runs when `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf` change; otherwise the `e2e` job is skipped. Skipped satisfies the required status check.
+**Merge queue + push path:** `build` fires, then `publish.yml` via `workflow_run`.
 
-**Merge queue path:** `build` fires on `merge_group` — full OCI build, real CI gate before merge.
-
-**Cache-warm path:** `cache-warm.yml` runs Monday and Thursday at 06:00 UTC and on manual dispatch. Builds the default variant against the remote CAS so merge-queue builds land on cache hits even after junction ref bumps or upstream `gnome-build-meta` rebuilds. Failures are non-blocking — the warm build is best-effort. Addresses the cold-start non-determinism documented in [common automation-audit ND1](https://github.com/projectbluefin/common/blob/main/docs/factory/automation-audit/non-deterministic-steps.md).
+**Cache-warm path:** `cache-warm.yml` runs **Monday through Friday at 06:00 UTC** (weekdays) and on manual dispatch. Builds the default variant against the remote CAS so merge-queue builds land on cache hits even after junction ref bumps or upstream `gnome-build-meta` rebuilds. Failures are non-blocking — the warm build is best-effort. (Previously Mon/Thu only; changed to daily weekday cadence to reduce the cold-build window.)
 
 ## Remote Cache Architecture
 
@@ -279,8 +277,11 @@ without any e2e gate in the publish path. The schedule trigger was removed from
 ```
 PR merge_group → build.yml → publish.yml → :$sha → :testing  (no e2e)
                                                            │
-                     weekly-testing-promotion.yml ─────────┘
-                     (e2e gate here, then :stable)
+                     promote-testing-to-main.yml ──────────┘
+                     (Tuesdays 04:00 UTC, opens squash PR → main)
+                                                           │
+                     execute-release.yml (push: main)
+                     (production Environment: 2 human approvals → :stable)
 ```
 
 **Implication:** `:testing` may briefly be broken if a PR introduces a regression.
@@ -695,7 +696,7 @@ gh api repos/projectbluefin/dakota/actions/workflows \
 gh workflow run publish.yml --repo projectbluefin/dakota
 
 # 4. Once publish completes, dispatch promotion (pauses for production environment approval)
-gh workflow run weekly-testing-promotion.yml --repo projectbluefin/dakota
+gh workflow run promote-testing-to-main.yml --repo projectbluefin/dakota
 ```
 
 Step 4 requires approval at: https://github.com/projectbluefin/dakota/deployments
@@ -993,7 +994,7 @@ jobs:
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "is-promotion=true" >> "$GITHUB_OUTPUT"
-          elif echo "$COMMIT_MSG" | grep -q "^ci: promote testing images to stable"; then
+          elif echo "$COMMIT_MSG" | grep -qE "^ci\(promote\): dakota testing|^chore: promote testing to main"; then
             echo "is-promotion=true" >> "$GITHUB_OUTPUT"
           else
             echo "is-promotion=false" >> "$GITHUB_OUTPUT"
@@ -1252,7 +1253,7 @@ Renovate PR → testing branch (automerges when build CI passes)
     → push to testing → build/publish updates :testing
     → promote-testing-to-main updates auto/promote-testing-to-main → main
     → maintainer merges
-    → execute-release fires (commit msg "ci: promote testing images to stable")
+    → execute-release fires (commit msg matches `ci(promote): dakota testing` or `chore: promote testing to main`)
     → :testing retagged as :stable
     → next testing-first cycle begins
 ```

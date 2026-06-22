@@ -37,11 +37,33 @@ Use when you need:
 4. **Prefer existing repo patterns over invention.**
 5. **Inspect single-element deps and artifacts before escalating to a full image build.**
 
+## Element Directory Layout
+
+```
+elements/
+  bluefin/         — main package elements (37 .bst files)
+  bluefin-nvidia/  — NVIDIA-specific elements (separate tree, own deps.bst)
+  core/            — GNOME core overrides
+  gnomeos-deps/    — bootc.bst junction dep
+  oci/
+    bluefin.bst         — kind: script, final image assembler
+    bluefin-nvidia.bst  — kind: script, NVIDIA image assembler
+    layers/
+      bluefin-stack.bst            — kind: stack (no filesystem output)
+      bluefin-runtime.bst          — kind: compose (filters to final layer)
+      bluefin-init-scripts.bst     — kind: collect_initial_scripts
+```
+
+**OCI layer pipeline:** `stack` (aggregates deps) → `compose` (produces filesystem, strips debug/devel/static) → `collect_initial_scripts` (collects init hooks) → `script` top-level `oci/*.bst` (image assembly).
+
+**nvidia elements:** Any work touching NVIDIA support uses `elements/bluefin-nvidia/<name>.bst`, not `elements/bluefin/`. Both trees have their own `deps.bst`.
+
 ## Quick Recipes
 
 | Goal | Command |
 |---|---|
-| Validate full graph | `just bst show oci/bluefin.bst` |
+| Validate full graph (both variants) | `just validate` |
+| Validate single target | `just bst show --deps all oci/bluefin.bst` |
 | Inspect single element deps | `just bst show bluefin/<name>.bst` |
 | Build one element | `just bst build bluefin/<name>.bst` |
 | Enter build sandbox | `just bst shell --build bluefin/<name>.bst` |
@@ -77,16 +99,20 @@ Use when you need:
 | `compose` | filesystem-producing layer/filter step |
 | `script` | OCI/image assembly |
 | `junction` | upstream source tree / external project boundary |
+| `collect_initial_scripts` | collects integration/init scripts from stack deps; used in the OCI layer pipeline (`oci/layers/`) |
 
 ## Source Kinds
 
 | Source kind | Use case |
 |---|---|
 | `git_repo` | most source trees |
+| `git_module` | git submodule-style nested repo |
 | `tar` | release tarballs |
+| `zip` | zip archive download |
 | `remote` | single-file download |
 | `local` | repo-local files |
-| `cargo2` | Rust crate vendoring |
+| `cargo2` | Rust crate vendoring (generated — never hand-written) |
+| `gen_cargo_lock` | generates a Cargo.lock from a workspace |
 | `go_module` | Go module deps |
 | `patch_queue` | patch application |
 
@@ -119,7 +145,7 @@ Use when you need:
 ## Verification
 
 - [ ] The chosen element kind matches the real build/input model
-- [ ] The graph validates with `just bst show oci/bluefin.bst`
+- [ ] The graph validates with `just validate` (runs `--deps all` on both `oci/bluefin.bst` and `oci/bluefin-nvidia.bst`)
 - [ ] Install paths use standard variables and merged-usr locations
 - [ ] Any filesystem-producing layer uses `compose`, not `stack`
 - [ ] Source and hook syntax follow repo conventions

@@ -3,7 +3,6 @@
 > **In-repo skills (version-controlled, always current — load these first):**
 > - ujust recipes and gum patterns: `.github/skills/ujust-recipes.md`
 > - Local/hardware OTA testing: `docs/skills/local-ota.md`
-> - Agent role policies (Hive): `files/hive/agent-policies/`
 > - Full skill index: `docs/skills/README.md`
 
 ## /chronicle improve — target skills, not this file

@@ -2,7 +2,7 @@ name: Skill Drift
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, testing, next]
 
 permissions:
   contents: read
@@ -12,5 +12,5 @@ jobs:
   skill-drift:
     uses: projectbluefin/actions/.github/workflows/skill-drift-check.yml@v1
     with:
-      code-paths: '[".github/workflows/**", "build_files/**", "Justfile", "elements/**"]'
+      code-paths: '[".github/workflows/**", "build_files/**", "Justfile", "elements/**", "files/**", "patches/**"]'
       skill-paths: '["docs/skills/**", "docs/*.md", "AGENTS.md"]'
