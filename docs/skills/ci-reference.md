@@ -1833,3 +1833,25 @@ a synchronous kernel scan — nodes are ready immediately.
 **Note:** The boot-check gate never passed from PR #849 (2026-06-13) through
 PR #895 (2026-06-16) due to iterating on the wrong approach. The fix was
 always to use `--via-loopback` as documented. The image works on real hardware.
+
+### sync-main-to-testing fails: `validate` required status check blocks direct push (2026-06-21)
+
+**Symptom:** `Sync main → testing` workflow fails with:
+```
+remote: error: GH006: Protected branch update failed for refs/heads/testing.
+remote: - Required status check "validate" is expected.
+```
+
+**Root cause:** The `validate` job in `build.yml` only runs on `pull_request` events. A direct push from the sync workflow never triggers it, so the required status check can never be satisfied — GITHUB_TOKEN is always rejected.
+
+**Fix:** Remove `validate` from `testing` branch required status checks:
+```bash
+gh api /repos/projectbluefin/dakota/branches/testing/protection/required_status_checks \
+  -X PATCH --input - <<'PAYLOAD'
+{"strict": false, "contexts": []}
+PAYLOAD
+```
+
+**Why this is safe:** PRs targeting `testing` still run `validate` (triggered by the pull_request event in build.yml). That result is visible as a PR check before merge queue entry. The merge queue gates on `build`, which also catches BST syntax errors. Requiring `validate` at the branch-protection level only blocks direct pushes (the sync) without adding safety for PRs.
+
+**Do NOT add PATs or tokens to the sync workflow — banned.** Fix is always at the branch protection level.

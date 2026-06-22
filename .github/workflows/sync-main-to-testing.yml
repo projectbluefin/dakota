@@ -5,8 +5,10 @@ name: Sync main → testing
 # main back into testing automatically so the next promotion PR is not blocked.
 #
 # Reusable logic lives in projectbluefin/actions. This is a thin caller.
-# No GitHub App token needed — GITHUB_TOKEN can push to testing (same as the
-# promote job in publish.yml which already fast-forwards testing directly).
+# No GitHub App token needed: testing branch protection has no required status
+# checks for direct pushes. The `validate` job only runs on pull_request events
+# and must NOT be a required status check on testing — it would block every
+# direct push including this sync (no PATs or bypasses allowed).
 
 on:
   push:
