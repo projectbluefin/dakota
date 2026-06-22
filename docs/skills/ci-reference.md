@@ -1852,6 +1852,6 @@ gh api /repos/projectbluefin/dakota/branches/testing/protection/required_status_
 PAYLOAD
 ```
 
-**Why this is safe:** PRs targeting `testing` still run `validate` (triggered by the pull_request event in build.yml). That result is visible as a PR check before merge queue entry. The merge queue gates on `build`, which also catches BST syntax errors. Requiring `validate` at the branch-protection level only blocks direct pushes (the sync) without adding safety for PRs.
+**Why this is safe:** `testing` is a loose integration branch — not a stability gate. PRs to testing still trigger the `validate` job (visible as an informational PR check), but without a required status check, `gh pr merge --auto` fails and pr-triage falls back to a direct squash merge immediately. PRs merge to testing without waiting for CI. The real quality gates are (a) at `main` where `validate` IS required, and (b) at the `production` Environment requiring 2 distinct human approvals. Removing `validate` from `testing` branch protection trades PR-time CI enforcement on the integration branch for a working automated sync.
 
 **Do NOT add PATs or tokens to the sync workflow — banned.** Fix is always at the branch protection level.
