@@ -1,7 +1,7 @@
 ---
 
 name: merge-queue
-description: Clears stuck dependency-update PRs, rebases chore branches against main, and handles fork PRs. Covers rebase loops, merge command, e2e retrigger, and cross-repository PR handling. Use when PRs are stuck, conflicting, blocked in queue, or need maintainer-safe rebasing/retriggering.
+description: Clears stuck dependency-update PRs, rebases chore branches against testing, and handles fork PRs. Covers rebase loops, merge command, e2e retrigger, and cross-repository PR handling. Use when PRs are stuck, conflicting, blocked in queue, or need maintainer-safe rebasing/retriggering.
 metadata:
   context7-sources:
     - /websites/github_en_actions
@@ -11,7 +11,7 @@ metadata:
 
 ## When to Use
 
-Use when clearing stuck dependency-update PRs, rebasing chore branches against `main`, or finishing a batch of bot PR merges.
+Use when clearing stuck dependency-update PRs, rebasing chore branches against `testing`, or finishing a batch of bot PR merges.
 
 ## Core Process
 
@@ -32,10 +32,10 @@ Use when clearing stuck dependency-update PRs, rebasing chore branches against `
 Look for these signals:
 
 - chore/dependency PR is open against the wrong base
-- merge box shows `CONFLICTING` after other PRs landed in `main`
+- merge box shows `CONFLICTING` after other PRs landed in `testing`
 - `gh pr merge --auto` fails with `Protected branch rules not configured for this branch`
 - e2e is stale and the branch cannot be rerun by pushing
-- PR is technically open but has no diff after rebasing onto `main`
+- PR is technically open but has no diff after rebasing onto `testing`
 
 Useful checks:
 
@@ -58,15 +58,15 @@ Use this loop:
 Standard rebase sequence:
 
 ```bash
-git fetch upstream <branch> main
+git fetch upstream <branch> testing
 git checkout -B fix-<branch> upstream/<branch>
-git rebase upstream/main
+git rebase upstream/testing
 git push upstream HEAD:<branch> --force-with-lease
 ```
 
 ## Merge Chore PRs
 
-`main` does not have auto-merge configured in branch protection.
+`testing` queue cleanup uses direct squash merges rather than `--auto`.
 
 Do **not** use:
 
@@ -82,7 +82,7 @@ gh pr merge <N> --repo projectbluefin/dakota --squash
 
 ## Known `AGENTS.md` Rebase Conflict
 
-When rebasing branches that predate recent `main` changes, `AGENTS.md` may conflict if both sides modified it.
+When rebasing branches that predate recent `testing` changes, `AGENTS.md` may conflict if both sides modified it.
 
 Resolve by keeping the incoming version and removing conflict markers:
 
@@ -94,13 +94,13 @@ GIT_EDITOR=true git rebase --continue
 
 ## Empty PR Detection
 
-After rebasing onto `main`, verify the branch still has a diff:
+After rebasing onto `testing`, verify the branch still has a diff:
 
 ```bash
-gh api repos/projectbluefin/dakota/compare/main...<branch> --jq '{ahead: .ahead_by, behind: .behind_by}'
+gh api repos/projectbluefin/dakota/compare/testing...<branch> --jq '{ahead: .ahead_by, behind: .behind_by}'
 ```
 
-If `ahead` is `0`, `main` already contains the change. Close the PR with a short note.
+If `ahead` is `0`, `testing` already contains the change. Close the PR with a short note.
 
 ## Retriggering e2e
 
@@ -149,7 +149,7 @@ gh pr view <N> --repo projectbluefin/dakota --json maintainerCanModify,headRepos
 git remote add <contributor> git@github.com:<headRepositoryOwner>/dakota.git
 git fetch <contributor> <headRefName>
 git checkout -B fix-<N> <contributor>/<headRefName>
-git rebase upstream/main
+git rebase upstream/testing
 git push <contributor> HEAD:<headRefName> --force-with-lease
 ```
 
@@ -157,14 +157,14 @@ If `maintainerCanModify: false`, do not push. Request the contributor rebase ins
 
 ## Fleet Parallel Dispatch Pattern
 
-When multiple PRs are all stuck against `main`, dispatch rebases in parallel, usually in pairs.
+When multiple PRs are all stuck against `testing`, dispatch rebases in parallel, usually in pairs.
 
 Each agent should own one branch and run exactly this sequence:
 
 1. Check `isCrossRepository` — use the fork push path if true (see above)
 2. `git fetch upstream <branch>` (or `git fetch <fork> <branch>` for cross-repo)
 3. `git checkout -B fix-<branch> upstream/<branch>`
-4. `git rebase upstream/main`
+4. `git rebase upstream/testing`
 5. `git push upstream HEAD:<branch> --force-with-lease` (or push to fork for cross-repo)
 
 Why pairs: it speeds up queue recovery without turning every branch into a moving target at once. After the first wave lands, run one more cleanup pass for any PRs that became stale during the earlier merges.
