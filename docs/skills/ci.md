@@ -2068,3 +2068,52 @@ The `pr-triage.yml` gate enforces branch targets. In the testing-first model:
 
 If the gate is only allowing `renovate/*` branches to target testing (old state),
 update it to allow all branches targeting testing. See PR 1009.
+
+### Renovate must not manage projectbluefin/* — one exclusion rule covers all (2026-06-21)
+
+All `projectbluefin/*` actions (`projectbluefin/actions`, `projectbluefin/testsuite`,
+`projectbluefin/bonedigger`) use org-managed tags (`@v1`, `@main`). Renovate must
+not generate SHA-bump or pin-digest PRs for any of them.
+
+**Pattern that caused churn:** `pinDigests: true` applied globally, then a group rule
+for `projectbluefin/actions` that didn't set `pinDigests: false`. Renovate generated
+paired PRs every actions release:
+- "update projectbluefin/actions" — SHA bump
+- "pin dependencies" — re-pins things that got unpinned
+
+**Correct renovate.json5:**
+```json5
+{
+  "matchDepNames": ["/^projectbluefin\\//"],
+  "enabled": false,
+  "pinDigests": false
+}
+```
+One rule. Replaces all per-package exemptions (`bonedigger`, `actions`, etc.).
+
+### Renovate automerge label must be in the general rule (2026-06-21)
+
+The `renovate-automerge.yml` workflow uses the `automerge` label as its signal.
+The general automerge rule must include labels or Renovate digest/patch PRs stall
+with no auto-merge trigger:
+
+```json5
+{
+  "matchUpdateTypes": ["digest", "pin", "patch", "minor"],
+  "automerge": true,
+  "automergeType": "pr",
+  "automergeStrategy": "squash",
+  "labels": ["chore/deps", "automerge"]
+}
+```
+
+Without this, only PRs created by per-package group rules (that explicitly set labels)
+get the `automerge` label. Everything else opens with `pr/needs-review` only and stalls.
+
+### update-iso-table.yml removed — [skip ci] churn (2026-06-21)
+
+`update-iso-table.yml` ran every 6 hours and committed docs to `main` with `[skip ci]`.
+Even with `[skip ci]`, the commits touched `main` and caused noise. Removed.
+
+If ISO table needs updating in future, do it on demand via `workflow_dispatch` or
+move it to the dakota-iso repo where it naturally belongs.
