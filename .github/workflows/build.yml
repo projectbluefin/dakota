@@ -75,6 +75,14 @@ jobs:
             bst-show-${{ github.base_ref || github.ref_name }}-
             bst-show-
 
+      - name: Check for dangling submodules
+        run: |
+          if git ls-files --stage | grep -q '^160000'; then
+            echo "ERROR: dangling gitlink(s) found — no submodules allowed in this repo"
+            git ls-files --stage | grep '^160000'
+            exit 1
+          fi
+
       - name: Validate BST element graph (default)
         env:
           BST_FLAGS: -o x86_64_v3 true --no-interactive
