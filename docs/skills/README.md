@@ -92,7 +92,7 @@ Use this file when:
 | VM stack context | `vm-stack.md` |
 | Repo and product overview | `overview.md` |
 | PR review workflow | `pr-review.md` |
-| ujust recipes in `files/just-overrides/` | `.github/skills/ujust-recipes.md` |
+| ujust recipes (user-facing, via common) | `.github/skills/ujust-recipes.md` |
 
 ## Common Rationalizations
 

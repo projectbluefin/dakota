@@ -1,7 +1,13 @@
 # ujust Recipe Authoring — Lessons Learned
 
-> Accumulated from real failures. Read before writing or editing
-> `files/just-overrides/default.just`.
+> Accumulated from real failures. Read before writing or editing ujust recipes.
+>
+> **Architecture note (2026-06-22):** Dakota no longer maintains a
+> `files/just-overrides/` tree. All ujust recipes (`system.just`,
+> `default.just`, `changelog.just`) now come from `projectbluefin/common`
+> directly via `elements/bluefin/common.bst`. The `just-overrides.bst` element
+> and the entire `files/just-overrides/` directory were removed in PR 1035.
+> To change a recipe that affects Dakota users, update it in common.
 
 ---
 
@@ -68,10 +74,12 @@ rm -f "$COLLECTION_OUT"
 | Command | Where defined | Who uses it |
 |---------|--------------|-------------|
 | `just <recipe>` | `Justfile` (repo root) | Developers, CI |
-| `ujust <recipe>` | `files/just-overrides/default.just` | End users inside the running image |
+| `ujust <recipe>` | `projectbluefin/common` system_files | End users inside the running image |
 
-Changes to `files/just-overrides/default.just` require a BST element rebuild to
-land in the image. The element is `elements/bluefin/just-overrides.bst`.
+Dakota's ujust recipes come from `projectbluefin/common` via `elements/bluefin/common.bst`.
+The `just-overrides` mechanism (which previously overrode common's files wholesale from
+`files/just-overrides/`) was removed in PR 1035. To modify a user-facing recipe, update
+it upstream in common.
 
 ---
 
