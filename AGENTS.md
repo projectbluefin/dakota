@@ -135,7 +135,9 @@ Examples of what "check the docs" means in practice:
 
 **Operator accountability:** The human deploying the agent is responsible for all decisions. PR template checkbox: `[ ] I am using an agent and I take responsibility for this PR`
 
-**Verification:** Every PR must confirm `just lint` passed and the image booted. Use `just boot-test` for automated pass/fail. No WIP PRs.
+**Verification:** Every PR must confirm `just lint` passed and the image booted. Use `just boot-test` for automated pass/fail. No WIP PRs. After pushing, verify CI is green before claiming done: `gh run list --repo projectbluefin/dakota --limit 5` — read the output; running or failing = not done. "Done" means CI green, not "I pushed."
+
+**Never claim a task complete without verifying.** "I've updated the file" is not done. Run the checks. Read the output.
 
 **Pre-commit guard:** `no-floating-action-tags` blocks third-party `@main`/`@v*` floating action tags at commit time. `projectbluefin/actions/` refs (`@v1`) are intentional managed tags and are exempted.
 
