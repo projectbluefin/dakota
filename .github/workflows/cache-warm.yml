@@ -43,7 +43,7 @@ jobs:
         uses: ./.github/actions/check-bst2-pin
 
       - name: Setup runner
-        uses: projectbluefin/actions/bootc-build/setup-runner@99d867d662ab64a1f82b4f5f24f73b4051dbff01 # v1
+        uses: projectbluefin/actions/bootc-build/setup-runner@v1
         with:
           storage-backend: btrfs
           update-podman: true
