@@ -15,7 +15,6 @@ This repo's skill directory follows the `projectbluefin/common` factory standard
 
 - [x] `skill-improvement.md` — two-output mandate, banned anti-patterns
 - [x] `README.md` — full routing table with fast paths per task class
-- [x] `skill-drift.yml` — CI warns when code changes without a skill update
 - [x] AGENTS.md — self-improvement loop, banned list, hard rules
 
 ## What Belongs Here

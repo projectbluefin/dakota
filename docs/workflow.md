@@ -160,49 +160,56 @@ Copy `files/hive/hive-project.yaml.example` to `/etc/hive/hive-project.yaml` and
 
 ## Image stream and branch model
 
-Dakota publishes three streams from the `main` branch:
+Dakota publishes three streams from the `testing` branch (content target) and promotes to `main` (stable target):
 
 ```
-main (source of truth)
+testing (receives all content PRs)
   │
-  └─► build.yml (nightly + merge_group + workflow_dispatch)
+  └─► build.yml (pull_request + merge_group + push + workflow_dispatch)
           │
           └─► publish.yml (workflow_run on build success)
                   │
-                  ├─► :sha     — immutable per-build tag
-                  └─► :testing — promoted after e2e smoke passes
+                  ├─► :sha      — immutable per-build tag
+                  └─► :testing  — updated on every successful publish
                                        │
-                              weekly-testing-promotion.yml
-                              (Sunday 06:00 UTC, production environment approval)
+                              promote-testing-to-main.yml
+                              (Tuesdays 04:00 UTC, squash PR → main)
                                        │
-                                       ├─► :latest  (+ fast-forwards latest branch)
-                                       └─► :stable  (+ fast-forwards stable branch)
+                                       └─► main branch
+                                               │
+                                       execute-release.yml
+                                       (production Environment — 2 human approvals)
+                                               │
+                                               ├─► :latest
+                                               └─► :stable
 ```
 
 | Stream | Tag | Cadence | Gate |
 |---|---|---|---|
-| Development | `:sha` | Every merge to `main` | None |
-| Testing | `:testing` | Nightly | e2e smoke |
-| Latest | `:latest` | Weekly (Sunday) | production environment approval |
-| Stable | `:stable` | Weekly (Sunday) | Same as `:latest` |
+| Per-build | `:sha` | Every push to testing | None |
+| Testing | `:testing` | Every successful publish | boot-check (QEMU hard gate) |
+| Latest | `:latest` | Weekly (Tuesdays) | 2 human approvals in `production` Environment |
+| Stable | `:stable` | Weekly (Tuesdays) | Same as `:latest` |
 
-**All code merges to `main`.** The `:testing` Docker tag is the published nightly result built from `main`. The `testing`, `latest`, and `stable` git branches are bookmarks fast-forwarded by the promotion workflows — they are not development branches.
+**Content PRs target `testing`.** The `main` branch only receives squash-merge promotion commits from `promote-testing-to-main.yml`. Never open content PRs against `main`.
 
-**Branch protection is only on `main`.** Required status checks: `validate` + `e2e`.
+**`main` is a promotion target, not a development branch.** The `testing`, `latest`, and `stable` git branches track the promotion pipeline — they are not for direct development.
+
+**Branch protection is on `main` and `testing`.** Required status checks: `validate` job (inside `build.yml`) + `e2e` (via `run-testsuite.yml`).
 
 ### Branch flow for contributors
 
 ```bash
-# Branch from upstream/main (never fork's local main)
-git checkout upstream/main -b feat/my-change
+# Branch from upstream/testing (content PRs target testing)
+git checkout upstream/testing -b feat/my-change
 
 # Work, validate, commit
 just validate
 git commit -m "feat(bluefin): ..."
 
-# Push and open PR against main
+# Push and open PR against testing
 git push upstream feat/my-change
-gh pr create --repo projectbluefin/dakota --base main
+gh pr create --repo projectbluefin/dakota --base testing
 ```
 
 

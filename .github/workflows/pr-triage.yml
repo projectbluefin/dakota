@@ -155,15 +155,16 @@ jobs:
           gh pr edit "$PR_URL" --remove-label "pr/needs-review" 2>/dev/null || true
 
           # Enable auto-merge — squash-merges once required checks pass.
-          gh pr merge "$PR_URL" --auto --squash \
-            && echo "✅ Auto-merge enabled" \
-            || echo "::warning::Auto-merge unavailable — PR will need manual merge"
+          # Fall back to direct merge if auto-merge is unavailable (checks already green).
+          if gh pr merge "$PR_URL" --auto --squash 2>/dev/null; then
+            echo "✅ Auto-merge enabled"
+          else
+            gh pr merge "$PR_URL" --squash 2>/dev/null \
+              && echo "✅ Merged directly" \
+              || echo "::warning::Could not merge — checks may still be running"
+          fi
 
-          # Bring the branch current with main so CI runs on the latest state.
-          # Non-fatal — pr-autoupdate.yml retries on the next push to main.
-          gh pr update-branch "$PR_URL" 2>/dev/null \
-            && echo "✅ Branch updated" \
-            || echo "Branch already up-to-date or conflict — pr-autoupdate will handle it"
+          gh pr update-branch "$PR_URL" 2>/dev/null || true
 
       - name: Changes requested — re-add label and tell the author what to do
         if: >-

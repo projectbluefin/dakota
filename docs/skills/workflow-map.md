@@ -43,10 +43,9 @@ Use when you need to answer:
 
 ```text
 PR touching image paths
-  ├─ validate (PR syntax / graph checks)
-  └─ e2e (testsuite wrapper; change-detected)
+  └─ validate (PR syntax / graph checks — job inside build.yml)
 
-Merge queue → main or next
+Merge queue → main, testing, or next
   └─ build.yml
        └─ publish.yml (workflow_run from build)
             ├─ publish-image
@@ -72,10 +71,10 @@ merge promotion PR to main
 
 | Workflow | Owns | Normal trigger |
 |---|---|---|
-| `.github/workflows/build.yml` | BST build into remote CAS | `merge_group`, `workflow_dispatch` |
+| `.github/workflows/build.yml` | BST build into remote CAS | `pull_request`, `merge_group`, `push` (main/next/testing, paths-ignore: docs/workflows), `workflow_dispatch` |
 | `.github/workflows/publish.yml` | export, sign, boot-check, promote tags | `workflow_run` from build |
 | `.github/workflows/publish-smoke.yml` | observational smoke only | `workflow_run` from publish |
-| `.github/workflows/e2e.yml` | PR-facing testsuite check | `pull_request` |
+| `.github/workflows/e2e.yml` | testsuite check (manual/dispatched only) | `workflow_dispatch` |
 | `.github/workflows/promote-testing-to-main.yml` | open/update promotion PR | `push: testing`, schedule, manual |
 | `.github/workflows/pr-release-gate.yml` | promotion PR gate | `pull_request` to `main` |
 | `.github/workflows/execute-release.yml` | stable release execution | `push: main`, manual |
