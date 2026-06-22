@@ -127,7 +127,6 @@ jobs:
           key: bst-warm-aarch64-${{ hashFiles('elements/gnome-build-meta.bst', 'elements/freedesktop-sdk.bst', 'Justfile') }}
           restore-keys: |
             bst-warm-aarch64-
-            bst-show-
 
       - name: Generate BuildStream CI config
         env:
