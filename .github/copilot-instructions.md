@@ -170,20 +170,18 @@ re-run the pre-flight until it is clean. Only then proceed.
 - "The stale build is for a different branch, it won't interfere" → **It uses the same runners and CAS. Cancel it.**
 - "I already cancelled one build, that's enough" → **Cancel ALL of them. Run the pre-flight again.**
 
-Concurrent x86 BST builds share the same `ubuntu-24.04` runner pool and the same
-`cache.projectbluefin.io:11002` remote-execution cluster. Two concurrent x86 builds do
-not halve wall time — they more than double it and risk 6-hour timeouts with
-`Cached elements after warm: 0`. Note: most artifact reads come from `gbm.gnome.org:11003`
-(GNOME's server, read-only for dakota) — the contention bottleneck is remote execution
-and CAS storage-service writes at `:11002`, not reads.
+Concurrent BST builds share the same `ubuntu-24.04` runner pool and the same remote CAS
+write bandwidth at `cache.projectbluefin.io:11002`. Two concurrent builds do not halve
+wall time — they more than double it and risk 6-hour timeouts with
+`Cached elements after warm: 0`.
 
 **One build. Field clear first. No exceptions.**
 
 ## CI overview
 
-- **Schedule:** no nightly schedule — builds on every BST-affecting push to `testing`/`main`/`next`
-- **Publish triggers:** `workflow_run` from `build.yml` (merge_group, push, workflow_dispatch)
-- **Remote cache:** primary reads from `gbm.gnome.org:11003`; writes/remote-exec to `cache.projectbluefin.io:11002` (mTLS — `CASD_CLIENT_CERT` + `CASD_CLIENT_KEY`)
+- **Schedule:** nightly at 13:00 UTC (after gnome-build-meta nightly ~08:00 UTC finish)
+- **Publish triggers:** `merge_group`, `schedule`, `workflow_dispatch` (not `pull_request`)
+- **Remote cache:** `cache.projectbluefin.io:11002` (mTLS — `CASD_CLIENT_CERT` + `CASD_CLIENT_KEY`)
 - **Image:** `ghcr.io/projectbluefin/dakota:{testing,latest,stable}` and `:<sha>`
 
 ## Key architecture
