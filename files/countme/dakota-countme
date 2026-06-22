@@ -15,12 +15,19 @@ set -euo pipefail
 
 COOKIE_FILE=/var/lib/dakota-countme-epoch
 
-# Create cookie on first run to track installation age
+# Create cookie on first run to track installation age.
+# Also regenerate if empty or non-numeric (e.g. truncated write, disk-full).
 if [[ ! -f "$COOKIE_FILE" ]]; then
     printf '%s\n' "$(date +%s)" > "$COOKIE_FILE"
 fi
 
 INSTALL_EPOCH=$(< "$COOKIE_FILE")
+# ponytail: empty/corrupt cookie would make bash arithmetic treat epoch as 0
+# (~1970), giving DAYS≈20000 and permanent COUNTME=4 misreporting.
+if ! [[ "$INSTALL_EPOCH" =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "$(date +%s)" > "$COOKIE_FILE"
+    INSTALL_EPOCH=$(< "$COOKIE_FILE")
+fi
 NOW=$(date +%s)
 DAYS=$(( (NOW - INSTALL_EPOCH) / 86400 ))
 
