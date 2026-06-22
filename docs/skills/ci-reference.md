@@ -92,6 +92,29 @@ Route through `ci.md` first, then come here only when the focused skills do not 
 
 **Push is conditional:** Remote cache section is only added to `buildstream-ci.conf` if **both** are set. Without credentials, BST builds from source using local disk cache only — slower but functional. This is normal for external contributors' forks.
 
+## ⚠️ Dangling Submodule — cache-warm and scheduled workflows silently die (2026-06-22)
+
+**Symptom:** Every scheduled workflow that checks out `main` fails at "Checkout repository" with:
+```
+fatal: No url found for submodule path '.workflow-scripts' in .gitmodules
+```
+All downstream steps are skipped. cache-warm never runs. BST CAS goes cold. Every push-to-testing build times out at 330 min. `:testing` stops publishing. Agents blame the push trigger and remove it (PR #997, repeated).
+
+**Root cause:** A dangling gitlink (mode `160000`) was committed to the tree with no `.gitmodules` URL. `actions/checkout@v6` calls `git submodule foreach` for credential cleanup even with `submodules: false`, and dies on the missing URL. v7 handles it silently.
+
+**How it got in:** Promotion squash PR #937 (June 20) carried the gitlink from `testing` into `main`. Likely introduced by an agent that committed an empty directory containing a stale `.git` reference.
+
+**Fix:** `git rm -f .workflow-scripts` — no `.gitmodules` file was ever present, so nothing else to clean up.
+
+**Guard:** The `validate` job in `build.yml` now runs `git ls-files --stage | grep '^160000'` and fails the PR if any gitlink exists. This repo has no legitimate submodules.
+
+**If it recurs:**
+```bash
+git ls-files --stage | grep '^160000'   # find the gitlink
+git rm -f <path>                         # remove it
+git commit -m "fix(ci): remove dangling submodule <path>"
+```
+
 ## ⚠️ Pre-Commit BST Syntax Gate
 
 For any change to `project.conf`, `*.bst` elements, or `Justfile`:
