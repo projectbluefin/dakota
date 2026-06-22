@@ -80,7 +80,9 @@ Exit condition: Drop after gnome-build-meta gnome-50 merges MR !NNN
    ```bash
    cd /tmp/<junction>-work
    # make your edit
-   git add -A
+   git add path/to/intended-file
+   git status
+   git diff --cached --name-only
    git commit -m "Fix: <description>"
    git format-patch -1 HEAD -o <repo-root>/patches/<junction>/
    ```
@@ -121,7 +123,9 @@ git apply --ignore-whitespace -C1 <repo-root>/patches/<junction>/<patch>.patch
 
 # If -C1 fails, apply manually then extract:
 # Make the equivalent change manually
-git add -A
+git add path/to/intended-file
+git status
+git diff --cached --name-only
 git diff --cached > /tmp/<patch>-rebased.patch
 git checkout -- .
 git apply /tmp/<patch>-rebased.patch && echo "VERIFY OK"

@@ -260,9 +260,19 @@ feat(bluefin): add container build optimization
 Closes #NNN
 
 Assisted-by: Claude Sonnet 4.6 via GitHub Copilot
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 ```
 
-Per `docs/pr-checklist.md`: always `Assisted-by:` — **never `Co-authored-by:`** (this is a repo-local rule that differs from the org-wide template).
+Per `docs/pr-checklist.md` and `projectbluefin/common`: GitHub Copilot CLI commits use both trailers — `Assisted-by:` and `Co-authored-by:`.
+
+Never use `git add -A` or `git add .`. After any script execution, build step, or cross-repo checkout:
+
+```bash
+git status                        # check for unexpected tracked paths
+git diff --cached --name-only     # verify only intended files are staged
+```
+
+Nested `.git` directories stage as gitlinks and silently corrupt history.
 
 ### SHA pinning (actions only)
 

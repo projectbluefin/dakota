@@ -34,7 +34,7 @@ Use when:
 3. **Pick the focused skill for the change.**
 4. **Use `just` recipes, not ad-hoc host commands.**
 5. **Run the lightest validation that proves the change.**
-6. **Commit with `Assisted-by:` and update the relevant skill in the same PR.**
+6. **Commit with the runtime-appropriate attribution trailers and update the relevant skill in the same PR.**
 
 ## Always Rules
 
@@ -44,6 +44,7 @@ Use when:
 4. Add new package elements to the correct stack.
 5. Validate before opening the PR.
 6. Push to `upstream`, never the fork workflow by accident.
+7. Stage files explicitly, then audit the index before every commit.
 
 ## Never Rules
 
@@ -52,6 +53,7 @@ Use when:
 3. Never edit junctions casually; treat them as human-review territory.
 4. Never add duplicate automation when an existing recipe or workflow already owns it.
 5. Never skip the skill update if you discovered a reusable lesson.
+6. Never use `git add -A` or `git add .` in this repo.
 
 ## Task Routing
 
@@ -79,12 +81,18 @@ just --list
 just bst show oci/bluefin.bst
 just lint
 
+# stage intentionally and audit the index
+git add path/to/intended-file
+git status
+git diff --cached --name-only
+
 # commit
 git commit -m "fix(bluefin): short description
 
 Closes #NNN
 
-Assisted-by: OpenAI GPT-5 via pi"
+Assisted-by: Claude Sonnet 4.6 via GitHub Copilot
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 
 # push
 git push upstream fix/short-description
@@ -111,10 +119,17 @@ git push upstream fix/short-description
 - [ ] Branch started from `upstream/main`
 - [ ] Correct focused skill was loaded for the task
 - [ ] Validation matched the scope of the change
-- [ ] Commit uses repo conventions including `Assisted-by:`
+- [ ] Commit uses the correct runtime attribution trailers
 - [ ] Skill update is included when a new pattern was learned
 
 ## Lessons Learned
+
+### Audit the index before every commit (2026-06-21)
+
+Dakota worktrees often sit next to other clones, generated outputs, or nested `.git`
+directories. Stage files one by one, then run `git status` and
+`git diff --cached --name-only` before every commit. `git add -A` and `git add .`
+can silently stage gitlinks or unrelated tracked paths.
 
 ### Restarting the publish factory after a pause (2026-06-05)
 

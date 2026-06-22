@@ -5,7 +5,7 @@
 - [ ] `just validate` passes
 - [ ] `just lint` passes on a built image
 - [ ] `just boot-test` passes (or `just boot-fast` / `just boot-vm`)
-- [ ] Commit trailer: `Assisted-by:` or `Signed-off-by:` — **not** `Co-authored-by:`
+- [ ] Commit trailers match the runtime rule: GitHub Copilot CLI uses both `Assisted-by:` and `Co-authored-by:`; other runtimes use their required attribution/signoff
 - [ ] `Closes #NNN` in the PR body
 - [ ] I am using an agent and I take responsibility for this PR
 
