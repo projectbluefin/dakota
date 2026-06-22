@@ -24,6 +24,10 @@ environment:
   BUG_SUPPORT_URL: "https://github.com/projectbluefin/dakota/issues"
   CODE_NAME: "Dakotaraptor"
   ID: "bluefin-dakota"
+  # Fedora platform ID — update alongside the gnome-build-meta junction when
+  # the Fedora base bumps. The countme script reads this at runtime to build
+  # the Fedora metalink URL (repo=fedora-NN).
+  PLATFORM_ID: "platform:f42"
 
 config:
   build-commands:
@@ -49,6 +53,7 @@ config:
       IMAGE_TAG="${IMAGE_TAG}"
       VERSION_ID="${VERSION_ID}"
       IMAGE_VERSION="${IMAGE_VERSION}"
+      PLATFORM_ID="${PLATFORM_ID}"
       EOF
       mkdir -p %{install-root}%{sysconfdir}/
       ln -sf ../usr/lib/os-release %{install-root}%{sysconfdir}/os-release
