@@ -178,6 +178,19 @@ Bots create PRs but do not self-update branches when the base advances.
 **Fix:** Remove all actor exclusions from `pr-autoupdate`. Any PR targeting `main`
 that has gone behind should be updated, regardless of who opened it.
 
+### 10) Branch syncs should restore the target branch's own `.github/workflows/`
+
+When a branch-sync workflow merges `main` into another branch, the merge can pull in
+changes under `.github/workflows/**`. Pushing those workflow file changes can fail or
+force you into unnecessary credential escalation.
+
+**Fix:** After `git merge origin/main -X theirs --no-edit`, restore the target
+branch's pre-merge `.github/workflows/` tree with
+`git checkout HEAD@{1} -- .github/workflows/`, then stage
+`.github/workflows/` before amending the merge commit. This preserves the target
+branch's workflow files while still syncing other `.github/` content from `main`.
+
+
 ## Red Flags
 
 - `permissions: {}` on a reusable workflow caller
@@ -187,6 +200,7 @@ that has gone behind should be updated, regardless of who opened it.
 - relying on `GITHUB_TOKEN` for bot PRs that need PR checks to fire
 - `persist-credentials: false` in a workflow that runs in a repo with submodules
 - a sync workflow living only on the non-default branch (it will never fire)
+- a branch-sync workflow that would push `.github/workflows/**` instead of restoring the target branch's own `.github/workflows/`
 - `base_branch` not passed to `reusable-renovate-automerge` or passed with wrong value
 - bot actors excluded from `pr-autoupdate` while their PRs go behind
 - pr-triage gate only allowing `renovate/*` to target `testing`, blocking feature PRs
@@ -201,6 +215,7 @@ that has gone behind should be updated, regardless of who opened it.
 - [ ] The fix reduces CI ambiguity instead of adding more magic
 - [ ] `persist-credentials: false` not added to repos with incomplete `.gitmodules`
 - [ ] Branch-sync workflow lives on the default branch, not on the target branch
+- [ ] Branch-sync workflows that would carry `.github/workflows/**` restore the target branch's own `.github/workflows/` before push
 - [ ] `reusable-renovate-automerge` calls omit `base_branch` (default is `testing`) or pass the correct branch
 - [ ] `pr-autoupdate` has no actor exclusions that would strand bot PRs
 - [ ] pr-triage gate allows all PRs targeting `testing`, not just `renovate/*`
