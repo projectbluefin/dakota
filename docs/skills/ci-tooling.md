@@ -186,9 +186,11 @@ force you into unnecessary credential escalation.
 
 **Fix:** After `git merge origin/main -X theirs --no-edit`, restore the target
 branch's pre-merge `.github/workflows/` tree with
-`git checkout HEAD@{1} -- .github/workflows/`, then stage
+`git restore --source='HEAD@{1}' --staged --worktree -- .github/workflows/`, then stage
 `.github/workflows/` before amending the merge commit. This preserves the target
-branch's workflow files while still syncing other `.github/` content from `main`.
+branch's workflow files while also removing any new workflow files main introduced.
+Use `git restore` (not `git checkout`) — `git checkout` only restores existing paths
+and will not delete files newly added by the merge.
 
 
 ## Red Flags

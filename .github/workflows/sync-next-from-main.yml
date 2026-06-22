@@ -63,7 +63,9 @@ jobs:
 
           # Restore next's own workflow files so this sync never pushes
           # .github/workflows/** changes that require special credentials.
-          git checkout 'HEAD@{1}' -- .github/workflows/
+          # Use git restore (not git checkout) so files added by main are also
+          # deleted — git checkout only restores existing paths, not deletions.
+          git restore --source='HEAD@{1}' --staged --worktree -- .github/workflows/
 
           # Restore next's junction ref/track (the only intentional divergence).
           # Use ^\s* anchor on track: to avoid matching comments or URLs.
