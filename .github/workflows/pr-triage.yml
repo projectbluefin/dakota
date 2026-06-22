@@ -67,11 +67,18 @@ jobs:
             echo "Renovate update targeting testing staging branch — skipping main-target gate."
             exit 0
           fi
+          # Allow all PRs targeting testing — testing-first model: all content
+          # PRs (features, fixes, BST changes) land on testing, not main.
+          # main only receives squash-merge promotion commits.
+          if [ "$BASE_REF" = "testing" ]; then
+            echo "PR targets testing — testing-first model, allowed."
+            exit 0
+          fi
           if [ "$BASE_REF" != "main" ]; then
-            echo "ERROR: PRs must target 'main', not '$BASE_REF'."
-            echo "Branches like 'stable' and 'latest' are managed by the promotion pipeline — never target them directly."
+            echo "ERROR: PRs must target 'main' or 'testing', not '$BASE_REF'."
+            echo "Content PRs target 'testing'. main only receives squash-merge promotion commits."
             gh pr comment "$PR_URL" --body \
-              "This PR targets \`${BASE_REF}\` instead of \`main\`. Please retarget it to \`main\` — the \`${BASE_REF}\` branch is managed by the promotion pipeline and must not receive direct PRs." \
+              "This PR targets \`${BASE_REF}\` instead of \`testing\` or \`main\`. Please retarget it — content PRs belong on \`testing\` (testing-first model); \`main\` only receives squash-merge promotion commits." \
               2>/dev/null || true
             exit 1
           fi
