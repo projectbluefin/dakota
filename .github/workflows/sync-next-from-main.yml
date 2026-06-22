@@ -61,6 +61,10 @@ jobs:
             exit 1
           fi
 
+          # Restore next's own workflow files so this sync never pushes
+          # .github/workflows/** changes that require special credentials.
+          git checkout 'HEAD@{1}' -- .github/workflows/
+
           # Restore next's junction ref/track (the only intentional divergence).
           # Use ^\s* anchor on track: to avoid matching comments or URLs.
           sed -i "0,/^\s*track:/{s|^\(\s*\)track:.*|\1track: $GNOME_TRACK|}" elements/gnome-build-meta.bst
@@ -69,7 +73,7 @@ jobs:
           sed -i "0,/^\s*ref:/{s|^\(\s*\)ref:.*|\1ref: $FDO_REF|}" elements/freedesktop-sdk.bst
 
           # Amend the merge commit to include the ref restoration.
-          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst
+          git add .github/workflows/ elements/gnome-build-meta.bst elements/freedesktop-sdk.bst
           git commit --amend --no-edit
 
           git push origin next
