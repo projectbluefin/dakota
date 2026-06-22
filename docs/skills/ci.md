@@ -2022,7 +2022,7 @@ push:
 ```
 
 **Flow:**
-```
+```text
 BST PR → testing → build → :testing published
 GHA-only PR → testing → filtered, no build
 promote PR: testing → main → build → stable
