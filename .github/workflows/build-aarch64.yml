@@ -1,0 +1,174 @@
+name: Build Bluefin dakota (aarch64)
+
+# Standalone aarch64 build — completely decoupled from x86_64.
+#
+# Design invariants:
+#   - ARM NEVER blocks an x86_64 build, publish, promote, or release.
+#   - No job in publish.yml, promote-testing-to-main.yml, or execute-release.yml
+#     depends on this workflow. Decoupling is structural, not just continue-on-error.
+#   - Separate concurrency group so aarch64 queue never starves x86_64 runners.
+#   - No remote execution (no RE service for ARM); enable-push: true so artifacts
+#     land in the remote CAS for subsequent builds and warm-cache runs.
+#
+# Triggers mirror x86_64 build.yml:
+#   - push: testing / main (BST-affecting paths only; docs/workflow-only changes ignored)
+#   - schedule: Tuesday 04:00 UTC — same cadence as promote-testing-to-main so the
+#     aarch64 image may be current when execute-release creates a multi-arch manifest
+#   - workflow_dispatch: manual recovery / on-demand
+#
+# Published tags (when qualifying event on testing/main):
+#   :aarch64          — latest successful aarch64 build from testing
+#   :aarch64-<sha>    — immutable per-commit tag
+
+on:
+  push:
+    branches: [main, testing]
+    paths-ignore:
+      - '.github/workflows/**'
+      - 'docs/**'
+      - '**.md'
+      - 'AGENTS.md'
+  schedule:
+    # Tuesday 04:00 UTC — same window as promote-testing-to-main.yml schedule
+    - cron: '0 4 * * 2'
+  workflow_dispatch:
+
+permissions: read-all
+
+env:
+  IMAGE_NAME: dakota
+  IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+# Per-ref isolation. ARM failures never cancel or affect x86_64 concurrency groups.
+concurrency:
+  group: build-aarch64-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-aarch64:
+    name: Build OCI image (aarch64)
+    runs-on: ubuntu-24.04-arm
+    # ARM failures are non-blocking and never affect x86_64 publication.
+    continue-on-error: true
+    timeout-minutes: 420
+    outputs:
+      pushed: ${{ steps.push.outputs.pushed }}
+      sha: ${{ steps.context.outputs.sha }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Resolve build context
+        id: context
+        run: |
+          echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Check bst2 image pin consistency
+        uses: ./.github/actions/check-bst2-pin
+
+      - name: Setup runner
+        uses: projectbluefin/actions/bootc-build/setup-runner@v1
+        with:
+          storage-backend: btrfs
+          update-podman: true
+          install-tools: '["just"]'
+
+      - name: Capture build timestamp
+        id: timestamp
+        run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore BST workspace cache (aarch64)
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.cache/buildstream
+          key: bst-aarch64-${{ github.ref_name }}-${{ hashFiles('elements/gnome-build-meta.bst', 'elements/freedesktop-sdk.bst', 'Justfile') }}
+          restore-keys: |
+            bst-aarch64-${{ github.ref_name }}-
+            bst-aarch64-
+            bst-warm-aarch64-
+
+      # No remote execution for ARM yet; enable-push so artifacts land in CAS
+      # for subsequent builds and warm-cache runs.
+      - name: Generate BuildStream CI config
+        env:
+          CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
+          CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
+        uses: ./.github/actions/generate-bst-ci-config
+        with:
+          enable-remote-execution: 'false'
+          enable-push: 'true'
+
+      - name: Build OCI image with BuildStream (aarch64)
+        env:
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf --option arch aarch64
+        run: just bst build oci/bluefin.bst
+        timeout-minutes: 390
+
+      - name: Export OCI image from BuildStream
+        id: export
+        env:
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf --option arch aarch64
+          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}
+          OCI_IMAGE_REVISION: ${{ github.sha }}
+          OCI_IMAGE_VERSION: aarch64
+        run: |
+          just export
+          echo "image_ref=${{ env.IMAGE_NAME }}:aarch64" >> "$GITHUB_OUTPUT"
+
+      - name: Validate with bootc container lint
+        run: just lint
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: buildstream-logs-aarch64-${{ github.sha }}
+          path: logs/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Login to GHCR
+        if: >-
+          github.event_name == 'push' ||
+          github.event_name == 'schedule' ||
+          github.event_name == 'workflow_dispatch'
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | sudo podman login ghcr.io --username "$GH_ACTOR" --password-stdin
+
+      - name: Tag image for GHCR
+        if: >-
+          github.event_name == 'push' ||
+          github.event_name == 'schedule' ||
+          github.event_name == 'workflow_dispatch'
+        run: |
+          sudo podman tag "localhost/${{ steps.export.outputs.image_ref }}" \
+            "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:aarch64"
+          sudo podman tag "localhost/${{ steps.export.outputs.image_ref }}" \
+            "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:aarch64-${{ github.sha }}"
+
+      - name: Push to GHCR
+        id: push
+        if: >-
+          github.event_name == 'push' ||
+          github.event_name == 'schedule' ||
+          github.event_name == 'workflow_dispatch'
+        run: |
+          for tag in aarch64 "aarch64-${{ github.sha }}"; do
+            PUSH_OK=false
+            for attempt in 1 2 3; do
+              # zstd: plain (not chunked) — matches x86_64 push convention
+              sudo podman push --compression-format=zstd \
+                "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}" && { PUSH_OK=true; break; }
+              echo "Push attempt ${attempt} failed for tag ${tag}, retrying in 5s..."
+              sleep 5
+            done
+            $PUSH_OK || { echo "WARNING: all push attempts failed for :${tag} — non-blocking"; }
+          done
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
