@@ -176,11 +176,33 @@ jobs:
       # bst2 container. CI-specific flags (--no-interactive, --config)
       # are injected via BST_FLAGS env var.
 
-      - name: Build OCI image with BuildStream
+      # Count the full element graph so the progress script can show %.
+      # bst show only reads element YAML + fetches junction refs — no CAS
+      # traffic, typically <60s. Runs after Generate BuildStream CI config
+      # so the remote CAS address is available.
+      - name: Count elements for progress tracking
+        id: count
         env:
           BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
         run: |
-          just bst build ${{ matrix.element }}
+          if TOTAL=$(just bst show --deps all --format '%{name}' \
+              ${{ matrix.element }} 2>&1 | wc -l); then
+            echo "total=${TOTAL}" >> "$GITHUB_OUTPUT"
+            echo "Element graph: ${TOTAL} elements"
+          else
+            echo "::warning::bst show failed — progress will show absolute counts only"
+            echo "total=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build OCI image with BuildStream
+        env:
+          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+          ELEMENT_TOTAL: ${{ steps.count.outputs.total }}
+        run: |
+          # pipefail: propagate non-zero exit from `just bst build` through the pipe
+          set -o pipefail
+          just bst build ${{ matrix.element }} 2>&1 \
+            | python3 files/scripts/bst-progress.py
         timeout-minutes: 330
 
       # Push the built artifact to the remote CAS so the export job can pull it.
