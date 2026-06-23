@@ -178,6 +178,94 @@ Bots create PRs but do not self-update branches when the base advances.
 **Fix:** Remove all actor exclusions from `pr-autoupdate`. Any PR targeting `main`
 that has gone behind should be updated, regardless of who opened it.
 
+### 10) validate job must run on both `pull_request` AND `merge_group`
+
+If `validate` is the required status check on `main` and the job only runs on
+`pull_request`, bot-created promotion PRs hit a circular failure:
+
+1. Bot PR → all `pull_request` runs → `action_required` (org blocks bot runs)
+2. `enqueuePullRequest` fails: "Required status check validate is expected"
+3. Can never enter the merge queue → stuck forever
+
+**Fix in `build.yml`:**
+```yaml
+validate:
+  if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+```
+
+**Unblocking an already-stuck PR (bootstrap trick):**
+The merge queue requires the check to have been posted by integration_id 15368
+before `enqueuePullRequest` succeeds. A manually-posted commit status is rejected
+("was not set by the expected GitHub app"). The only way to bootstrap is to push
+as a non-bot actor — the org bot restriction does not apply to human pushes:
+
+```bash
+git checkout -b unblock upstream/auto/promote-testing-to-main
+git commit --allow-empty -m "ci: trigger validate as non-bot actor"
+git push upstream unblock:auto/promote-testing-to-main
+# validate fires on pull_request:synchronize as human → posts check run
+# enqueuePullRequest now succeeds
+```
+
+Remove the empty commit branch after the PR merges.
+
+### 11) Renovate automerge fails on workflow-file bumps — needs `workflows: write`
+
+When a Renovate PR updates an action SHA inside `.github/workflows/`, GitHub
+refuses to merge it without the `workflows` scope:
+
+```
+GraphQL: refusing to allow a GitHub App to create or update workflow
+`.github/workflows/build.yml` without `workflows` permission
+```
+
+The automerge job silently swallows the error (warning: "PR merge skipped") and
+the PR stays open with `pr/needs-review`.
+
+**Fix — add `workflows: write` to `renovate-automerge.yml`:**
+```yaml
+permissions:
+  contents: write
+  pull-requests: write
+  workflows: write
+```
+
+### 12) `sync-main-to-testing` resets testing to main — CI-only PRs to testing get wiped
+
+The sync workflow runs on every push to `main`. It merges main into testing.
+If testing has commits that are not yet on main (e.g. a feature PR merged to testing
+before its content promoted), those commits survive the sync (merge wins).
+
+**But:** if testing was at the same SHA as main when the feature PR landed, and then
+a *different* push triggered sync before the feature PR's content was promoted, the
+sync fast-forwards testing to the new main HEAD, which may not include the feature commits
+if they diverged from a stale base.
+
+**Observed:** PR #1045 (aarch64 workflow) merged to testing at 00:16 UTC.
+`sync-main-to-testing` ran at 02:38 UTC for an unrelated main push. Testing was reset
+to main's HEAD, erasing the aarch64 commit. Had to re-land as PR #1051.
+
+**Rule:** For CI-only changes that must survive to the next promotion, target `testing`
+and ensure promotion fires before the next unrelated push to `main`. Or target `main`
+directly (CI-only PRs can merge without review) to skip the sync race entirely.
+
+### 13) execute-release fires on CI-only main push — release-notes step fails
+
+`execute-release.yml` triggers on every `push: branches: main`. When the push is
+CI-only (no `publish.yml` image build ran for that commit), the `release-notes /
+Create stable image release` step fails:
+
+```
+::error::Could not find a successful publish.yml run on main
+```
+
+`check-trigger` does not detect CI-only pushes and bail early. This is a known bug
+(tracked in issue 1061). It does not affect image publishing (`execute / execute`
+succeeds) — only the GitHub Release creation step fails.
+
+**Workaround:** Ignore the `release-notes` failure when the triggering push was
+CI-only. The image is still published correctly.
+
 ## Red Flags
 
 - `permissions: {}` on a reusable workflow caller
@@ -189,7 +277,10 @@ that has gone behind should be updated, regardless of who opened it.
 - a sync workflow living only on the non-default branch (it will never fire)
 - `base_branch` not passed to `reusable-renovate-automerge` or passed with wrong value
 - bot actors excluded from `pr-autoupdate` while their PRs go behind
-- pr-triage gate only allowing `renovate/*` to target `testing`, blocking feature PRs
+- `validate` job condition is `pull_request` only — blocked in merge queue for bot PRs
+- `renovate-automerge` missing `workflows: write` — workflow-file bumps silently strand
+- landing a CI feature on `testing` and assuming it survives the next sync-main-to-testing
+- `pr-triage` gate only allowing `renovate/*` to target `testing`, blocking feature PRs
 - rapid-fire PR merges cancelling each other's pending builds (manual dispatch needed)
 
 ## Verification
@@ -203,5 +294,6 @@ that has gone behind should be updated, regardless of who opened it.
 - [ ] Branch-sync workflow lives on the default branch, not on the target branch
 - [ ] `reusable-renovate-automerge` calls omit `base_branch` (default is `testing`) or pass the correct branch
 - [ ] `pr-autoupdate` has no actor exclusions that would strand bot PRs
-- [ ] pr-triage gate allows all PRs targeting `testing`, not just `renovate/*`
-- [ ] After rapid-fire merges to main/testing, check for cancelled builds and re-trigger with `gh workflow run build.yml --ref <branch>`
+- [ ] `validate` job runs on both `pull_request` and `merge_group` (not just `pull_request`)
+- [ ] `renovate-automerge.yml` has `workflows: write` in top-level permissions
+- [ ] CI-only changes that must survive sync are either landed on main directly or promoted before the next unrelated main push
