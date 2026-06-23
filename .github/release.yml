@@ -1,0 +1,23 @@
+# Configure GitHub's automated release notes generation.
+# This file is read by the generate-notes API called in create-release action.
+changelog:
+  exclude:
+    authors:
+      - github-actions
+      - renovate
+      - dependabot
+    labels:
+      - dependencies
+      - skip-changelog
+  categories:
+    - title: Features
+      labels:
+        - enhancement
+        - feature
+    - title: Fixes
+      labels:
+        - bug
+        - fix
+    - title: Other Changes
+      labels:
+        - "*"
