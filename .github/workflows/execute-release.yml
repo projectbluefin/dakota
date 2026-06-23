@@ -127,3 +127,48 @@ jobs:
             '')
           printf '%s\n%s' "$VARIANTS_SECTION" "$CURRENT" > /tmp/updated-body.md
           gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file /tmp/updated-body.md
+
+  # ── Multi-arch manifest (aarch64) ────────────────────────────────────────
+  # Non-gating: creates a multi-arch :stable manifest if :aarch64 exists in
+  # GHCR. Skips silently if aarch64 is absent — x86_64 stable is already live.
+  # ARM never gates this release. This is purely additive.
+  create-multiarch-stable:
+    needs: [execute]
+    if: always() && needs.execute.result == 'success'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      packages: write
+    steps:
+      - name: Login to GHCR
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | podman login ghcr.io --username "$GH_ACTOR" --password-stdin
+
+      - name: Check whether :aarch64 exists
+        id: check-aarch64
+        run: |
+          if skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:aarch64" \
+              > /dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "aarch64 image found — will create multi-arch manifest"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "aarch64 image not found — skipping multi-arch manifest"
+          fi
+
+      - name: Create multi-arch :stable manifest
+        if: steps.check-aarch64.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          # Create a new manifest list combining x86_64 :stable and :aarch64
+          podman manifest create \
+            "ghcr.io/projectbluefin/dakota:stable-multiarch" \
+            "ghcr.io/projectbluefin/dakota:stable" \
+            "ghcr.io/projectbluefin/dakota:aarch64"
+          podman manifest push --all \
+            "ghcr.io/projectbluefin/dakota:stable-multiarch" \
+            "docker://ghcr.io/projectbluefin/dakota:stable-multiarch"
+          echo "Multi-arch stable manifest pushed as :stable-multiarch"
+
