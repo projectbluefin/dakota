@@ -65,7 +65,13 @@ push: testing / weekly Tuesday 04:00 UTC / manual
 
 merge promotion PR to main
   └─ execute-release.yml
-       └─ stable tag copy + release notes
+       ├─ stable tag copy + release notes
+       └─ create-multiarch-stable [continue-on-error, ARM never blocks]
+
+push: testing/main (BST paths) / Tuesday 04:00 UTC / manual   ← PARALLEL, DECOUPLED
+  └─ build-aarch64.yml [continue-on-error throughout]
+       └─ :aarch64 and :aarch64-<sha> published to GHCR
+          (no effect on x86_64 builds, publish, promote, or release)
 ```
 
 ## Workflow Ownership Table
@@ -73,6 +79,7 @@ merge promotion PR to main
 | Workflow | Owns | Normal trigger |
 |---|---|---|
 | `.github/workflows/build.yml` | BST build into remote CAS | `push: main/next/testing` (paths-ignore: docs, workflows, md), `merge_group`, `workflow_dispatch`. `validate` job runs on `pull_request` only; `build` job skips `pull_request`. |
+| `.github/workflows/build-aarch64.yml` | aarch64 OCI build + GHCR push | `push: main/testing` (same paths-ignore as build.yml), `schedule: Tuesday 04:00 UTC`, `workflow_dispatch`. Fully decoupled — never in `needs:` of publish/promote/release. |
 | `.github/workflows/publish.yml` | export, sign, boot-check, promote tags | `workflow_run` from build |
 | `.github/workflows/publish-smoke.yml` | observational smoke only | `workflow_run` from publish |
 | `.github/workflows/e2e.yml` | PR-facing testsuite check | `pull_request` |
@@ -90,6 +97,7 @@ merge promotion PR to main
 | `next` | `push` or `sync-next-from-main` dispatch | `:next`, `:btw` | Rolling GNOME master; never stable. No PR requirement on branch protection. |
 | `gh-readonly-queue/main/*` | merge-queue | (build only, no tag) | Gate before merge to `main`. |
 | `gh-readonly-queue/next/*` | merge-queue | (build only, no tag) | Gate before merge to `next`. |
+| `testing` or `main` (BST paths) | `push`, Tuesday schedule, dispatch | `:aarch64`, `:aarch64-<sha>` | Published by `build-aarch64.yml`. Completely decoupled from x86_64 flow. Never blocks release. |
 
 **What testing does (not just PRs):**
 ```
