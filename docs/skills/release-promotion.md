@@ -270,3 +270,27 @@ gh run cancel <run-id> --repo projectbluefin/dakota
 ```
 
 Cache-warm runs are NOT exempt. Cancel everything, let one build finish, then re-trigger warm separately.
+
+### startup_failure on promote dispatch — statuses:write missing in caller (2026-06-23)
+
+**Symptom:** Every `promote-testing-to-main.yml` dispatch returns `startup_failure` before any job runs. No log output available.
+
+**Root cause:** `projectbluefin/actions` updated `reusable-promote-squash.yml@v1` to post a `validate=success` commit status on the squash branch HEAD (so the merge queue accepts the PR in the same run). This requires `statuses: write` in the promote job.
+
+Caller-level `permissions:` sets the **ceiling** for all called workflow jobs. If `statuses: write` is not in the caller's top-level block, GitHub rejects the reusable workflow at startup — no job is queued, no log is written.
+
+**Fix:** Add `statuses: write` to `promote-testing-to-main.yml` permissions:
+
+```yaml
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  packages: read
+  actions: read
+  statuses: write       # post validate status on squash branch head
+```
+
+**Detection:** When `projectbluefin/actions@v1` adds a new permission to a reusable job, check whether the dakota caller's `permissions:` block covers it. Missing permissions produce `startup_failure` with no log output — not a runtime error.
+
+**Related:** See also `ci-tooling.md` note about `workflows: write` being an invalid actionlint scope (use a GitHub App token instead for workflow file updates).
