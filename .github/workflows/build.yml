@@ -66,7 +66,7 @@ jobs:
         uses: ./.github/actions/check-bst2-pin
 
       - name: Setup Just
-        uses: taiki-e/install-action@8b3c737da4b541bf0fb5a3e0488ff20535badac9 # v2
+        uses: taiki-e/install-action@9e1e5806d4a4822de933115878265be9aaa786d9 # v2
         with:
           tool: just
 
