@@ -54,6 +54,7 @@ Use this file when:
 - promotion PRs and stable release flow → `release-promotion.md`
 - stale queue branches / conflicting bot PRs → `merge-queue.md`
 - historical deep cuts → `ci-reference.md`
+- aarch64 build, warm-cache, multi-arch manifest → `aarch64.md`
 
 ### Factory workflow
 - Issue lifecycle, data donation, slash commands → `actionadon.md`
@@ -87,6 +88,7 @@ Use this file when:
 | Promotion PRs and stable release flow | `release-promotion.md` |
 | Historical CI edge cases | `ci-reference.md` |
 | Merge queue cleanup | `merge-queue.md` |
+| aarch64 build, warm-cache, decoupling model | `aarch64.md` |
 | Issue lifecycle / Actionadon / data donation | `actionadon.md` |
 | Installer work | `installer.md` |
 | VM stack context | `vm-stack.md` |
