@@ -42,7 +42,7 @@ jobs:
   # both variants. Zero remote-execution — does not touch cache.projectbluefin.io.
   # Expected runtime: <15 min (BST cache hit), <30 min (cold start).
   validate:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
