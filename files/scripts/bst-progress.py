@@ -46,7 +46,10 @@ TERMINAL = re.compile(
     r"(SUCCESS|SKIPPED)\s+\S+\.log\s*$"
 )
 
-done_hashes: set[str] = set()
+# Priority: build (local compile, highest) > pull (CAS hit) > fetch (source) > push
+ACTION_PRIORITY: dict[str, int] = {"build": 3, "pull": 2, "fetch": 1, "push": 0}
+
+done_hashes: dict[str, str] = {}  # artifact_hash -> best action seen so far
 action_counts: collections.Counter = collections.Counter()
 start_time = time.monotonic()
 last_report = start_time
@@ -138,16 +141,23 @@ def main() -> None:
         m = TERMINAL.search(ANSI_ESCAPE.sub("", line))
         if m:
             artifact_hash, action, _element, _state = m.groups()
-            if artifact_hash not in done_hashes:
-                done_hashes.add(artifact_hash)
+            prev_action = done_hashes.get(artifact_hash)
+            if prev_action is None:
+                # First terminal line for this hash — count it as a new element
+                done_hashes[artifact_hash] = action
                 action_counts[action] += 1
                 done += 1
+            elif ACTION_PRIORITY.get(action, 0) > ACTION_PRIORITY.get(prev_action, 0):
+                # Higher-priority action for same element (e.g. build after fetch)
+                action_counts[prev_action] -= 1
+                action_counts[action] += 1
+                done_hashes[artifact_hash] = action
 
-                now = time.monotonic()
-                elapsed = now - start_time
-                if now - last_report >= INTERVAL:
-                    _emit_progress(done, elapsed)
-                    last_report = now
+            now = time.monotonic()
+            elapsed = now - start_time
+            if now - last_report >= INTERVAL:
+                _emit_progress(done, elapsed)
+                last_report = now
 
     elapsed = time.monotonic() - start_time
     done = len(done_hashes)

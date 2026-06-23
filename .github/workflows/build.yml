@@ -185,12 +185,16 @@ jobs:
         env:
           BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
         run: |
-          if TOTAL=$(just bst show --deps all --format '%{name}' \
-              ${{ matrix.element }} 2>&1 | wc -l); then
+          BST_SHOW_OUT=$(just bst show --deps all --format '%{name}' \
+            ${{ matrix.element }} 2>&1)
+          rc=$?
+          if [ "$rc" -eq 0 ]; then
+            TOTAL=$(echo "$BST_SHOW_OUT" | wc -l)
             echo "total=${TOTAL}" >> "$GITHUB_OUTPUT"
             echo "Element graph: ${TOTAL} elements"
           else
-            echo "::warning::bst show failed — progress will show absolute counts only"
+            echo "$BST_SHOW_OUT"
+            echo "::warning::bst show failed (rc=${rc}) — progress will show absolute counts only"
             echo "total=0" >> "$GITHUB_OUTPUT"
           fi
 
