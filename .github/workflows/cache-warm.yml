@@ -67,15 +67,31 @@ jobs:
           enable-remote-execution: false
           enable-push: true
 
+      - name: Count elements for progress tracking
+        id: count
+        env:
+          BST_FLAGS: -o x86_64_v3 true --no-interactive
+        run: |
+          if TOTAL=$(just bst show --deps all --format '%{name}' \
+              oci/bluefin.bst 2>&1 | wc -l); then
+            echo "total=${TOTAL}" >> "$GITHUB_OUTPUT"
+            echo "Element graph: ${TOTAL} elements"
+          else
+            echo "::warning::bst show failed — progress will show absolute counts only"
+            echo "total=0" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build default variant (warm-cache mode, non-blocking)
         env:
           BST_FLAGS: -o x86_64_v3 true --no-interactive
+          ELEMENT_TOTAL: ${{ steps.count.outputs.total }}
         run: |
           set +e
           # Build only — no checkout, no push to GHCR. Goal is to populate
           # the remote CAS so subsequent merge-queue builds get cache hits.
-          just bst build oci/bluefin.bst
-          rc=$?
+          just bst build oci/bluefin.bst 2>&1 \
+            | python3 files/scripts/bst-progress.py
+          rc=${PIPESTATUS[0]}
           if [ "$rc" -ne 0 ]; then
             echo "::warning::Cache warm build failed (rc=${rc}) — non-blocking."
             echo "::warning::Likely causes: gnome-build-meta upstream rebuilding, junction ref skew."
@@ -84,11 +100,31 @@ jobs:
 
       - name: Report cache state
         if: always()
+        env:
+          BST_FLAGS: -o x86_64_v3 true --no-interactive
         run: |
           echo "::notice::Cache warm completed at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          CACHED=$(just bst show --deps all --format '%{name} %{state}' oci/bluefin.bst 2>/dev/null \
-            | grep -c "cached" || echo 0)
-          echo "::notice::Cached elements after warm: ${CACHED}"
+          BST_STATES=$(just bst show --deps all \
+            --format '%{name} %{state}' oci/bluefin.bst 2>/dev/null || true)
+          CACHED=$(echo "$BST_STATES" | grep -c " cached" || echo 0)
+          BUILDABLE=$(echo "$BST_STATES" | grep -c " buildable" || echo 0)
+          FETCH=$(echo "$BST_STATES" | grep -c " fetch" || echo 0)
+          TOTAL=$(echo "$BST_STATES" | grep -c '.' || echo 0)
+          echo "::notice::Cached elements after warm: ${CACHED}/${TOTAL}"
+          # Write structured summary for historical comparison
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ## Cache Warm Report
+
+          | State | Count |
+          |---|---|
+          | cached | ${CACHED} |
+          | buildable (miss) | ${BUILDABLE} |
+          | fetch needed | ${FETCH} |
+          | **total** | **${TOTAL}** |
+
+          Run at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+
 
   # ── aarch64 warm cache ────────────────────────────────────────────────────
   # Parallel to warm-cache — no `needs:` dependency, separate concurrency group.
