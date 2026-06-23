@@ -26,6 +26,7 @@ permissions:
   issues: write         # open / close failure-tracking issues
   packages: read        # read image digests in release-gate checks
   actions: read         # inspect workflow-run statuses in release-gate
+  statuses: write       # post validate status on squash branch head
 
 jobs:
   promote:
