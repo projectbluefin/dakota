@@ -206,14 +206,15 @@ jobs:
           CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
         uses: ./.github/actions/generate-bst-ci-config
         with:
-          enable-remote-execution: 'true'
-          # Disable remote push so local casd uses runner disk instead of routing
-          # through cache.projectbluefin.io:11002 as storage-service. The remote
-          # CAS drops connections mid-build (src-push: Connection refused) after
-          # ~3.5 hours, killing the build at 68% even though all pulls succeed.
-          # Pulls still read from gbm.gnome.org:11003 and :11001 (read-only).
-          # Re-enable once the CAS server connectivity is stable.
-          # TODO: re-enable push once cache.projectbluefin.io:11002 is fixed.
+          # Disable remote execution and push: cache.projectbluefin.io:11002
+          # drops connections during src-push after ~3.5 hours (grpc
+          # StatusCode.UNAVAILABLE, Connection refused), killing builds at 68%.
+          # BST requires storage-service when remote-execution is configured,
+          # and storage-service routes local casd through :11002 — so disabling
+          # remote-execution removes that dependency entirely. Local casd uses
+          # runner disk. Pulls still read from gbm.gnome.org:11003 and :11001.
+          # TODO: re-enable both once cache.projectbluefin.io:11002 is stable.
+          enable-remote-execution: 'false'
           enable-push: 'false'
 
       # ── BuildStream build ─────────────────────────────────────────────
