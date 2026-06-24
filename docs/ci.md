@@ -6,52 +6,52 @@
 |---|---|---|
 | `validate` | `pull_request` | `bst show` — graph + patch check (~15 min) |
 | `e2e` | `pull_request` when `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf` changed | Smoke test in QEMU via projectbluefin/testsuite |
-| `build` | `merge_group`, `workflow_dispatch`, `schedule` — skips on `pull_request` | Full OCI build (~60–90 min) |
-| `build-aarch64` | disabled | ARM64 — pending investigation |
+| `build` | `push: testing/next` (paths-ignore: `.github/workflows/**`, `docs/**`, `**.md`, `AGENTS.md`), `merge_group`, `workflow_dispatch`, `schedule: daily 13:00 UTC` — skips on `pull_request` | Full OCI build (~60–90 min) |
+| `build-aarch64` | `push: testing/main` (BST-affecting paths only), `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch` | ARM64 — fully decoupled, never blocks release |
 
 ## Publish pipeline (publish.yml)
 
-`build` success on main/testing/next triggers publish.yml via `workflow_run`:
+`build` success on `testing` or `next` triggers `publish.yml` via `workflow_run`:
 
 ```
-build.yml (main|testing|next) → [workflow_run] → publish.yml
-                                                  setup → publish-image (matrix) → promote (:testing or :next)
-                                                                   └──────────────→ publish-sbom
+build.yml (testing|next) → [workflow_run] → publish.yml
+                                             setup → publish-image → boot-check → promote (:testing or :next)
+                                                                  └──────────→ publish-sbom (parallel)
 ```
 
 | Job | What |
 |---|---|
 | `setup` | Resolves SHA, trigger event, and branch |
 | `publish-image` | Exports from CAS; runs `chunka@v1` to rechunk; pushes `:$sha`; signs + attests |
-| `promote` | `skopeo copy` `:$sha` → `:testing` (merge-queue/schedule/dispatch) |
+| `boot-check` | Hard gate — image must boot before `:testing` is promoted |
+| `promote` | `skopeo copy` `:$sha` → `:testing` (only runs after boot-check passes) |
 | `publish-sbom` | Generates SBOM; attaches via oras; signs SBOM (runs in parallel with promote) |
 
-`promote` depends only on `publish-image`, not on SBOM — saves 10–15 min on the critical path.
-
-**`execute-release.yml`** fires on `push: main` and `workflow_dispatch`. A `check-trigger` job reads the commit message — proceeds only when it matches `^ci\(promote\): dakota testing` or `^chore: promote testing to main`. `workflow_dispatch` bypasses the gate. On success: copies `:testing` → `:stable`, then generates a GitHub Release with SBOM diff.
+`promote` depends only on `publish-image` + `boot-check`, not on SBOM — saves 10–15 min on the critical path.
 
 **Critical ordering:** `publish.yml` pulls the OCI artifact from CAS. The artifact is only in CAS if `build.yml` ran first for that SHA. Always dispatch `build.yml --ref testing` (or let push trigger it) before manually dispatching `publish.yml`.
 
 ## Stable promotion (execute-release.yml)
 
-Triggered by a push to `main` whose commit message matches the promotion pattern. The normal path is:
+`execute-release.yml` fires via `workflow_run` from `publish.yml` on the `testing` branch — no commit message gate, no PR, no human approval.
 
 ```
-push to testing (BST-affecting)
-  → build.yml → publish.yml → :testing
-  → promote-testing-to-main.yml → auto/promote-testing-to-main PR
-       → pr-release-gate.yml (cosign verify)
-       → auto-merge → push to main (commit: "ci(promote): dakota testing ...")
-           → execute-release.yml (check-trigger passes)
-               → :testing copied to :stable
-               → GitHub Release created
+push to testing (BST-affecting) or daily 13:00 UTC schedule
+  → build.yml → publish.yml → boot-check → :testing
+  → execute-release.yml (workflow_run from publish on testing)
+       → SHA freshness check (:testing SHA vs :stable SHA)
+           → skip if equal (already up to date)
+           → cosign verify :testing
+           → skopeo copy :testing → :stable
+           → fast-forward main bookmark
+           → GitHub Release created
 ```
 
-Schedule: `promote-testing-to-main.yml` runs `cron: '0 4 * * 2'` (Tuesday 04:00 UTC). That is the only automated promotion cadence.
+`main` is a **release bookmark only** — fast-forwarded by `execute-release.yml` after each successful promotion. Do not open PRs against `main`.
 
 ## Schedule
 
-Builds fire on schedule (13:00 UTC for testing, 03:00 UTC for next), merge_group, or workflow_dispatch.
+Build fires daily at 13:00 UTC (`schedule:` in `build.yml`), plus on every BST-affecting push to `testing` or `next`, `merge_group`, and `workflow_dispatch`.
 
 ## Remote cache
 
@@ -62,8 +62,9 @@ Builds fire on schedule (13:00 UTC for testing, 03:00 UTC for next), merge_group
 `ghcr.io/projectbluefin/dakota:{testing,stable,next,btw}` and `ghcr.io/projectbluefin/dakota:<sha>`
 
 Streams:
-- `:testing` — published on every BST-affecting push to `testing` or `main` branch
-- `:stable` — promoted from `:testing` via `execute-release.yml` after promotion PR merges to main (Tuesday 04:00 UTC scheduled path, or manual dispatch)
+- `:testing` — published on every BST-affecting push to the `testing` branch (or daily schedule)
+- `:stable` — promoted from `:testing` daily by `execute-release.yml` (when `:testing` SHA differs from `:stable`)
+- `:next` / `:btw` — published from the `next` branch; never promoted to `:stable`
 
 Never bypass the merge queue with `--admin`.
 
@@ -72,14 +73,8 @@ Never bypass the merge queue with `--admin`.
 To manually cut a `:stable` release:
 
 ```bash
-# 1. Ensure :testing exists and promotion PR is open
-gh pr list --repo projectbluefin/dakota --search 'head:auto/promote-testing-to-main state:open'
-
-# 2. If the promotion PR gate has passed, dispatch execute-release directly
-gh workflow run execute-release.yml --repo projectbluefin/dakota --ref main
-
-# OR: dispatch promote-testing-to-main to open/update the promotion PR
-gh workflow run promote-testing-to-main.yml --repo projectbluefin/dakota
+# 1. Verify :testing is fresh and cosign-verified, then dispatch execute-release directly
+gh workflow run execute-release.yml --repo projectbluefin/dakota --ref testing
 ```
 
 ## Restarting the factory (publish pipeline has been idle)
@@ -91,17 +86,15 @@ the restart sequence is:
 # 1. Verify publish.yml is healthy — no startup_failure
 gh run list --repo projectbluefin/dakota --workflow publish.yml --limit 5
 
-# 2. Dispatch a fresh build on main to populate the CAS
-gh workflow run build.yml --repo projectbluefin/dakota --ref main
+# 2. Dispatch a fresh build on testing to populate the CAS
+gh workflow run build.yml --repo projectbluefin/dakota --ref testing
 # Wait ~60–90 minutes for build to complete
 
-# 3. Dispatch publish.yml after build finishes (or let workflow_run auto-trigger)
-gh workflow run publish.yml --repo projectbluefin/dakota --ref main
+# 3. publish.yml auto-triggers via workflow_run; if not, dispatch manually
+gh workflow run publish.yml --repo projectbluefin/dakota --ref testing
 
-# 4. Monitor until :testing lands
+# 4. Monitor until :testing lands, then execute-release auto-triggers
 gh run watch --repo projectbluefin/dakota
-
-# 5. Cut stable release (see Manual stable promotion above)
 ```
 
 **Common failure: `startup_failure` with `jobs: []`**

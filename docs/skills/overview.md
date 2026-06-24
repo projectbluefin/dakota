@@ -45,7 +45,7 @@ Use when you need product/repo context before planning work, when someone asks w
 - CI green is not sufficient. Hardware confirmation is.
 
 **Production image = `ghcr.io/projectbluefin/dakota:stable`.**
-- Streams: `:testing` (nightly, e2e-gated), `:stable` (weekly promotion)
+- Streams: `:testing` (on every BST-affecting push to `testing`), `:stable` (daily automated via `execute-release.yml` — no human approval)
 - Rolling nightly stream: `:next` / `:btw` (GNOME 51 master — see below)
 - When someone says "is X in the image", check the GHCR image via `skopeo inspect` or `podman run --rm` — not a local machine unless explicitly asked.
 
@@ -66,10 +66,10 @@ Published image: `ghcr.io/projectbluefin/dakota:{testing,stable,next,btw}`
 
 | Tag | Branch | GNOME | Cadence | Stability |
 |-----|--------|-------|---------|-----------|
-| `:testing` | `testing` | GNOME 50 (stable) | Daily (13:00 UTC) | boot-check gated |
-| `:stable` | `main` (bookmark) | GNOME 50 (stable) | Auto-promotes from testing | Production |
-| `:next` | `next` | GNOME 51 (master) | Daily (03:00 UTC) | Experimental |
-| `:btw` | `next` | GNOME 51 (master) | Daily (03:00 UTC), nvidia | Experimental |
+| `:testing` | `testing` | GNOME 50 (stable) | Every BST-affecting merge | boot-check gated |
+| `:stable` | `main` (bookmark) | GNOME 50 (stable) | Daily automated (when :testing != :stable) | Production |
+| `:next` | `next` | GNOME 51 (master) | On junction bump (~nightly) | Experimental |
+| `:btw` | `next` | GNOME 51 (master) | Same as `:next`, nvidia variant | Experimental |
 
 ### `:next` / `:btw` — Rolling GNOME 51 stream
 
@@ -82,7 +82,7 @@ GNOME Shell, newest GTK, newest everything.
 - No bootc override (GNOME 51 master ships current bootc)
 - Junction bumps are **fully automated** — `track-next-junctions.yml` at 20:00
   UTC opens auto-merge PRs; no human review required
-- **No promotion to `:stable`** — ever. This stream does not feed the weekly
+- **No promotion to `:stable`** — ever. This stream does not feed the daily
   release pipeline.
 - Fixes from `main` (sbom, CI) must be **manually cherry-picked** to `next` —
   they do not land automatically.

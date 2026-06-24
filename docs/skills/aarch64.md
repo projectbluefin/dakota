@@ -1,6 +1,6 @@
 ---
 name: aarch64
-description: Design and operational guidance for Dakota's aarch64 build pipeline. Covers the decoupling model, build-aarch64.yml workflow, cache-warm patterns, and why ARM must never block x86_64. Load when working on aarch64 builds, the build-aarch64.yml workflow, or investigating aarch64 cache-warm failures.
+description: Design and operational guidance for Dakota's aarch64 build pipeline. Covers the decoupling model, build-aarch64.yml workflow, and why ARM must never block x86_64. Load when working on aarch64 builds, the build-aarch64.yml workflow, or investigating stale aarch64 tags.
 metadata:
   context7-sources:
     - /websites/github_en_actions
@@ -16,21 +16,20 @@ Dakota ships an aarch64 OCI image alongside x86_64. The **hard invariant** is th
 
 Load this skill when:
 - Working on `.github/workflows/build-aarch64.yml`
-- Investigating aarch64 warm-cache failures in `cache-warm.yml`
 - Debugging why `:aarch64` tag is stale
 - Adding aarch64 to a new release artifact (e.g. multi-arch manifest)
 
 ## When NOT to Use
 
 - x86_64 publish or promotion problems → `workflow-map.md` + `release-promotion.md`
-- cache-warm for x86_64 → `ci-reference.md`
+- Historical CI deep cuts → `ci-reference.md`
 
 ## Decoupling Model
 
-aarch64 is a **separate workflow** (`build-aarch64.yml`), not a job in `build.yml`:
+aarch64 is a **separate workflow** (`build-aarch64.yml`), triggered after x86_64 publishes:
 
 ```
-build-aarch64.yml (workflow_run from publish, dispatch)
+publish.yml (testing) → [workflow_run] → build-aarch64.yml
   └─ build-aarch64 job (ubuntu-24.04-arm, continue-on-error: true)
        ├─ BST build (no RE, enable-push: true)
        ├─ export + bootc lint
@@ -54,50 +53,24 @@ execute-release.yml (after :stable is live)
 
 ## Triggers
 
-```yaml
-on:
-  push:
-    branches: [main, testing]
-    paths-ignore:
-      - '.github/workflows/**'
-      - 'docs/**'
-      - '**.md'
-      - 'AGENTS.md'
-  schedule:
-    - cron: '0 4 * * 2'   # Tuesday 04:00 UTC — same window as promote schedule
-  workflow_dispatch:
-```
+`build-aarch64.yml` has three triggers:
+- `push: testing/main` (BST-affecting paths only, same paths-ignore as `build.yml`)
+- `workflow_run` from `publish.yml` on `testing` — serializes ARM start after x86_64 CAS writes complete
+- `workflow_dispatch` — manual recovery / on-demand
 
-The Tuesday schedule means aarch64 may be current when `execute-release.yml` fires its `create-multiarch-stable` step.
+The `workflow_run` trigger is the primary production path. `push` provides direct ARM builds on BST-affecting commits to `testing` or `main`.
 
 ## Published Tags
 
 | Tag | When | Source |
 |---|---|---|
-| `:aarch64` | push, schedule, dispatch | Latest successful aarch64 build from testing/main |
-| `:aarch64-<sha>` | push, schedule, dispatch | Immutable per-commit aarch64 tag |
+| `:aarch64` | workflow_run from publish, dispatch | Latest successful aarch64 build from testing |
+| `:aarch64-<sha>` | workflow_run from publish, dispatch | Immutable per-commit aarch64 tag |
 | `:stable-multiarch` | execute-release, if :aarch64 present | Multi-arch index combining :stable + :aarch64 |
 
-## Warm Cache (cache-warm.yml)
+## Recovery
 
-The `warm-cache-aarch64` job in `cache-warm.yml` runs weekdays at 06:00 UTC alongside the x86_64 warm job. It is:
-- `continue-on-error: true`
-- Separate concurrency group: `dakota-cache-warm-aarch64`
-- Uses `enable-remote-execution: false`, `enable-push: true`
-
-**Common failure patterns:**
-
-| Pattern | Symptom | Root cause |
-|---|---|---|
-| Cancelled warm-cache runs | `warm-cache-aarch64` cancelled repeatedly | Operator intervention (pre-flight cancels all active runs including warm jobs) |
-| Failed warm-cache | `Cached aarch64 elements after warm: 0` | ARM runner not available, or gnome-build-meta upstream rebuilding for aarch64 |
-| Long stale period | `:aarch64` not updated for days | All recent testing pushes are paths-ignored (docs/workflow-only) |
-
-**Recovery:**
 ```bash
-# Re-trigger warm cache manually
-gh workflow run cache-warm.yml --repo projectbluefin/dakota
-
 # Re-trigger full aarch64 build
 gh workflow run build-aarch64.yml --repo projectbluefin/dakota --ref testing
 ```
@@ -107,7 +80,6 @@ gh workflow run build-aarch64.yml --repo projectbluefin/dakota --ref testing
 | Rationalization | Reality |
 |---|---|
 | "Let me just add aarch64 to the publish.yml needs: so the manifest is created there." | No. Structural decoupling is the whole point. A failed ARM job must never stall x86_64 publication. |
-| "The cache-warm failed but it's non-blocking so ignore it." | Non-blocking today, but a cold CAS means the first real aarch64 build will be very slow or time out. Fix the root cause. |
 | "ARM is ready, let's remove continue-on-error." | Only when aarch64 has the same reliability story as x86_64, and with explicit maintainer decision. |
 
 ## Lessons Learned
@@ -118,6 +90,11 @@ The `build-aarch64` job was originally in `build.yml` with `if: false` (disabled
 
 **Key design decision:** The multi-arch manifest (`create-multiarch-stable`) lives in `execute-release.yml` rather than `build-aarch64.yml` because the `:stable` tag only exists after the x86_64 release completes. A post-release manifest step is safer than a racing parallel manifest job.
 
+### ARM trigger updated to include workflow_run from publish (2026-06-23)
+
+`build-aarch64.yml` previously used only a Tuesday cron + `push: testing/main` trigger. Added `workflow_run` from `publish.yml` on `testing` to also serialize ARM after x86_64 CAS writes complete. This eliminated the `Cached elements after warm: 0` failures caused by concurrent x86_64 and ARM CAS writes.
+
 ### Publish skips after docs-only commits (2026-06-22)
 
-When all recent commits on `testing` are paths-ignored (docs/AGENTS.md only), no automatic build fires and `:testing` goes stale. The correct recovery is a manual `workflow_dispatch` on `build.yml` targeting the `testing` branch. After the build, `publish.yml` fires automatically (the `workflow_dispatch` event passes the `event != 'pull_request'` gate in the setup job).
+When all recent commits on `testing` are paths-ignored (docs/AGENTS.md only), no automatic build fires and `:testing` goes stale. Recovery: manual `workflow_dispatch` on `build.yml` targeting `testing`. After the build, `publish.yml` fires automatically, which then triggers `build-aarch64.yml`.
+

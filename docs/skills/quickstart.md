@@ -30,7 +30,7 @@ Use when:
 ## Core Process
 
 1. **Load `not-bluefin.md` if needed.**
-2. **Branch from `upstream/main`.**
+2. **Branch from `upstream/testing`.**
 3. **Pick the focused skill for the change.**
 4. **Use `just` recipes, not ad-hoc host commands.**
 5. **Run the lightest validation that proves the change.**
@@ -69,7 +69,7 @@ Use when:
 
 ```bash
 # branch
-git checkout upstream/main -b fix/short-description
+git checkout upstream/testing -b fix/short-description
 
 # inspect recipes
 just --list
@@ -102,7 +102,7 @@ git push upstream fix/short-description
 
 ## Red Flags
 
-- Starting from local `main` instead of `upstream/main`
+- Starting from local `testing` instead of `upstream/testing`
 - Using host-installed bst or random shell commands instead of `just`
 - No evidence attached to the PR
 - A skill-worthy lesson discovered but not written back
@@ -125,11 +125,9 @@ factory restart sequence is:
 1. Fix any `startup_failure` in `publish.yml` — check for invalid `permissions:` scopes
    (e.g. `artifact-metadata: write` is not a valid GITHUB_TOKEN scope) and
    job-level `permissions:` on reusable workflow call jobs.
-2. Dispatch `build.yml --ref main` to populate the remote CAS.
+2. Dispatch `build.yml --ref testing` to populate the remote CAS.
 3. Wait ~60–90 minutes for the build to complete.
 4. `publish.yml` auto-triggers via `workflow_run`. If not, dispatch manually.
-5. After `:testing` lands, dispatch `weekly-testing-promotion.yml` and get
-   2 human approvals at https://github.com/projectbluefin/dakota/deployments
-   to promote `:testing` → `:stable`.
+5. Once `:testing` lands, `execute-release.yml` auto-triggers to promote `:testing` → `:stable` (no human approval needed).
 
 Full details: `release-promotion.md` and `ci-tooling.md`.

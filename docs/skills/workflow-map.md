@@ -33,7 +33,8 @@ Use when you need to answer:
    - `pull_request`
    - `merge_group`
    - `workflow_run`
-   - `schedule`
+   - `push: testing`
+   - `push: main`
    - `workflow_dispatch`
 2. **Map the event to the owning workflow.**
 3. **Only then inspect logs or edit config.**
@@ -46,13 +47,17 @@ PR touching image paths
   └─ e2e (testsuite wrapper; change-detected)
 
 Merge queue → testing or next
-  └─ validate only (full build excluded — merge queue only requires validate;
-     merge_group builds were always cancelled by PR merge before completion,
-     wasting the CAS slot and starving the scheduled build)
-
-Daily 13:00 UTC / manual
-  └─ build.yml (schedule trigger)
+  └─ build.yml
        └─ publish.yml (workflow_run from build)
+            ├─ publish-image
+            ├─ boot-check   [hard gate]
+            ├─ publish-sbom [parallel]
+            └─ promote to :testing / :next / :btw
+
+Daily 13:00 UTC / push: testing (BST-affecting paths) / manual
+  └─ build.yml (schedule or push trigger)
+       └─ publish.yml (workflow_run from build)
+            ├─ boot-check gate [must boot before :testing]
             └─ promote to :testing
 
 Successful publish.yml on testing
@@ -62,7 +67,6 @@ Successful publish.yml on testing
        ├─ SHA freshness check (:testing vs :stable digest)
        │    └─ skip if equal (already up to date)
        ├─ cosign verify :testing
-       ├─ boot-check gate
        ├─ skopeo copy :testing → :stable
        ├─ fast-forward main bookmark
        └─ create GitHub Release
@@ -79,13 +83,12 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 
 | Workflow | Owns | Normal trigger |
 |---|---|---|
-| `.github/workflows/build.yml` | BST build into remote CAS | `schedule: daily 13:00 UTC`, `workflow_dispatch` **only**. No push, no pull_request, no merge_group. |
-| `.github/workflows/validate.yml` | PR/merge_group graph validation (`bst show`) | `pull_request`, `merge_group`. Job named `validate` — satisfies the required status check. |
-| `.github/workflows/build-aarch64.yml` | aarch64 OCI build + GHCR push | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch`. Fully decoupled — never in `needs:` of publish/promote/release. |
+| `.github/workflows/build.yml` | BST build into remote CAS | `push: testing/next` (paths-ignore: docs, workflows, md, `files/scripts/**`), `merge_group`, `workflow_dispatch`, `schedule: daily 13:00 UTC`. `validate` job runs on `pull_request` only; `build` job skips `pull_request`. |
+| `.github/workflows/build-aarch64.yml` | aarch64 OCI build + GHCR push | `push: testing/main` (BST-affecting paths), `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch`. Fully decoupled — never in `needs:` of publish/promote/release. |
 | `.github/workflows/publish.yml` | export, sign, boot-check, promote tags | `workflow_run` from build |
 | `.github/workflows/publish-smoke.yml` | observational smoke only | `workflow_run` from publish |
 | `.github/workflows/e2e.yml` | PR-facing testsuite check | `pull_request` |
-| `.github/workflows/execute-release.yml` | SHA freshness check → cosign verify → boot-check → stable release | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch`. Skips if `:testing` digest equals `:stable` digest. |
+| `.github/workflows/execute-release.yml` | SHA freshness check → cosign verify → stable release | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch`. Skips if `:testing` digest equals `:stable` digest. |
 | `.github/workflows/sync-next-from-main.yml` | merge main into next (preserve junction refs) | `push: main`, `workflow_dispatch` |
 | ~~`promote-testing-to-main.yml`~~ | DELETED | Was: `push: testing`, schedule, manual |
 | ~~`pr-release-gate.yml`~~ | DELETED | Was: `pull_request` to `main` |
@@ -96,17 +99,17 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 
 | Branch | Trigger | Published tag(s) | Notes |
 |---|---|---|---|
-| `testing` | `schedule: 13:00 UTC` | `:testing` | **Development trunk. Primary `:testing` publish path.** Builds daily; `bst artifact push --deps all` after each successful build warms the CAS for the next run. |
+| `testing` | `push` (BST-affecting paths only) or `schedule: 13:00 UTC` | `:testing` | **Development trunk. Primary `:testing` publish path.** Every BST-affecting push builds → publishes → promotes. Doc/workflow-only pushes are ignored (paths-ignore). |
 | `main` | fast-forward from `execute-release.yml` | `:stable` | **Release bookmark only.** Only `execute-release.yml` writes here after a successful SHA freshness check + cosign verify + boot-check. No PRs target `main`. |
-| `next` | `schedule: 03:00 UTC` (via `nightly-next-build.yml`) | `:next`, `:btw` | Rolling GNOME master; never stable. No PR requirement on branch protection. |
+| `next` | `push` or `sync-next-from-main` dispatch | `:next`, `:btw` | Rolling GNOME master; never stable. No PR requirement on branch protection. |
 | `gh-readonly-queue/testing/*` | merge-queue | (build only, no tag) | Gate before merge to `testing`. |
 | `gh-readonly-queue/next/*` | merge-queue | (build only, no tag) | Gate before merge to `next`. |
 | `testing` (BST paths) | `workflow_run` from publish | `:aarch64`, `:aarch64-<sha>` | Published by `build-aarch64.yml`. Completely decoupled from x86_64 flow. Never blocks release. |
 
 **What testing does (not just PRs):**
 ```
-daily 13:00 UTC schedule
-  → build.yml (build job using CAS warmed by merge queue)
+push to testing (BST-affecting) or daily 13:00 UTC schedule
+  → build.yml (build job)
   → publish.yml (workflow_run)
       → :testing tag published to GHCR
   → execute-release.yml (workflow_run from publish on testing)
@@ -123,7 +126,7 @@ daily 13:00 UTC schedule
 |---|---|
 | "Publish failed, so build must be broken." | Often false. Build, publish, boot, smoke, and promotion are separate stages. |
 | "Nothing ran, so GitHub is flaky." | Usually the trigger or branch filter is wrong. |
-| "The schedule still owns :testing." | This is correct. The daily schedule is the only way `:testing` updates (as of 2026-06-25) to avoid global CAS locks. |
+| "The schedule still owns :testing." | Not anymore. Every successful merge publishes immediately. |
 
 ## Red Flags
 

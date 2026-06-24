@@ -27,11 +27,11 @@ dakota  (next→:next/:btw, rolling nightly, no stable promotion)
 ```
 
 Each image repo pulls `ghcr.io/projectbluefin/common:latest` as a base layer.
-testsuite gates `:testing` promotion nightly and `:stable` promotion weekly.
+testsuite gates PR changes; stable promotion for Dakota is daily and automated (SHA freshness + cosign verify + boot-check).
 
 **Dakota image streams:**
 - `:testing` — `testing` branch, publishes on every BST-changing push (GHA-only changes filtered)
-- `:stable` — `main` branch, promoted from `testing` weekly via e2e-gated squash PR
+- `:stable` — `main` (bookmark), promoted daily from `:testing` via `execute-release.yml` — no PR, no human approval
 - `:next` / `:btw` — `next` branch, GNOME 51 master, fully automated rolling nightly, **no promotion to stable ever**
 
 **`elements/bluefin/common.bst` strips bluefin-only content from common.** Any file added to `common/system_files/shared/` that does not apply to a fresh dakota install must be explicitly `rm -f`'d in the `install-commands` block of that element. Current stripped files: `rechunker-group-fix` script, service, and preset (chunka migration aid — not needed on fresh dakota).
@@ -210,7 +210,7 @@ Do not request review without evidence. Before opening a PR for review:
 
 **Agents MUST NOT push directly to `main`.** All changes via PR from a feature branch. Branch protection enforces this.
 
-**Dakota promotion PR has no e2e gate by design.** `promote-testing-to-main.yml` passes `run_e2e: false` to `reusable-promote-squash.yml` — the promotion PR gets cosign verification only. Do not add `run_e2e: true` to the promote caller. Promotion from `testing` to `main` is fully automated — no human approval required.
+**Dakota stable promotion has no e2e gate by design.** `execute-release.yml` runs SHA freshness check + cosign verify + boot-check, then copies `:testing` → `:stable` directly — no PR, no human approval required. Do not add an e2e gate to the release path.
 
 **Promotion pipeline — cosign verify pattern:** When adding cosign verification to a promotion workflow, anchor the `--certificate-identity-regexp` with `^...$` and restrict it to the specific publishing workflow file and allowed ref patterns (e.g. `^https://github.com/<repo>/.github/workflows/publish\.yml@refs/heads/(main|gh-readonly-queue/main/.+)$`). An unanchored wildcard accepts signatures from any workflow in the repo.
 

@@ -48,16 +48,16 @@ Use when the task mentions:
 1. **Run the CI pre-flight first.** Verify `OK: field is clear` before any action.
    See Hard Rule #9 in `.github/copilot-instructions.md`. No exceptions.
 2. **Identify the stage.**
+   - boot-check gate (in `publish.yml` — gates `:testing` promotion)
    - publish to `:testing`
    - `execute-release.yml` SHA freshness check
    - cosign verify `:testing`
-   - boot-check gate
    - skopeo copy `:testing` → `:stable`
    - fast-forward `main` bookmark
 3. **`execute-release.yml` fires via `workflow_run` from `publish.yml` on the `testing` branch.**
    It checks whether the SHA published as `:testing` differs from the current `:stable`. If
    they are equal, promotion is skipped (already up to date). If they differ, cosign verify
-   runs, then boot-check, then the copy and fast-forward.
+   runs, then the copy and fast-forward. The image is already boot-checked by `publish.yml`.
 4. **`workflow_run` from publish — not a push trigger.** `execute-release.yml` starts
    automatically after every successful `publish.yml` run on the `testing` branch. No cron
    or commit-message gate required.
@@ -73,12 +73,12 @@ Use when the task mentions:
 push to testing (BST-affecting paths)
   → build.yml (build job, including daily 13:00 UTC schedule)
   → publish.yml (workflow_run)
+      → boot-check gate (must boot before :testing is promoted)
       → :testing tag published to GHCR
   → execute-release.yml (workflow_run from publish on testing)
       → SHA freshness check (:testing SHA vs :stable SHA)
           → skip if equal (already up to date)
           → cosign verify :testing
-          → boot-check gate
           → skopeo copy :testing → :stable
           → fast-forward main bookmark
           → create GitHub Release
