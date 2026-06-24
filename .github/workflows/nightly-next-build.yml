@@ -26,8 +26,37 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: write
+      contents: read
     steps:
+      - name: Check for active next build
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          active=$(gh run list \
+            --repo "${{ github.repository }}" \
+            --workflow build.yml \
+            --branch next \
+            --status in_progress \
+            --json databaseId \
+            --jq 'length')
+          queued=$(gh run list \
+            --repo "${{ github.repository }}" \
+            --workflow build.yml \
+            --branch next \
+            --status queued \
+            --json databaseId \
+            --jq 'length')
+          total=$((active + queued))
+          if [ "$total" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Next build already running or queued ($total run(s)) — skipping dispatch"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Dispatch build.yml on next
+        if: steps.check.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
