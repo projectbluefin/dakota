@@ -31,9 +31,6 @@ jobs:
 
           # Find all open PRs targeting testing that are BEHIND and need updating.
           # Renovate manages its own branch updates — skip them.
-          # auto/promote-testing-to-main is rebuilt fresh by promote-testing-to-main.yml;
-          # a merge commit here changes the tree, defeats the tree-identity check, triggers a
-          # force-push, and dismisses approvals. Let the promote workflow keep it current.
           # Mergeraptor PRs (distrobox, junction bumps) DO target testing and need auto-update
           # so renovate-automerge can fire. They are intentionally included here.
           STALE_PRS=$(gh pr list \
@@ -45,7 +42,6 @@ jobs:
               .[] |
               select(.mergeStateStatus == "BEHIND") |
               select(.author.login != "renovate[bot]") |
-              select(.headRefName != "auto/promote-testing-to-main") |
               .number
             ')
 
