@@ -64,22 +64,22 @@ jobs:
           fi
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
           # Derive the :testing tag from the branch name.
-          # main     → :testing  (from main via promote job)
-          # testing  → :testing  (direct: every merge to testing publishes immediately)
+          # Only trunk branches (direct pushes / schedule) advance stream tags.
+          # Merge-queue builds (gh-readonly-queue/**) publish an immutable :SHA
+          # tag only — they must NOT move public stream tags before the commit lands.
+          # main     → :testing  (bookmark fast-forward; TODO: remove after #1079)
+          # testing  → :testing  (every merge to testing publishes immediately)
           # next     → :next     (rolling GNOME master / bleeding edge)
-          if [[ "$BRANCH" == "main" || "$BRANCH" == gh-readonly-queue/main/* ]]; then
+          # queue/** → (empty)   :SHA only, no stream tag
+          if [[ "$BRANCH" == "main" ]]; then
             echo "testing_tag=testing" >> "$GITHUB_OUTPUT"
-          elif [[ "$BRANCH" == "next" || "$BRANCH" == gh-readonly-queue/next/* ]]; then
+          elif [[ "$BRANCH" == "next" ]]; then
             echo "testing_tag=next" >> "$GITHUB_OUTPUT"
-          elif [[ "$BRANCH" == "testing" || "$BRANCH" == gh-readonly-queue/testing/* ]]; then
-            # testing branch builds publish :testing directly so every merge to
-            # testing produces a fresh image. Matches bluefin/bluefin-lts behaviour.
+          elif [[ "$BRANCH" == "testing" ]]; then
             echo "testing_tag=testing" >> "$GITHUB_OUTPUT"
           else
-            # Fallback for any future branches: strip merge-queue prefix
-            CLEAN="${BRANCH#gh-readonly-queue/}"
-            CLEAN="${CLEAN%%/*}"
-            echo "testing_tag=${CLEAN}-testing" >> "$GITHUB_OUTPUT"
+            # merge-queue or other refs: publish :SHA tag only, do NOT move stream tags
+            echo "testing_tag=" >> "$GITHUB_OUTPUT"
           fi
 
   # ── Export, sign, attest ─────────────────────────────────────────────────
@@ -678,6 +678,7 @@ jobs:
     if: >-
       needs.publish-image.result == 'success' &&
       needs.boot-check.result == 'success' &&
+      needs.setup.outputs.testing_tag != '' &&
       (github.event_name == 'workflow_run' || github.ref_name == 'main')
     runs-on: ubuntu-24.04
     strategy:
