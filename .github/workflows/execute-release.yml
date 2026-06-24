@@ -95,6 +95,7 @@ jobs:
     permissions:
       actions: read
       contents: write
+      id-token: write
       issues: write
       packages: write
       pull-requests: write
@@ -299,7 +300,7 @@ jobs:
 
   post-release-verify:
     name: Post-release verification + cleanup
-    if: ${{ !inputs.dry_run && needs.execute.result == 'success' && needs.create-multiarch-stable.result == 'success' }}
+    if: ${{ inputs.dry_run != true && needs.execute.result == 'success' && needs.create-multiarch-stable.result == 'success' }}
     needs: [freshness-check, execute, create-multiarch-stable]
     runs-on: ubuntu-24.04
     permissions:
