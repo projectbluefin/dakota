@@ -93,11 +93,16 @@ Ruleset: `testing-merge-queue-no-review`
 | Rule | Value |
 |---|---|
 | Required reviews | 0 (fully automated) |
-| Required status checks | `validate` + `e2e` |
+| Required status checks | `validate` (single context, integration_id 15368) |
 | Merge queue | enabled |
 | Force push | blocked |
 | Deletion | blocked |
 | Default branch | Yes — `testing` is the GitHub default branch |
+
+**Ground truth (verified via `gh api repos/projectbluefin/dakota/rulesets/18053489`):**
+- The only required status check context on `testing` is `validate`.
+- `e2e` and `Boot check — gate` from `publish.yml` are **not** ruleset-enforced gates. They run as part of `publish.yml` post-merge and gate stream-tag movement / promotion, not merge-queue entry.
+- If you want `Boot check — gate` to block merge-queue entry, that is a Design Gate change to the ruleset — do not modify in passing.
 
 ### main (release bookmark)
 

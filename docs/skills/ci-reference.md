@@ -9,6 +9,16 @@ metadata:
 
 # CI Reference
 
+> **HISTORICAL — superseded by `ci.md` and `release-promotion.md`. Retained for archaeology only.**
+>
+> This file documents workflows and patterns from the pre-OCI-native era, including
+> deleted workflows (`promote-testing-to-main.yml`, `pr-release-gate.yml`,
+> `sync-main-to-testing.yml`, `cache-warm.yml`). Sections may describe workflows
+> that no longer exist, daily schedules that were replaced by `build.yml`'s 13:00 UTC
+> trigger, or promotion flows that were replaced by `execute-release.yml`. For the
+> current workflow inventory, read `ci.md` and `workflow-map.md`. For current
+> promotion flow, read `release-promotion.md`.
+
 ## Overview
 
 This is the **deep-cut archive**, not the load-first CI skill.

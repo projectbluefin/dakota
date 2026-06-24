@@ -200,9 +200,12 @@ before `enqueuePullRequest` succeeds. A manually-posted commit status is rejecte
 as a non-bot actor — the org bot restriction does not apply to human pushes:
 
 ```bash
-git checkout -b unblock upstream/auto/promote-testing-to-main
+# Example for any auto-pr-bot branch stuck on first run.
+# Historical case was auto/promote-testing-to-main (workflow now deleted);
+# the same pattern unblocks any bot-authored PR branch.
+git checkout -b unblock upstream/<bot-branch>
 git commit --allow-empty -m "ci: trigger validate as non-bot actor"
-git push upstream unblock:auto/promote-testing-to-main
+git push upstream unblock:<bot-branch>
 # validate fires on pull_request:synchronize as human → posts check run
 # enqueuePullRequest now succeeds
 ```
@@ -333,7 +336,7 @@ if [ "$rc" -eq 0 ]; then
   ...
 ```
 
-This pattern is now used in both `build.yml` and `cache-warm.yml` (fixed in
+This pattern is now used in `build.yml` (fixed in
 commit `1f89a42`). Apply the same pattern to any future step that needs to capture
 both the output and exit code of a command that may fail.
 
