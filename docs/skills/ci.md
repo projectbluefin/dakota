@@ -141,6 +141,51 @@ The rationalizations that have caused real production failures:
 
 **Push is conditional:** Remote cache section is only added to `buildstream-ci.conf` if **both** are set. Without credentials, BST builds from source using local disk cache only — slower but functional. This is normal for external contributors' forks.
 
+### CAS drops connections mid-build — disable remote-execution + push
+
+**Symptom:** Build proceeds cleanly for 3–4 hours (hundreds of elements pulled), then fails:
+
+```
+grpc StatusCode.UNAVAILABLE: ipv4:77.42.112.172:11002: Failed to connect to remote host: Connection refused
+```
+
+Pipeline summary: `Build Queue: failed 5, Src-push Queue: failed 5`.
+
+**Root cause:** `cache.storage-service` routes local buildbox-casd through the remote CAS.
+When remote CAS drops (crash, OOM, disk full), local casd loses its storage backend and
+BST cannot proceed even though all prior artifact pulls succeeded.
+
+**BST constraint:** BST requires `storage-service` when `remote-execution` is configured.
+Setting `enable-push: false` alone is NOT sufficient — the action still emits the
+`remote-execution:` block if `enable-remote-execution: 'true'`, and BST rejects the config:
+```
+Error loading user configuration: Remote execution requires 'storage-service' to be specified
+```
+
+**Workaround:** Set BOTH to false in `build.yml`:
+
+```yaml
+uses: ./.github/actions/generate-bst-ci-config
+with:
+  enable-remote-execution: 'false'
+  enable-push: 'false'
+```
+
+Local casd uses runner disk. Pulls still read from `gbm.gnome.org:11003` and
+`cache.projectbluefin.io:11001` (read-only). Missing elements build from source locally.
+**Re-enable both once CAS is stable** — one-line revert.
+
+**Server recovery (Hetzner AX102-U):**
+```bash
+systemctl status buildbox-casd
+df -h                           # partial build blobs can fill disk
+journalctl -u buildbox-casd -n 50
+```
+
+**Distinguish from "CAS down at startup":** At-startup failure hits during "Loading elements"
+with `BUG: Message handling out of sync`. Mid-build drop hits at ~68% during src-push.
+Both are infrastructure failures requiring server-side attention.
+
 ## ⚠️ Pre-Commit BST Syntax Gate
 
 For any change to `project.conf`, `*.bst` elements, or `Justfile`:
@@ -2261,92 +2306,3 @@ flow (issue 1073). Key operational facts for CI debugging:
 **SHA-based freshness check.** `execute-release.yml` compares the `:testing` image digest to the current `:stable` digest. If they are equal, promotion is skipped (nothing new to ship). If different, the promote path runs: cosign verify → boot-check → skopeo copy → fast-forward main. The SHA used for cosign verify comes from `github.event.workflow_run.head_sha`, not a live `:testing` tag lookup.
 
 **`testing` is now the default GitHub branch.** All PRs target `testing`. The old `main`-targeting PRs pattern is gone. `main` is a bookmark.
-
-### execute-release startup_failure: ${{ }} wrapper in if: condition (2026-06-24)
-
-**Symptom:** `execute-release.yml` shows `startup_failure` on every run triggered by
-`workflow_run`. No jobs appear. Zero log output.
-
-**Root cause:** Using `${{ }}` expression syntax inside a job `if:` condition that
-references `inputs` context:
-
-```yaml
-# BROKEN — startup_failure when triggered by workflow_run
-if: ${{ inputs.dry_run != true && github.event_name == 'workflow_run' }}
-```
-
-When the workflow is triggered by `workflow_run`, the `inputs` context is absent.
-The `${{ }}` wrapper attempts to evaluate it and errors at startup before any jobs
-are created. Bare `if:` expressions handle absent contexts safely (`null != true = true`).
-
-```yaml
-# CORRECT — works for both workflow_run and workflow_dispatch triggers
-if: inputs.dry_run != true && github.event_name == 'workflow_run'
-```
-
-**Diagnosis:** Startup_failure with zero jobs is almost always a workflow syntax or
-context error. Check every `if:` condition that uses `${{ }}` with contexts that may
-be absent for the triggering event.
-
-**Fix in PR #1091 (2026-06-24):** removed `${{ }}` wrapper from `post-release-verify` job.
-
-### CAS server drops connections mid-build: disable remote-execution + push (2026-06-24)
-
-**Symptom:** Builds proceed cleanly for ~3-4 hours (792+ elements pulled from CAS),
-then fail with:
-
-```
-grpc._channel._InactiveRpcError:
-  status = StatusCode.UNAVAILABLE
-  details = "ipv4:77.42.112.172:11002: Failed to connect to remote host: Connection refused"
-```
-
-Pipeline summary shows:
-```
-Build Queue:    processed 0,   failed 5
-Src-push Queue: processed 0,   failed 5
-```
-
-**Root cause:** `cache.storage-service` in `buildstream-ci.conf` routes the local
-buildbox-casd daemon through the remote CAS. When the remote CAS drops (crash,
-disk full, OOM), the local casd loses its storage backend — BST cannot store
-newly-built artifacts and the build fails even though all artifact pulls had succeeded.
-
-**BST constraint:** `remote-execution` in `buildstream-ci.conf` requires `storage-service`
-to be specified (either globally in `cache:` or in the `remote-execution:` block).
-Setting `enable-push: false` alone is insufficient — the action generates
-`remote-execution:` config only when `enable-remote-execution: 'true'`, and BST will
-reject the config at load time with:
-```
-Error loading user configuration: Remote execution requires 'storage-service' to be specified
-```
-
-**Fix:** Set both `enable-remote-execution: 'false'` AND `enable-push: 'false'`:
-
-```yaml
-# build.yml — workaround when CAS server is unhealthy
-uses: ./.github/actions/generate-bst-ci-config
-with:
-  enable-remote-execution: 'false'
-  enable-push: 'false'
-```
-
-This removes the `storage-service` and `remote-execution` blocks entirely. Local casd
-uses runner disk. Pulls still read from `gbm.gnome.org:11003` and `cache.projectbluefin.io:11001`
-(read-only). Missing elements build from source locally.
-
-**Re-enable both** once the CAS server (`cache.projectbluefin.io:11002`) is confirmed stable.
-One-line revert: change both back to `'true'`.
-
-**Server recovery:** SSH into the Hetzner AX102-U and check:
-```bash
-systemctl status buildbox-casd
-df -h            # watch for full disks from partial build blobs
-journalctl -u buildbox-casd -n 50
-```
-
-**Distinguish from "CAS down at startup":** If the CAS is unreachable at startup,
-BST fails immediately during "Loading elements" with a cryptic `BUG: Message handling
-out of sync` error (see the older 2026-06-07 pattern). The 2026-06-24 pattern is
-different — CAS is healthy at start, drops after hours of load.
-
