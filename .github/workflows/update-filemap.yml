@@ -163,7 +163,7 @@ jobs:
       - name: Restore filemap from GHA cache
         id: cache-filemap
         if: inputs.force_regenerate != true
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
         with:
           path: |
             files/filemap.json
@@ -199,7 +199,7 @@ jobs:
 
       - name: Save filemap to GHA cache
         if: steps.cache-filemap.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
         with:
           path: |
             files/filemap.json
