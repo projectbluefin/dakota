@@ -68,8 +68,10 @@ jobs:
             fi
           fi
 
-          # Compare :testing and :stable digests
-          TESTING_DIGEST=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:testing" \
+          # Compare the SHA-tagged build digest against :stable. Using the SHA tag
+          # (not floating :testing) guarantees the decision input matches the action
+          # input — the same image we will promote is the one we evaluated.
+          TESTING_DIGEST=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:${BUILD_SHA}" \
             | jq -r '.Digest')
 
           STABLE_DIGEST=""
@@ -80,11 +82,11 @@ jobs:
 
           if [ -n "$STABLE_DIGEST" ] && [ "$TESTING_DIGEST" = "$STABLE_DIGEST" ]; then
             echo "should-release=false" >> "$GITHUB_OUTPUT"
-            echo ":testing and :stable are identical ($TESTING_DIGEST) — nothing to promote"
+            echo ":${BUILD_SHA} and :stable are identical ($TESTING_DIGEST) — nothing to promote"
           else
             echo "should-release=true" >> "$GITHUB_OUTPUT"
             echo "build_sha=${BUILD_SHA}" >> "$GITHUB_OUTPUT"
-            echo ":testing ($TESTING_DIGEST) differs from :stable (${STABLE_DIGEST:-not found}) — promotion needed"
+            echo ":${BUILD_SHA} ($TESTING_DIGEST) differs from :stable (${STABLE_DIGEST:-not found}) — promotion needed"
           fi
 
   execute:
@@ -105,12 +107,13 @@ jobs:
           {"image":"dakota","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"},
           {"image":"dakota-nvidia","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"}
         ]
-      cosign_identity_regexp: ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
+      cosign_identity_regexp: ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)$
       fast_forward_branch: main
+      fast_forward_sha: ${{ needs.freshness-check.outputs.build_sha }}
     secrets: inherit
 
   release-notes:
-    needs: [execute]
+    needs: [freshness-check, execute]
     if: always() && needs.execute.result == 'success'
     permissions:
       actions: read
@@ -125,13 +128,17 @@ jobs:
       # Inline syft with rpm cataloger returns 0 packages on BST images.
       build_workflow: publish.yml
       build_branch: testing
+      # Pin SBOM lookup to the specific publish run that produced the promoted
+      # image — eliminates drift between "latest publish on testing" and the
+      # exact workflow_run.id whose digests we just promoted.
+      build_run_id: ${{ github.event.workflow_run.id }}
       sbom_artifact: sbom-dakota
       checkout_ref: testing
       project_name: Dakota
       badge_label: Stable
       accent_color: "#0ea5e9"
       cert_identity_regexp: >-
-        ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
+        ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)$
       notable_packages: >-
         [
           {"sbom_name": "linux",       "label": "Kernel"},
@@ -185,16 +192,28 @@ jobs:
           gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file /tmp/updated-body.md
 
   # ── Multi-arch manifest (aarch64) ────────────────────────────────────────
-  # Non-gating: creates a multi-arch :stable manifest if :aarch64 exists in
-  # GHCR. Skips silently if aarch64 is absent — x86_64 stable is already live.
-  # ARM never gates this release. This is purely additive.
+  # Non-gating: creates a multi-arch :stable manifest if a SHA-pinned aarch64
+  # image exists in GHCR for this build. Skips silently if aarch64 is absent —
+  # x86_64 stable is already live. ARM never gates this release.
+  #
+  # Supply-chain note: both the x86_64 :stable image and the SHA-pinned
+  # aarch64 image are cosign-verified against the anchored publish.yml
+  # identity BEFORE the manifest is constructed. The aarch64 component is
+  # pinned to the digest reported by skopeo for `:aarch64-${BUILD_SHA}` so
+  # the manifest publishes exactly what was verified, not whatever the
+  # floating `:aarch64` tag happens to point at.
   create-multiarch-stable:
-    needs: [execute]
+    needs: [freshness-check, execute]
     if: always() && needs.execute.result == 'success'
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
+      contents: read
+      id-token: write
       packages: write
+    env:
+      BUILD_SHA: ${{ needs.freshness-check.outputs.build_sha }}
+      COSIGN_IDENTITY_REGEXP: ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)$
+      COSIGN_ISSUER: https://token.actions.githubusercontent.com
     steps:
       - name: Login to GHCR
         env:
@@ -202,29 +221,78 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "$GH_TOKEN" | podman login ghcr.io --username "$GH_ACTOR" --password-stdin
 
-      - name: Check whether :aarch64 exists
+      - name: Check whether SHA-pinned :aarch64 exists
         id: check-aarch64
         run: |
-          if skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:aarch64" \
+          set -euo pipefail
+          if skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:aarch64-${BUILD_SHA}" \
               > /dev/null 2>&1; then
             echo "present=true" >> "$GITHUB_OUTPUT"
-            echo "aarch64 image found — will create multi-arch manifest"
+            echo "aarch64-${BUILD_SHA} image found — will create multi-arch manifest"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "aarch64 image not found — skipping multi-arch manifest"
+            echo "aarch64-${BUILD_SHA} image not found — skipping multi-arch manifest"
           fi
 
-      - name: Create multi-arch :stable manifest
+      - name: Install cosign
         if: steps.check-aarch64.outputs.present == 'true'
         run: |
           set -euo pipefail
-          # Create a new manifest list combining x86_64 :stable and :aarch64
+          curl -fsSL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 \
+            -o "$RUNNER_TEMP/cosign"
+          sudo install -m 0755 "$RUNNER_TEMP/cosign" /usr/local/bin/cosign
+          cosign version
+
+      - name: Resolve SHA-pinned aarch64 digest
+        if: steps.check-aarch64.outputs.present == 'true'
+        id: arm-digest
+        run: |
+          set -euo pipefail
+          AARCH64_DIGEST=$(skopeo inspect --no-tags \
+            "docker://ghcr.io/projectbluefin/dakota:aarch64-${BUILD_SHA}" \
+            | jq -r '.Digest')
+          if [ -z "$AARCH64_DIGEST" ] || [ "$AARCH64_DIGEST" = "null" ]; then
+            echo "::error::Failed to resolve digest for aarch64-${BUILD_SHA}"
+            exit 1
+          fi
+          echo "digest=${AARCH64_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Resolved aarch64-${BUILD_SHA} → ${AARCH64_DIGEST}"
+
+      - name: Verify cosign signature on :stable (x86_64)
+        if: steps.check-aarch64.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
+            --certificate-oidc-issuer "$COSIGN_ISSUER" \
+            "ghcr.io/projectbluefin/dakota:stable"
+
+      - name: Verify cosign signature on SHA-pinned aarch64 by digest
+        if: steps.check-aarch64.outputs.present == 'true'
+        env:
+          AARCH64_DIGEST: ${{ steps.arm-digest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
+            --certificate-oidc-issuer "$COSIGN_ISSUER" \
+            "ghcr.io/projectbluefin/dakota@${AARCH64_DIGEST}"
+
+      - name: Create multi-arch :stable manifest
+        if: steps.check-aarch64.outputs.present == 'true'
+        env:
+          AARCH64_DIGEST: ${{ steps.arm-digest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          # Compose the manifest list from the just-verified images. The
+          # aarch64 component is referenced by its content digest (not the
+          # floating :aarch64 tag) so we publish exactly what cosign signed.
           podman manifest create \
             "ghcr.io/projectbluefin/dakota:stable-multiarch" \
             "ghcr.io/projectbluefin/dakota:stable" \
-            "ghcr.io/projectbluefin/dakota:aarch64"
+            "ghcr.io/projectbluefin/dakota@${AARCH64_DIGEST}"
           podman manifest push --all \
             "ghcr.io/projectbluefin/dakota:stable-multiarch" \
             "docker://ghcr.io/projectbluefin/dakota:stable-multiarch"
-          echo "Multi-arch stable manifest pushed as :stable-multiarch"
+          echo "Multi-arch stable manifest pushed as :stable-multiarch (aarch64=${AARCH64_DIGEST})"
 
