@@ -43,45 +43,35 @@ jobs:
     needs: ensure-labels
     runs-on: ubuntu-24.04
     steps:
-      - name: Block PRs not targeting main
+      - name: Validate PR target branch
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Allow mergeraptor's automated next-branch junction bumps.
+          # Allow automated next-branch junction bumps.
           if [ "$BASE_REF" = "next" ] && [ "$HEAD_REF" = "auto/track-next-junction" ]; then
-            echo "Automated next-branch junction update — skipping main-target gate."
+            echo "Automated next-branch junction update — allowed."
             exit 0
           fi
           # Allow all PRs targeting next — next is a legitimate development branch
-          # (GNOME master stream). Unlike stable/latest, next accepts direct PRs.
+          # (GNOME master stream). Unlike testing/main, next accepts direct PRs.
           if [ "$BASE_REF" = "next" ]; then
-            echo "PR targets next development branch — skipping main-target gate."
+            echo "PR targets next development branch — allowed."
             exit 0
           fi
-          # Allow Renovate PRs targeting testing — testing is the staging branch
-          # for the testing→main promotion pipeline (parity with bluefin).
-          if [ "$BASE_REF" = "testing" ] && [[ "$HEAD_REF" == renovate/* ]]; then
-            echo "Renovate update targeting testing staging branch — skipping main-target gate."
-            exit 0
-          fi
-          # Allow all PRs targeting testing — testing-first model: all content
-          # PRs (features, fixes, BST changes) land on testing, not main.
-          # main only receives squash-merge promotion commits.
+          # All content PRs must target testing.
+          # testing is the development trunk; main is a release bookmark only.
           if [ "$BASE_REF" = "testing" ]; then
-            echo "PR targets testing — testing-first model, allowed."
+            echo "PR targets testing — allowed."
             exit 0
           fi
-          if [ "$BASE_REF" != "main" ]; then
-            echo "ERROR: PRs must target 'main' or 'testing', not '$BASE_REF'."
-            echo "Content PRs target 'testing'. main only receives squash-merge promotion commits."
-            gh pr comment "$PR_URL" --body \
-              "This PR targets \`${BASE_REF}\` instead of \`testing\` or \`main\`. Please retarget it — content PRs belong on \`testing\` (testing-first model); \`main\` only receives squash-merge promotion commits." \
-              2>/dev/null || true
-            exit 1
-          fi
+          # Block everything else (including main) with redirect to testing.
+          echo "ERROR: PRs must target 'testing'. Got: '$BASE_REF'."
+          gh pr comment "$PR_URL" --body "This PR targets \`${BASE_REF}\` — please retarget it to \`testing\`. All content PRs (features, fixes, BST changes) land on \`testing\`. The \`main\` branch is a release bookmark only." \
+            2>/dev/null || true
+          exit 1
 
       - name: Add pr/needs-review and post instructions
         if: github.event.pull_request.head.ref != 'auto/track-next-junction'

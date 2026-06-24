@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - main
+      - testing
     paths:
       - ".github/renovate.json5"
 

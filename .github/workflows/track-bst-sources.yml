@@ -39,6 +39,7 @@ jobs:
             element: bluefin/brew.bst
             branch: auto/track-brew
             title: "chore(deps): update brew"
+            base_branch: testing
           - group: auto-merge
             element: bluefin/common.bst
             branch: auto/track-common
@@ -48,46 +49,57 @@ jobs:
             element: bluefin/jetbrains-mono.bst
             branch: auto/track-jetbrains-mono
             title: "chore(deps): update jetbrains-mono"
+            base_branch: testing
           - group: auto-merge
             element: bluefin/shell-extensions/app-indicators.bst
             branch: auto/track-app-indicators
             title: "chore(deps): update app-indicators extension"
+            base_branch: testing
           - group: auto-merge
             element: bluefin/shell-extensions/blur-my-shell.bst
             branch: auto/track-blur-my-shell
             title: "chore(deps): update blur-my-shell extension"
+            base_branch: testing
           - group: auto-merge
             element: bluefin/shell-extensions/dash-to-dock.bst
             branch: auto/track-dash-to-dock
             title: "chore(deps): update dash-to-dock extension"
+            base_branch: testing
           - group: auto-merge
             element: bluefin/shell-extensions/gsconnect.bst
             branch: auto/track-gsconnect
             title: "chore(deps): update gsconnect extension"
+            base_branch: testing
           - group: auto-merge
             element: bluefin/shell-extensions/custom-command-menu.bst
             branch: auto/track-custom-command-menu
             title: "chore(deps): update custom-command-menu extension"
+            base_branch: testing
           - group: auto-merge
             element: bluefin/efibootmgr.bst
             branch: auto/track-efibootmgr
             title: "chore(deps): update efibootmgr"
+            base_branch: testing
           - group: auto-merge
             element: bluefin/shell-extensions/caffeine.bst
             branch: auto/track-caffeine
             title: "chore(deps): update caffeine extension"
+            base_branch: testing
           - group: auto-merge
             element: bluefin/distrobox.bst
             branch: auto/track-distrobox
             title: "chore(deps): update distrobox"
+            base_branch: testing
           - group: auto-merge
             element: bluefin/xdg-terminal-exec.bst
             branch: auto/track-xdg-terminal-exec
             title: "chore(deps): update xdg-terminal-exec"
+            base_branch: testing
           - group: auto-merge
             element: bluefin/nautilus-python.bst
             branch: auto/track-nautilus-python
             title: "chore(deps): update nautilus-python"
+            base_branch: testing
           # ── manual-merge: non-junction elements ──
           # Core junctions (freedesktop-sdk + gnome-build-meta) are tracked atomically
           # by the separate track-core-junctions job. Use group=core-junctions to
@@ -96,14 +108,17 @@ jobs:
             element: gnomeos-deps/bootc.bst
             branch: auto/track-bootc
             title: "chore(deps): update bootc"
+            base_branch: testing
           - group: manual-merge
             element: bluefin/sudo-rs.bst
             branch: auto/track-sudo-rs
             title: "chore(deps): update sudo-rs"
+            base_branch: testing
           - group: manual-merge
             element: bluefin/uutils-coreutils.bst
             branch: auto/track-uutils-coreutils
             title: "chore(deps): update uutils-coreutils"
+            base_branch: testing
 
     steps:
       - name: Should this group run?
@@ -221,9 +236,9 @@ jobs:
           OLD_SHA=$(echo "$OLD_REF" | grep -oP '(?<=g)[0-9a-f]+$' || echo "$OLD_REF")
           NEW_SHA=$(echo "$NEW_REF" | grep -oP '(?<=g)[0-9a-f]+$' || echo "$NEW_REF")
 
-          # common targets testing so CI gates the merge (like Renovate does for bluefin).
-          # All other auto-merge elements target main for immediate publish.
-          BASE_BRANCH="${{ matrix.base_branch || 'main' }}"
+          # All auto-merge and manual-merge elements target testing.
+          # testing is the development trunk; main is a release bookmark only.
+          BASE_BRANCH="${{ matrix.base_branch || 'testing' }}"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -275,7 +290,7 @@ jobs:
           fi
           echo "PR: $PR_URL"
 
-          if [ "${{ matrix.group }}" = "auto-merge" ] && [ "${{ matrix.base_branch || 'main' }}" != "testing" ]; then
+          if [ "${{ matrix.group }}" = "auto-merge" ] && [ "${{ matrix.base_branch || 'testing' }}" != "testing" ]; then
             # Direct merge via mergeraptor bypass. --auto uses GitHub's auto-merge
             # queue which does NOT honour bypass_pull_request_allowances — only
             # direct merges do. With no required status checks and mergeraptor in
@@ -353,11 +368,11 @@ jobs:
           BRANCH="auto/track-brew-tarball"
           TITLE="chore(deps): update brew-tarball ${CURRENT_VERSION} -> ${LATEST_VERSION}"
 
-          git checkout -B "$BRANCH" origin/main
+          git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
           git commit -m "$TITLE"
           git push --force-with-lease origin "$BRANCH"
-          git checkout -f main
+          git checkout -f testing
 
           {
             echo "## brew-tarball update: \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`"
@@ -377,7 +392,7 @@ jobs:
             gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
             PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
           else
-            PR_URL=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
+            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
           fi
           echo "PR: $PR_URL"
 
@@ -411,11 +426,11 @@ jobs:
           BRANCH="auto/track-wallpapers"
           TITLE="chore(deps): update wallpapers ${CURRENT_TAG} -> ${WALL_RELEASE}"
 
-          git checkout -B "$BRANCH" origin/main
+          git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
           git commit -m "$TITLE"
           git push --force-with-lease origin "$BRANCH"
-          git checkout -f main
+          git checkout -f testing
 
           {
             echo "## wallpapers update: \`${CURRENT_TAG}\` → \`${WALL_RELEASE}\`"
@@ -435,7 +450,7 @@ jobs:
             gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
             PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
           else
-            PR_URL=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
+            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
           fi
           echo "PR: $PR_URL"
 
@@ -464,11 +479,11 @@ jobs:
           BRANCH="auto/track-fzf"
           TITLE="chore(deps): update fzf v${CURRENT_VERSION} -> v${LATEST_VERSION}"
 
-          git checkout -B "$BRANCH" origin/main
+          git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
           git commit -m "$TITLE"
           git push --force-with-lease origin "$BRANCH"
-          git checkout -f main
+          git checkout -f testing
 
           {
             echo "## fzf update: \`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\`"
@@ -489,7 +504,7 @@ jobs:
             gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
             PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
           else
-            PR_URL=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
+            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
           fi
           echo "PR: $PR_URL"
 
@@ -518,11 +533,11 @@ jobs:
           BRANCH="auto/track-glow"
           TITLE="chore(deps): update glow v${CURRENT_VERSION} -> v${LATEST_VERSION}"
 
-          git checkout -B "$BRANCH" origin/main
+          git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
           git commit -m "$TITLE"
           git push --force-with-lease origin "$BRANCH"
-          git checkout -f main
+          git checkout -f testing
 
           {
             echo "## glow update: \`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\`"
@@ -543,7 +558,7 @@ jobs:
             gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
             PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
           else
-            PR_URL=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
+            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
           fi
           echo "PR: $PR_URL"
 
@@ -572,11 +587,11 @@ jobs:
           BRANCH="auto/track-gum"
           TITLE="chore(deps): update gum v${CURRENT_VERSION} -> v${LATEST_VERSION}"
 
-          git checkout -B "$BRANCH" origin/main
+          git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
           git commit -m "$TITLE"
           git push --force-with-lease origin "$BRANCH"
-          git checkout -f main
+          git checkout -f testing
 
           {
             echo "## gum update: \`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\`"
@@ -597,7 +612,7 @@ jobs:
             gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
             PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
           else
-            PR_URL=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
+            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
           fi
           echo "PR: $PR_URL"
 
@@ -625,11 +640,11 @@ jobs:
           BRANCH="auto/track-gtk4-layer-shell"
           TITLE="chore(deps): update gtk4-layer-shell v${CURRENT_VERSION} -> v${LATEST_VERSION}"
 
-          git checkout -B "$BRANCH" origin/main
+          git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
           git commit -m "$TITLE"
           git push --force-with-lease origin "$BRANCH"
-          git checkout -f main
+          git checkout -f testing
 
           {
             echo "## gtk4-layer-shell update: \`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\`"
@@ -650,7 +665,7 @@ jobs:
             gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
             PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
           else
-            PR_URL=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
+            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
           fi
           echo "PR: $PR_URL"
 
@@ -679,11 +694,11 @@ jobs:
           BRANCH="auto/track-tailscale"
           TITLE="chore(deps): update tailscale ${CURRENT_VERSION} -> ${LATEST_VERSION}"
 
-          git checkout -B "$BRANCH" origin/main
+          git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
           git commit -m "$TITLE"
           git push --force-with-lease origin "$BRANCH"
-          git checkout -f main
+          git checkout -f testing
 
           {
             echo "## tailscale update: \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`"
@@ -704,7 +719,7 @@ jobs:
             gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
             PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
           else
-            PR_URL=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
+            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
           fi
           echo "PR: $PR_URL"
 
@@ -733,11 +748,11 @@ jobs:
           BRANCH="auto/track-uupd"
           TITLE="chore(deps): update uupd ${CURRENT_VERSION} -> ${LATEST_VERSION}"
 
-          git checkout -B "$BRANCH" origin/main
+          git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
           git commit -m "$TITLE"
           git push --force-with-lease origin "$BRANCH"
-          git checkout -f main
+          git checkout -f testing
 
           {
             echo "## uupd update: \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`"
@@ -758,7 +773,7 @@ jobs:
             gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
             PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
           else
-            PR_URL=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
+            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
           fi
           echo "PR: $PR_URL"
 
@@ -786,11 +801,11 @@ jobs:
           BRANCH="auto/track-jetbrains-mono-nerd-font"
           TITLE="chore(deps): update jetbrains-mono-nerd-font ${CURRENT_VERSION} -> ${LATEST_VERSION}"
 
-          git checkout -B "$BRANCH" origin/main
+          git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
           git commit -m "$TITLE"
           git push --force-with-lease origin "$BRANCH"
-          git checkout -f main
+          git checkout -f testing
 
           {
             echo "## jetbrains-mono-nerd-font update: \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`"
@@ -811,7 +826,7 @@ jobs:
             gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
             PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
           else
-            PR_URL=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
+            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
           fi
           echo "PR: $PR_URL"
 
@@ -863,7 +878,7 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git checkout -B auto/track-core-junctions origin/main
+          git checkout -B auto/track-core-junctions origin/testing
           git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst
           git commit -m "chore(deps): update core junctions (gnome-build-meta + freedesktop-sdk)"
           git push --force-with-lease origin auto/track-core-junctions
@@ -874,7 +889,7 @@ jobs:
             echo "Existing PR: $PR_URL"
           else
             PR_URL=$(gh pr create \
-              --base main \
+              --base testing \
               --head auto/track-core-junctions \
               --title "chore(deps): update core junctions (gnome-build-meta + freedesktop-sdk)" \
               --body "Updates \`gnome-build-meta.bst\` and \`freedesktop-sdk.bst\` atomically. Manual review required — junction bumps can break downstream elements.")
