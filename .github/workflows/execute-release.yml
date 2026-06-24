@@ -129,10 +129,6 @@ jobs:
       # Inline syft with rpm cataloger returns 0 packages on BST images.
       build_workflow: publish.yml
       build_branch: testing
-      # Pin SBOM lookup to the specific publish run that produced the promoted
-      # image — eliminates drift between "latest publish on testing" and the
-      # exact workflow_run.id whose digests we just promoted.
-      build_run_id: ${{ github.event.workflow_run.id }}
       sbom_artifact: sbom-dakota
       checkout_ref: testing
       project_name: Dakota
