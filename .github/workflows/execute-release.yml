@@ -296,3 +296,93 @@ jobs:
             "docker://ghcr.io/projectbluefin/dakota:stable-multiarch"
           echo "Multi-arch stable manifest pushed as :stable-multiarch (aarch64=${AARCH64_DIGEST})"
 
+
+  post-release-verify:
+    name: Post-release verification + cleanup
+    if: ${{ !inputs.dry_run && needs.execute.result == 'success' && needs.create-multiarch-stable.result == 'success' }}
+    needs: [freshness-check, execute, create-multiarch-stable]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      BUILD_SHA: ${{ needs.freshness-check.outputs.build_sha }}
+      IMAGE: ghcr.io/projectbluefin/dakota
+    steps:
+      - name: Verify main bookmark matches promoted SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          main_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/refs/heads/main" --jq .object.sha)
+          if [ "$main_sha" != "$BUILD_SHA" ]; then
+            echo "::error::main bookmark is at $main_sha but promoted SHA was $BUILD_SHA"
+            exit 1
+          fi
+          echo "main bookmark verified: $main_sha"
+
+      - name: Verify :stable points to promoted digest
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
+          promoted_digest=$(skopeo inspect --no-tags "docker://${IMAGE}:${BUILD_SHA}" | jq -r .Digest)
+          stable_digest=$(skopeo inspect --no-tags "docker://${IMAGE}:stable" | jq -r .Digest)
+          if [ "$stable_digest" != "$promoted_digest" ]; then
+            echo "::error::stable digest=$stable_digest, expected $promoted_digest"
+            exit 1
+          fi
+          echo "stable digest verified: $stable_digest"
+
+      - name: Verify :stable-multiarch exists
+        run: |
+          set -euo pipefail
+          skopeo inspect --no-tags --raw "docker://${IMAGE}:stable-multiarch" > /dev/null \
+            || { echo "::error::stable-multiarch tag missing"; exit 1; }
+          echo "stable-multiarch present"
+
+      - name: Detect stale auto/* promotion branches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # OCI-native flow does not create auto/* promotion branches. Detect any leftover.
+          stale=$(gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate --jq '.[].name' \
+            | grep -E '^auto/promote-' || true)
+          if [ -n "$stale" ]; then
+            echo "::warning::stale promotion branches present (expected none under OCI-native flow):"
+            echo "$stale"
+          else
+            echo "no stale promotion branches"
+          fi
+
+      - name: Prune untagged GHCR versions for dakota
+        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+        with:
+          package-name: dakota
+          package-type: container
+          min-versions-to-keep: 100
+          delete-only-untagged-versions: 'true'
+        continue-on-error: true
+
+      - name: Prune untagged GHCR versions for dakota-nvidia
+        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+        with:
+          package-name: dakota-nvidia
+          package-type: container
+          min-versions-to-keep: 100
+          delete-only-untagged-versions: 'true'
+        continue-on-error: true
+
+      - name: Summary — ready for next cycle
+        run: |
+          {
+            echo "## Post-release verification"
+            echo ""
+            echo "- main bookmark: $BUILD_SHA"
+            echo "- :stable digest: verified"
+            echo "- :stable-multiarch: present"
+            echo "- stale auto/* branches: clean"
+            echo "- untagged GHCR versions: pruned"
+            echo ""
+            echo "Repo is ready for the next promotion cycle."
+          } >> "$GITHUB_STEP_SUMMARY"
