@@ -398,3 +398,32 @@ if: inputs.dry_run != true && github.event_name == 'workflow_run'
 - [ ] `renovate-automerge.yml` does NOT have `workflows: write` (invalid scope — actionlint rejects it; use Mergeraptor app token instead)
 - [ ] CI-only changes that must survive sync are either landed on main directly or promoted before the next unrelated main push
 - [ ] All job `if:` conditions in dual-trigger workflows (`workflow_run` + `workflow_dispatch`) use bare expressions, not `${{ }}` wrappers
+
+### 15b) Undeclared input passed to reusable workflow — startup_failure (2026-06-24)
+
+**Root cause of execute-release startup_failure since PR #1086.**
+
+When a caller workflow passes an input via `with:` to a `uses:` (reusable workflow call)
+that the reusable workflow does NOT declare in its `on.workflow_call.inputs:`, GitHub
+validates this at dispatch time and returns `startup_failure` with zero jobs and no log output.
+
+**Pattern that causes startup_failure:**
+```yaml
+# caller (execute-release.yml)
+uses: org/actions/.github/workflows/reusable-release.yml@v1
+with:
+  build_run_id: ${{ github.event.workflow_run.id }}   # ← NOT declared in reusable-release.yml
+  build_workflow: publish.yml
+```
+
+**Fix:** Remove the undeclared input. If the reusable workflow needs run-ID pinning,
+add the input to the reusable workflow's `on.workflow_call.inputs:` first.
+
+**Why PR #1089 and #1091 didn't fix it:** Those PRs fixed `if:` expression syntax issues
+(real but secondary bugs). The undeclared input was the startup_failure root cause —
+no `if:` fix can prevent validation failure on the workflow graph before jobs start.
+
+**Actionlint does not catch this.** YAML parses cleanly. The error only manifests at runtime.
+
+**Verification after fix:** Run `workflow_dispatch` on the fixed workflow and confirm
+`freshness-check` job appears in the run (not `startup_failure` with 0 jobs).
