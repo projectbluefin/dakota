@@ -160,49 +160,52 @@ Copy `files/hive/hive-project.yaml.example` to `/etc/hive/hive-project.yaml` and
 
 ## Image stream and branch model
 
-Dakota publishes three streams from the `main` branch:
+Dakota uses trunk-based development. `testing` is the development trunk; `main` is a release bookmark fast-forwarded by `execute-release.yml` after each daily promotion.
 
 ```
-main (source of truth)
+testing (development trunk — all PRs land here)
   │
-  └─► build.yml (nightly + merge_group + workflow_dispatch)
+  └─► build.yml (daily 13:00 UTC + merge_group + workflow_dispatch)
           │
           └─► publish.yml (workflow_run on build success)
                   │
                   ├─► :sha     — immutable per-build tag
-                  └─► :testing — promoted after e2e smoke passes
+                  └─► :testing — published after boot-check passes
                                        │
-                              weekly-testing-promotion.yml
-                              (Sunday 06:00 UTC, production environment approval)
+                              execute-release.yml
+                              (workflow_run from publish, daily if :testing != :stable)
+                              SHA-based freshness check → cosign verify → boot-check gate
                                        │
-                                       ├─► :latest  (+ fast-forwards latest branch)
-                                       └─► :stable  (+ fast-forwards stable branch)
+                                       ├─► :latest  (+ fast-forwards main bookmark)
+                                       └─► :stable  (+ fast-forwards main bookmark)
 ```
 
 | Stream | Tag | Cadence | Gate |
 |---|---|---|---|
-| Development | `:sha` | Every merge to `main` | None |
-| Testing | `:testing` | Nightly | e2e smoke |
-| Latest | `:latest` | Weekly (Sunday) | production environment approval |
-| Stable | `:stable` | Weekly (Sunday) | Same as `:latest` |
+| Development | `:sha` | Every merge to `testing` | None |
+| Testing | `:testing` | Daily (13:00 UTC build) | boot-check |
+| Latest | `:latest` | Daily (if :testing != :stable) | SHA freshness check + cosign verify + boot-check |
+| Stable | `:stable` | Daily (if :testing != :stable) | Same as `:latest` |
 
-**All code merges to `main`.** The `:testing` Docker tag is the published nightly result built from `main`. The `testing`, `latest`, and `stable` git branches are bookmarks fast-forwarded by the promotion workflows — they are not development branches.
+**All PRs target `testing`.** This includes contributor PRs, Renovate PRs, and BST source bump PRs. The `main` git branch is a release bookmark only — it is fast-forwarded by `execute-release.yml` after each successful promotion and must not be used as a PR base.
 
-**Branch protection is only on `main`.** Required status checks: `validate` + `e2e`.
+**Branch protection:** `testing` has the `testing-merge-queue-no-review` ruleset (required status checks: `validate` + `e2e`, merge queue). `main` has the `main-bookmark-protection` ruleset (deletion + non_fast_forward blocked; no merge queue, no required checks).
+
+**Deleted workflows (OCI-native redesign, 2026-06-23):** `promote-testing-to-main.yml`, `pr-release-gate.yml`, `sync-main-to-testing.yml`, `cache-warm.yml`.
 
 ### Branch flow for contributors
 
 ```bash
-# Branch from upstream/main (never fork's local main)
-git checkout upstream/main -b feat/my-change
+# Branch from upstream/testing (the development trunk)
+git checkout upstream/testing -b feat/my-change
 
 # Work, validate, commit
 just validate
 git commit -m "feat(bluefin): ..."
 
-# Push and open PR against main
+# Push and open PR against testing
 git push upstream feat/my-change
-gh pr create --repo projectbluefin/dakota --base main
+gh pr create --repo projectbluefin/dakota --base testing
 ```
 
 

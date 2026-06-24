@@ -1,6 +1,6 @@
 ---
 name: release-promotion
-description: Dakota publish and promotion flow from testing to main to stable, including promotion PRs, merge queue wiring, release gate behavior, and manual recovery. Use when working on promote-testing-to-main.yml, action_required on promotion PRs, merge queue setup, branch protection, or stable-cut logic.
+description: Dakota publish and promotion flow from testing to stable, including the daily OCI-native execute-release flow, SHA-based freshness check, cosign verify, boot-check gate, and manual recovery. Use when working on execute-release.yml, stable promotion failures, branch bookmark state, or the daily build pipeline.
 metadata:
   context7-sources:
     - /websites/github_en_actions
@@ -11,25 +11,31 @@ metadata:
 
 ## Overview
 
-Promotion from `testing` to `main` is **fully automated** — no human approval required at any stage.
+Promotion from `testing` to `:stable`/`:latest` is **fully automated and daily** — no human approval required at any stage.
 
 ```text
-testing → promotion PR (cosign gate) → merge queue → main → :latest / :stable
+testing (trunk) → build.yml → publish.yml → :testing tag
+                                                  │
+                                         execute-release.yml (workflow_run from publish)
+                                         SHA freshness check → cosign verify → boot-check
+                                                  │
+                                         :stable / :latest + fast-forward main bookmark
 ```
+
+`main` is a release bookmark only. It is fast-forwarded by `execute-release.yml` after each successful promotion. Do not open PRs against `main`.
 
 Do not conflate "publish is healthy" with "stable promotion is healthy".
 
 ## When to Use
 
 Use when the task mentions:
-- `promote-testing-to-main.yml`
-- `pr-release-gate.yml`
 - `execute-release.yml`
-- promotion PRs from `auto/promote-testing-to-main`
-- `action_required` on promotion PR checks
-- merge queue, `use_merge_queue`, `enqueuePullRequest`
-- branch protection or ruleset on `main`
-- stable release, `:latest`, `:stable`, or promotion PR flow
+- stable promotion failures (`:testing` not promoted to `:stable`)
+- SHA-based freshness check or `workflow_run` from `publish.yml`
+- `main-bookmark-protection` ruleset
+- cosign verify in the release path
+- stable release, `:latest`, `:stable`, or daily promotion flow
+- `testing-merge-queue-no-review` ruleset
 
 ## When NOT to Use
 
@@ -43,120 +49,129 @@ Use when the task mentions:
    See Hard Rule #9 in `.github/copilot-instructions.md`. No exceptions.
 2. **Identify the stage.**
    - publish to `:testing`
-   - open/update promotion PR
-   - gate the promotion PR (cosign verify)
-   - execute stable release after merge
-3. **`action_required` on promotion PR checks is expected and normal.**
-   The org blocks `github-actions[bot]`-triggered PR workflow runs. This means
-   `validate` and all other `pull_request` checks show `action_required` on every
-   promotion PR. This is NOT a failure — the merge queue bypasses it.
-4. **The merge queue is the only correct auto-merge path for dakota.**
-   `gh pr merge --auto` (`enablePullRequestAutoMerge`) is blocked by the merge queue
-   ruleset. Only `enqueuePullRequest` (triggered by `use_merge_queue: true`) works.
-5. **Do not add e2e back into the promotion PR path.**
-   Dakota intentionally gates stable at the later human-approved release stage.
-6. **Automatic promotion cadence is Tuesday 04:00 UTC.**
-   That schedule re-evaluates the promotion PR for the weekly stable cut.
-7. **For manual recovery, re-run the failed publish/promote workflow that owns the stage.**
+   - `execute-release.yml` SHA freshness check
+   - cosign verify `:testing`
+   - boot-check gate
+   - skopeo copy `:testing` → `:stable`/`:latest`
+   - fast-forward `main` bookmark
+3. **`execute-release.yml` fires via `workflow_run` from `publish.yml` on the `testing` branch.**
+   It checks whether the SHA published as `:testing` differs from the current `:stable`. If
+   they are equal, promotion is skipped (already up to date). If they differ, cosign verify
+   runs, then boot-check, then the copy and fast-forward.
+4. **`workflow_run` from publish — not a push trigger.** `execute-release.yml` starts
+   automatically after every successful `publish.yml` run on the `testing` branch. No cron
+   or commit-message gate required.
+5. **Do not add a promotion PR or merge queue step.** The squash PR ceremony was eliminated
+   in the OCI-native redesign (issue 1073). Promotion is a direct OCI tag copy + git
+   fast-forward; there is no PR to gate.
+6. **For manual recovery, dispatch `execute-release.yml` directly** after verifying the
+   `:testing` image is fresh and cosign-verified.
 
 ## Promotion Map
 
 ```text
 push to testing (BST-affecting paths)
-  → build.yml (build job)
+  → build.yml (build job, including daily 13:00 UTC schedule)
   → publish.yml (workflow_run)
       → :testing tag published to GHCR
-  → promote-testing-to-main.yml
-      → auto/promote-testing-to-main PR
-           → pr-release-gate.yml (cosign verify :testing)
-           → enqueuePullRequest → merge queue
-               → merge_group event → validate check (bypasses action_required)
-               → merge to main
-                   → execute-release.yml (commit message gate)
-                       → :latest / :stable + GitHub Release
+  → execute-release.yml (workflow_run from publish on testing)
+      → SHA freshness check (:testing SHA vs :stable SHA)
+          → skip if equal (already up to date)
+          → cosign verify :testing
+          → boot-check gate
+          → skopeo copy :testing → :stable / :latest
+          → fast-forward main bookmark
+          → create GitHub Release
 ```
 
 ## Branch Protection and Ruleset State
 
-Ruleset: `main-merge-queue-no-review` (id: 18008292)
+### testing (development trunk)
+
+Ruleset: `testing-merge-queue-no-review`
 
 | Rule | Value |
 |---|---|
 | Required reviews | 0 (fully automated) |
-| Required status checks | `validate` (strict) |
-| Merge queue | SQUASH, ALLGREEN, max_entries_to_build=2, timeout=120 min |
-| Bypass actors | OrganizationAdmin (always), Renovate (PR), mergeraptor (PR) |
-| Non-fast-forward | enforced |
+| Required status checks | `validate` + `e2e` |
+| Merge queue | enabled |
+| Force push | blocked |
+| Deletion | blocked |
+| Default branch | Yes — `testing` is the GitHub default branch |
+
+### main (release bookmark)
+
+Ruleset: `main-bookmark-protection`
+
+| Rule | Value |
+|---|---|
+| Required reviews | none |
+| Required status checks | none |
+| Merge queue | none |
+| Non-fast-forward | blocked |
 | Deletion | blocked |
 
-Classic branch protection on `main`: `required_approving_review_count: 0`.
+`main` accepts only fast-forward commits from `execute-release.yml`. No PRs target `main`.
 
-**Never re-add a required review count to classic protection or the ruleset.** It blocks every automated promotion PR permanently — the GHA bot cannot approve its own PRs.
+**Never add required review counts or merge queue rules to the main bookmark ruleset.** No PRs should ever land on `main` directly.
 
 ## Workflow Configuration
 
-`promote-testing-to-main.yml` must always have `use_merge_queue: true`:
+`execute-release.yml` fires via `workflow_run` from `publish.yml` on the `testing` branch:
 
 ```yaml
-jobs:
-  promote:
-    uses: projectbluefin/actions/.github/workflows/reusable-promote-squash.yml@v1
-    with:
-      variants: '[{"image":"dakota"},{"image":"dakota-nvidia"}]'
-      cosign_identity_regexp: >-
-        ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
-      run_e2e: false
-      use_merge_queue: true
+on:
+  workflow_run:
+    workflows: ["Publish Bluefin dakota"]
+    branches: [testing]
+    types: [completed]
+  workflow_dispatch: {}
 ```
 
-Do not make `use_merge_queue` conditional on event type. It must always be `true`.
+The first job reads `head_sha` from the triggering `workflow_run` event — never the floating `:testing` tag. This anchors cosign verify and the freshness check to the exact SHA that was just built and published.
+
+```yaml
+steps:
+  - name: Get tested SHA
+    id: tested-sha
+    run: echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+```
+
+Do not substitute `github.event.workflow_run.head_sha` with a `skopeo inspect` lookup of `:testing` — that is a TOCTOU race. Use the event SHA.
 
 ## Hard Rules
 
-- `promote-testing-to-main.yml` is a thin caller. Treat caller-level `permissions:` as critical.
-- `pr-release-gate.yml` must not starve the reusable gate token.
-- Promotion PRs do **not** run the full e2e quality gate; that belongs at the weekly stable gate.
-- `use_merge_queue: true` — unconditional, always. Not conditional on `github.event_name`.
-- The merge queue ruleset (`merge_queue` rule type) must exist on `main`. Without it, `enqueuePullRequest` fails silently.
-- `required_approving_review_count` must be 0 in both ruleset and classic branch protection.
-- Weekly automatic stable evaluation runs Tuesday at `0 4 * * 2`.
-- Keep `run_e2e: false` in dakota's promotion caller.
+- `execute-release.yml` must use `head_sha` from the `workflow_run` event, not a floating `:testing` tag lookup.
+- `main` is a bookmark only. No PRs target main. `execute-release.yml` is the only writer.
+- The `main-bookmark-protection` ruleset must block non-fast-forward and deletion. No merge queue, no required checks.
+- The `testing-merge-queue-no-review` ruleset must require `validate` + `e2e` and enable the merge queue.
+- Stable promotion cadence is daily — triggered by `workflow_run` from `publish.yml` after each successful build.
+- The SHA freshness check compares the `:testing` SHA with the current `:stable` SHA. Equal → skip. Different → promote.
+- cosign `--certificate-identity-regexp` must be anchored with `^...$` and restricted to the publishing workflow file.
+- `execute-release.yml` `workflow_dispatch` bypass is allowed for manual recovery only.
 
 ## Manual Recovery Shortcuts
 
 ```bash
-# open promotion PR status
-gh pr list --repo projectbluefin/dakota \
-  --search 'head:auto/promote-testing-to-main state:open'
+# check recent execute-release runs
+gh run list --repo projectbluefin/dakota --workflow 'Execute Release' --limit 10
 
-# recent gate runs
-gh run list --repo projectbluefin/dakota --workflow 'PR Release Gate' --limit 10
+# check recent publish runs (execute-release fires after these)
+gh run list --repo projectbluefin/dakota --workflow 'Publish Bluefin dakota' --limit 10
 
-# recent promote runs
-gh run list --repo projectbluefin/dakota --workflow 'Promote testing to main' --limit 10
+# dispatch execute-release manually (bypasses freshness check — use only for recovery)
+gh workflow run execute-release.yml --repo projectbluefin/dakota --ref testing
 
-# verify ruleset is correct
+# verify ruleset state
 gh api repos/projectbluefin/dakota/rulesets | jq '[.[] | {id, name}]'
-gh api repos/projectbluefin/dakota/rulesets/18008292 | jq '[.rules[].type]'
 
-# verify classic branch protection has 0 reviews
-gh api repos/projectbluefin/dakota/branches/main/protection \
-  | jq '.required_pull_request_reviews.required_approving_review_count'
+# inspect main bookmark (should match last :stable SHA)
+gh api repos/projectbluefin/dakota/branches/main | jq '.commit.sha'
+
+# compare :testing and :stable digests
+skopeo inspect docker://ghcr.io/projectbluefin/dakota:testing | jq '.Digest'
+skopeo inspect docker://ghcr.io/projectbluefin/dakota:stable  | jq '.Digest'
 ```
-
-## Why `use_merge_queue: true` is required (not optional)
-
-The `projectbluefin` org blocks `github-actions[bot]`-triggered PR workflow runs.
-Every workflow fired by the promotion PR (`pull_request` event) gets `action_required`
-conclusion — the run is paused waiting for org approval. This means `validate` is never
-posted as a passing check, so `gh pr merge --auto` waits forever.
-
-The merge queue fires `merge_group` events instead of `pull_request` events. `merge_group`
-is NOT subject to the bot approval policy. `validate` runs clean, passes, and the queue
-merges. This is why `use_merge_queue: true` is unconditional — without it, the promotion
-PR never merges automatically.
-
-Bluefin uses exactly this pattern. Dakota must match it.
 
 ## Ruleset Management
 
@@ -176,74 +191,36 @@ curl -X POST \
   -H "Accept: application/vnd.github+json" \
   -H "Content-Type: application/json" \
   "https://api.github.com/repos/projectbluefin/dakota/rulesets" \
-  -d '{
-    "name": "main-merge-queue-no-review",
-    "target": "branch",
-    "enforcement": "active",
-    "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
-    "bypass_actors": [
-      {"actor_id": null, "actor_type": "OrganizationAdmin", "bypass_mode": "always"},
-      {"actor_id": 2740, "actor_type": "Integration", "bypass_mode": "pull_request"},
-      {"actor_id": 3069633, "actor_type": "Integration", "bypass_mode": "pull_request"}
-    ],
-    "rules": [
-      {"type": "pull_request", "parameters": {
-        "required_approving_review_count": 0,
-        "dismiss_stale_reviews_on_push": true,
-        "require_code_owner_review": false,
-        "require_last_push_approval": false,
-        "required_review_thread_resolution": true,
-        "allowed_merge_methods": ["squash"]
-      }},
-      {"type": "required_status_checks", "parameters": {
-        "strict_required_status_checks_policy": true,
-        "do_not_enforce_on_create": false,
-        "required_status_checks": [{"context": "validate", "integration_id": 15368}]
-      }},
-      {"type": "merge_queue", "parameters": {
-        "merge_method": "SQUASH",
-        "max_entries_to_build": 2,
-        "min_entries_to_merge": 1,
-        "max_entries_to_merge": 5,
-        "min_entries_to_merge_wait_minutes": 5,
-        "grouping_strategy": "ALLGREEN",
-        "check_response_timeout_minutes": 120
-      }},
-      {"type": "non_fast_forward"},
-      {"type": "deletion"}
-    ]
-  }'
+  -d '{ ... }'
 ```
 
 ## Common Rationalizations
 
 | Rationalization | Reality |
 |---|---|
-| "Release gate is red, so publish is broken." | Different layer. Publish may be healthy while promotion is blocked. |
-| "Let's just add more checks to the promotion PR." | That slows the queue and duplicates the real stable gate. |
-| "`action_required` means rerun the same gate." | It means the org is blocking bot PR runs. Only the merge queue bypasses this. |
-| "`use_merge_queue` only needs to be true for schedule/dispatch." | Wrong. It must always be true. The bot approval block applies to push events too. |
-| "Adding a required review adds safety." | It permanently blocks every automated promotion PR. |
+| "execute-release failed, so publish is broken." | Different layer. Publish may be healthy while promotion is blocked. |
+| "Let's use the floating :testing tag as the anchor." | TOCTOU race. Always use `head_sha` from the `workflow_run` event. |
+| "main has diverged — let's open a PR to fix it." | main is a bookmark. Only `execute-release.yml` writes to it via fast-forward. |
+| "The freshness check is too conservative." | Equal SHAs mean `:stable` is already current. Promotion is not needed. |
 | "This reusable caller only needs job-level permissions." | Wrong often enough to deserve a scar. Check top-level caller permissions first. |
 
 ## Red Flags
 
-- `use_merge_queue` is conditional on `github.event_name`
-- `required_approving_review_count` is greater than 0 in ruleset or classic protection
-- The ruleset is missing the `merge_queue` rule type
-- editing stable-promotion logic while the real failure is earlier publish plumbing
-- adding full e2e to the promotion PR path
-- rerunning `action_required` workflow runs — they cannot be rerun, they are bot-blocked
+- `execute-release.yml` using `skopeo inspect :testing` to get the SHA instead of `github.event.workflow_run.head_sha`
+- Any PR targeting `main` (main is a bookmark, not a development branch)
+- Adding a merge queue or required checks to the `main-bookmark-protection` ruleset
+- `testing-merge-queue-no-review` ruleset missing `validate` or `e2e` required checks
+- Editing stable-promotion logic while the real failure is earlier in publish plumbing
 
 ## Verification
 
-- [ ] `use_merge_queue: true` unconditionally in `promote-testing-to-main.yml`
-- [ ] Ruleset `main-merge-queue-no-review` exists and has `merge_queue` rule
-- [ ] Classic branch protection `required_approving_review_count` is 0
-- [ ] `run_e2e: false` unchanged in the caller
-- [ ] Promotion PR enqueued and merged without any human interaction
-- [ ] Weekly cadence remains Tuesday `04:00 UTC`
-- [ ] You did not collapse publish, promotion, and stable release into one mental model
+- [ ] `execute-release.yml` trigger is `workflow_run` from `publish.yml` on `testing`
+- [ ] `head_sha` from `workflow_run` event anchors cosign verify and the freshness check
+- [ ] `main-bookmark-protection` ruleset: non_fast_forward + deletion blocked, no merge queue
+- [ ] `testing-merge-queue-no-review` ruleset: `validate` + `e2e` required, merge queue enabled
+- [ ] No PRs exist targeting `main`
+- [ ] `testing` is the GitHub default branch
+- [ ] Stable promoted without any human interaction after a successful publish
 
 ## Lessons Learned
 
@@ -261,7 +238,7 @@ This is not a pipeline failure. The resolution is automatic:
 ### One BST build at a time — cancel everything before starting a new build
 
 Before triggering or landing any change that starts a new BST build, cancel ALL
-in-progress BST jobs — including cache-warm runs.
+in-progress BST jobs.
 
 ```bash
 gh run list --repo projectbluefin/dakota --json databaseId,status,name \
@@ -269,28 +246,30 @@ gh run list --repo projectbluefin/dakota --json databaseId,status,name \
 gh run cancel <run-id> --repo projectbluefin/dakota
 ```
 
-Cache-warm runs are NOT exempt. Cancel everything, let one build finish, then re-trigger warm separately.
+Cancel everything, let one build finish, then re-trigger if needed.
 
-### startup_failure on promote dispatch — statuses:write missing in caller (2026-06-23)
+### OCI-native daily promotion model (2026-06-23)
 
-**Symptom:** Every `promote-testing-to-main.yml` dispatch returns `startup_failure` before any job runs. No log output available.
+Dakota migrated from a weekly squash-PR ceremony to a daily OCI-native promotion
+flow (issue 1073). The key differences:
 
-**Root cause:** `projectbluefin/actions` updated `reusable-promote-squash.yml@v1` to post a `validate=success` commit status on the squash branch HEAD (so the merge queue accepts the PR in the same run). This requires `statuses: write` in the promote job.
-
-Caller-level `permissions:` sets the **ceiling** for all called workflow jobs. If `statuses: write` is not in the caller's top-level block, GitHub rejects the reusable workflow at startup — no job is queued, no log is written.
-
-**Fix:** Add `statuses: write` to `promote-testing-to-main.yml` permissions:
-
-```yaml
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  packages: read
-  actions: read
-  statuses: write       # post validate status on squash branch head
-```
-
-**Detection:** When `projectbluefin/actions@v1` adds a new permission to a reusable job, check whether the dakota caller's `permissions:` block covers it. Missing permissions produce `startup_failure` with no log output — not a runtime error.
-
-**Related:** See also `ci-tooling.md` note about `workflows: write` being an invalid actionlint scope (use a GitHub App token instead for workflow file updates).
+- **Deleted workflows:** `promote-testing-to-main.yml`, `pr-release-gate.yml`,
+  `sync-main-to-testing.yml`, `cache-warm.yml`.
+- **`execute-release.yml`** now fires via `workflow_run` from `publish.yml` on the
+  `testing` branch — no cron, no commit-message gate.
+- **SHA anchor:** `head_sha` from the `workflow_run` event is the source of truth for
+  cosign verify and the freshness check. Never use `skopeo inspect :testing` as the
+  anchor — that is a TOCTOU race.
+- **Freshness check:** compare the `:testing` digest to the `:stable` digest. Equal →
+  skip promotion (already up to date). Different → promote.
+- **`main` is a bookmark.** Fast-forwarded by `execute-release.yml` only. No PRs
+  target `main`. The `main-bookmark-protection` ruleset enforces this.
+- **`testing` is the development trunk.** All contributor, Renovate, and BST source
+  bump PRs target `testing`. The `testing-merge-queue-no-review` ruleset requires
+  `validate` + `e2e` and enables the merge queue.
+- **Daily build schedule:** `build.yml` has a `schedule: '0 13 * * *'` trigger that
+  fires at 13:00 UTC daily, keeping CAS warm and ensuring a fresh `:testing` each
+  day even without a code push.
+- **ARM trigger change:** `build-aarch64.yml` now fires via `workflow_run` from
+  `publish.yml` — not a Tuesday cron. This serializes ARM after x86 CAS writes
+  complete, preventing CAS contention.

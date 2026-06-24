@@ -19,7 +19,7 @@ Load this file, identify the failure class, then load only the next skill you ne
 Use this skill when the task mentions:
 - GitHub Actions failures
 - `startup_failure`, `action_required`, missing jobs, or flaky checks
-- `publish.yml`, `build.yml`, `promote-testing-to-main.yml`, `execute-release.yml`
+- `publish.yml`, `build.yml`, `execute-release.yml`
 - boot-check, smoke, testsuite, SBOM, or GHCR publish problems
 - merge queue, promotion PRs, or stable release flow
 
@@ -94,27 +94,27 @@ The rationalizations that have caused real production failures:
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `build.yml` | `push: main/next/testing` (paths-ignore: docs/workflows/md), `merge_group`, `workflow_dispatch` — NOT `pull_request` | BST build → artifacts into remote CAS. Does NOT push to GHCR. `validate` job runs on `pull_request` only; `build` job runs on everything else. |
-| `publish.yml` | `workflow_run` from `build.yml` (branches: main, next, testing, + their gh-readonly-queue/* paths) | Export from CAS → push `:$sha` → sign/attest → promote to `:testing`/`:next`. No build happens here. |
-| `promote-testing-to-main.yml` | `push: testing`, `schedule: Tue 04:00 UTC`, `workflow_dispatch` | Opens/updates promotion PR from testing into main. |
-| `pr-release-gate.yml` | `pull_request` to `main` | Gates the promotion PR via cosign verify of `:testing`. |
-| `execute-release.yml` | `push: main`, `workflow_dispatch` | `check-trigger` job gates on commit message matching `^ci\(promote\): dakota testing` or `^chore: promote testing to main`. `workflow_dispatch` bypasses the gate. Copies `:testing` → `:stable`/`:latest`, creates GitHub Release. |
-| `cache-warm.yml` | `schedule: Mon/Thu 06:00 UTC`, `workflow_dispatch` | Pre-warms remote CAS. Two parallel jobs (x86_64, aarch64), `continue-on-error: true`. **Not exempt from pre-flight — cancel before any real build.** |
+| `build.yml` | `push: testing/next` (paths-ignore: docs/workflows/md), `merge_group`, `workflow_dispatch`, `schedule: daily 13:00 UTC` — NOT `pull_request` | BST build → artifacts into remote CAS. Does NOT push to GHCR. `validate` job runs on `pull_request` only; `build` job runs on everything else. |
+| `publish.yml` | `workflow_run` from `build.yml` (branches: testing, next, + their gh-readonly-queue/* paths) | Export from CAS → push `:$sha` → sign/attest → promote to `:testing`/`:next`. No build happens here. |
+| `execute-release.yml` | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch` | SHA freshness check (:testing vs :stable). If different: cosign verify → boot-check → skopeo copy `:testing` → `:stable`/`:latest` → fast-forward main → create GitHub Release. Skips if equal. |
+| ~~`promote-testing-to-main.yml`~~ | DELETED | Was: `push: testing`, schedule Tue 04:00 UTC, manual. |
+| ~~`pr-release-gate.yml`~~ | DELETED | Was: `pull_request` to `main`. |
+| ~~`sync-main-to-testing.yml`~~ | DELETED | Was: `push: main`. |
+| ~~`cache-warm.yml`~~ | DELETED | Was: Mon/Thu 06:00 UTC schedule. Daily 13:00 UTC builds keep CAS warm. |
 
 ## Trigger Behavior
 
-| Job | pull_request | push main/next/testing | merge_group | workflow_dispatch | schedule |
+| Job | pull_request | push testing/next | merge_group | workflow_dispatch | schedule |
 |---|---|---|---|---|---|
 | `validate` | Yes | No | No | No | No |
 | `e2e` | Yes (change-detected) | No | No | Yes | No |
-| `build` | No | Yes (paths-ignore) | Yes | Yes | No |
-| `cache-warm` | No | No | No | Yes | Mon/Thu 06:00 UTC |
-| Push to GHCR? | No | Via publish.yml | Via publish.yml | Via publish.yml | No |
+| `build` | No | Yes (paths-ignore) | Yes | Yes | Daily 13:00 UTC |
+| `execute-release` | No | No | No | Yes | Via workflow_run from publish |
+| Push to GHCR? | No | Via publish.yml | Via publish.yml | Via publish.yml | Via publish.yml |
 
 **push paths-ignore:** `.github/workflows/**`, `docs/**`, `**.md`, `AGENTS.md` — doc/workflow-only pushes do NOT trigger a build. This is intentional; it means a CI-only commit advancing the branch HEAD will leave no build artifact for that SHA.
 
 **Branch → tag mapping** (verified from publish.yml source):
-- `main` or `gh-readonly-queue/main/*` → `:testing`
 - `testing` or `gh-readonly-queue/testing/*` → `:testing`
 - `next` or `gh-readonly-queue/next/*` → `:next`
 
@@ -122,9 +122,11 @@ The rationalizations that have caused real production failures:
 
 **e2e change detection:** `e2e` uses a `should-run` job that diffs the PR branch against its base. It runs when `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf` change; otherwise the `e2e` job is skipped. Skipped satisfies the required status check.
 
-**Merge queue path:** `build` fires on `merge_group` — full OCI build, real CI gate before merge.
+**Merge queue path:** `build` fires on `merge_group` — full OCI build, real CI gate before merge. PRs target `testing`; `next` retains its own merge queue.
 
-**Cache-warm path:** `cache-warm.yml` runs Monday and Thursday at 06:00 UTC and on manual dispatch. Two parallel jobs — `warm-cache` (x86_64) and `warm-cache-aarch64` — run independently with no `needs:` dependency between them. Each has its own concurrency group (`dakota-cache-warm` and `dakota-cache-warm-aarch64`) so they never serialise. Both use `continue-on-error: true` and failures are non-blocking — best-effort. Addresses the cold-start non-determinism documented in [common automation-audit ND1](https://github.com/projectbluefin/common/blob/main/docs/factory/automation-audit/non-deterministic-steps.md).
+**Daily build schedule:** `build.yml` fires at 13:00 UTC daily (after `nightly-next-build` completes). This keeps CAS warm and ensures a fresh `:testing` tag each day even without a code push. `cache-warm.yml` was deleted — the daily build replaces it.
+
+**ARM build:** `build-aarch64.yml` fires via `workflow_run` from `publish.yml` on the `testing` branch. This serializes ARM after x86 CAS writes complete, preventing contention. The previous Tuesday cron trigger was removed.
 
 ## Remote Cache Architecture
 
@@ -151,16 +153,16 @@ Must exit clean before `git commit`. Catches invalid option names, types, and el
 
 ## ⚠️ Branch Base Rule
 
-Always branch from `upstream/main`, never from local `main`:
+Always branch from `upstream/testing` (the development trunk), never from local `testing` or `main`:
 
 ```bash
-git checkout upstream/main -b feature/my-change
-git diff upstream/main...HEAD --stat   # verify before pushing
+git checkout upstream/testing -b feature/my-change
+git diff upstream/testing...HEAD --stat   # verify before pushing
 ```
 
 **Recovery when a branch is already dirty:**
 ```bash
-git rebase --onto upstream/main <last-unwanted-commit-sha> <branch-name>
+git rebase --onto upstream/testing <last-unwanted-commit-sha> <branch-name>
 git push --force-with-lease origin <branch-name>
 ```
 
@@ -220,14 +222,33 @@ PRs created by a workflow using `GITHUB_TOKEN` do NOT fire `pull_request` events
 
 ## Ruleset
 
-Ruleset: `main-review-required-with-renovate-bypass`
+### testing (development trunk)
+
+Ruleset: `testing-merge-queue-no-review`
 
 | Rule | Value |
 |---|---|
-| Required reviews | 1 approving review |
+| Required reviews | 0 (fully automated) |
 | Required status checks | `validate` + `e2e` |
-| Merge queue | ALLGREEN, max_entries_to_build=1, check_response_timeout=120 min |
-| Bypass actors | OrganizationAdmin, Renovate, mergeraptor |
+| Merge queue | enabled (SQUASH, ALLGREEN) |
+| Force push | blocked |
+| Deletion | blocked |
+
+**`testing` is the GitHub default branch and the merge target for all PRs.**
+
+### main (release bookmark)
+
+Ruleset: `main-bookmark-protection`
+
+| Rule | Value |
+|---|---|
+| Required reviews | none |
+| Required status checks | none |
+| Merge queue | none |
+| Non-fast-forward | blocked |
+| Deletion | blocked |
+
+`main` is written only by `execute-release.yml` via fast-forward after each successful stable promotion.
 
 **e2e change detection:** `e2e` only tests PRs touching `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf`. For all other paths (e.g. workflow pin bumps) the `e2e` job is skipped, which satisfies the required check. The `should-run` job uses `git diff` against the PR base — no `paths:` filter on the trigger.
 
@@ -2215,3 +2236,29 @@ fi
 ```
 
 Without the fallback, approved PRs with already-green CI sit permanently unmerged.
+
+### OCI-native daily promotion model — pipeline timing and deleted workflows (2026-06-23)
+
+Dakota migrated from a weekly squash-PR ceremony to a daily OCI-native promotion
+flow (issue 1073). Key operational facts for CI debugging:
+
+**Deleted workflows (do not recreate):** `promote-testing-to-main.yml`, `pr-release-gate.yml`, `sync-main-to-testing.yml`, `cache-warm.yml`.
+
+**Daily BST build windows (serialized for CAS):**
+```
+03:00 UTC  nightly-next-build → next branch (x86, 90-210 min)
+13:00 UTC  build.yml schedule → testing x86 default+nvidia serial (max-parallel:1, 90-390 min)
+~18:00     publish.yml fires → :testing + :testing-nvidia published
+~18:00     build-aarch64.yml fires (workflow_run from publish) → ARM default (~90-210 min)
+~18:00     execute-release.yml fires (workflow_run from publish) → freshness check → promote
+20:00      track-next-junctions → may trigger next junction build
+```
+
+**`cache-warm.yml` is deleted.** The daily 13:00 UTC `build.yml` schedule replaces it. CAS stays warm as long as the daily build runs. If the daily build is absent for >48 hours, expect cold-start non-determinism.
+
+**ARM build trigger changed.** `build-aarch64.yml` now fires via `workflow_run` from `publish.yml` on `testing` — not a Tuesday cron. This ensures ARM starts only after x86 CAS writes complete, preventing write contention that was causing `Cached elements after warm: 0`.
+
+**SHA-based freshness check.** `execute-release.yml` compares the `:testing` image digest to the current `:stable` digest. If they are equal, promotion is skipped (nothing new to ship). If different, the promote path runs: cosign verify → boot-check → skopeo copy → fast-forward main. The SHA used for cosign verify comes from `github.event.workflow_run.head_sha`, not a live `:testing` tag lookup.
+
+**`testing` is now the default GitHub branch.** All PRs target `testing`. The old `main`-targeting PRs pattern is gone. `main` is a bookmark.
+
