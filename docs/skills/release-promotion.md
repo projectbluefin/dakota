@@ -278,3 +278,84 @@ flow (issue 1073). The key differences:
 - **ARM trigger change:** `build-aarch64.yml` now fires via `workflow_run` from
   `publish.yml` — not a Tuesday cron. This serializes ARM after x86 CAS writes
   complete, preventing CAS contention.
+
+## Rollback
+
+When a promoted `:stable` image regresses behaviour or ships a security issue
+that cannot wait for the next promotion cycle, use the
+[`rollback-stable.yml`](../../.github/workflows/rollback-stable.yml) workflow
+instead of running `skopeo copy` from a laptop. The workflow re-uses the same
+cosign identity gate that gates promotion, so a rollback cannot smuggle in an
+image that was never legitimately published.
+
+### When to use it
+
+- A bug or regression escaped the testing → stable promotion and is hitting
+  users on `:stable` / `:stable-multiarch`.
+- A supply-chain incident requires reverting to a known-good digest fast.
+- **Not** for cosmetic / "I'd rather have yesterday's build" preferences —
+  rollback breaks the linear `main`-bookmark history users expect.
+
+### How to invoke
+
+1. Find a target SHA that previously held `:stable`. Successful
+   `execute-release.yml` runs are the canonical source:
+
+   ```bash
+   gh run list \
+     --repo projectbluefin/dakota \
+     --workflow execute-release.yml \
+     --status success \
+     --json headSha,createdAt,displayTitle \
+     --limit 10
+   ```
+
+   Pick the `headSha` of the run *before* the regression landed.
+
+2. Dispatch the workflow:
+
+   ```bash
+   gh workflow run rollback-stable.yml \
+     --repo projectbluefin/dakota \
+     --ref main \
+     -f target_sha=<sha> \
+     -f reason="<short reason — appears in audit release notes>" \
+     -f include_multiarch=true \
+     -f dry_run=true
+   ```
+
+3. Read the `verify` job step summary. If digests resolve and cosign verify
+   passes, re-dispatch with `dry_run=false` to actually move the tags.
+
+### Defaults that matter
+
+- **`dry_run` defaults to `true`.** Humans must explicitly pass `dry_run=false`
+  to live-rollback. This is intentional — a one-button live rollback under
+  pressure is exactly when foot-guns fire.
+- **`include_multiarch` defaults to `true`.** Leave it on unless ARM is
+  intentionally being held back; otherwise `:stable-multiarch` will continue
+  to advertise the bad image to `aarch64` users.
+- **Concurrency group is `dakota-execute-release`**, identical to the
+  promotion workflow. A rollback cannot race with a promotion in flight, and
+  vice versa.
+
+### What the workflow guarantees
+
+- `dakota:${target_sha}` and `dakota-nvidia:${target_sha}` both exist (pair
+  invariant — refuses to roll back a partial set).
+- Both images cosign-verify against the anchored
+  `publish.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)` identity.
+- Tags are moved with `skopeo copy --preserve-digests --all`, so the digest
+  served by `:stable` is exactly the digest cosign signed.
+- A GitHub Release (`rollback-<sha>-<unix_ts>`, marked prerelease) is created
+  to keep an audit trail of the operator, reason, timestamp, and digests.
+
+### What it does *not* do
+
+- It does **not** rewind the `main` bookmark. `main` continues to point at the
+  most recent promoted SHA. The image stream and the git bookmark are
+  intentionally decoupled in this flow — if the regression also needs a code
+  revert, open a normal PR against `testing` and let the promotion pipeline
+  re-promote.
+- It does **not** delete the bad image. The previously-stable digest stays in
+  GHCR (under its SHA tag) for forensics.

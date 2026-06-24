@@ -1,0 +1,346 @@
+name: Rollback :stable
+
+# One-button rollback for ghcr.io/projectbluefin/dakota{,-nvidia}:stable when a
+# promoted image is bad. Mirrors the publish/promotion supply-chain checks:
+#   1. Inspect the target SHA-pinned images exist.
+#   2. cosign verify them against the anchored publish.yml identity.
+#   3. skopeo copy --preserve-digests --all into :stable.
+#   4. Rebuild :stable-multiarch from the verified images.
+#
+# workflow_dispatch only. Defaults to dry_run=true — humans must opt-in to
+# moving tags. Concurrency group is shared with execute-release so this cannot
+# race with a promotion in flight.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: 'SHA of the previously-promoted commit to roll back to. Must be a commit that previously held :stable. Find via: gh run list --workflow execute-release.yml --status success'
+        required: true
+        type: string
+      reason:
+        description: 'Human reason for rollback. Logged in step summary and GitHub Release notes.'
+        required: true
+        type: string
+      include_multiarch:
+        description: 'Also revert :stable-multiarch.'
+        required: false
+        type: boolean
+        default: true
+      dry_run:
+        description: 'Inspect + cosign verify only, do not move tags. Defaults to true — opt out only when ready to roll back live.'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dakota-execute-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify rollback target
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      dakota_digest: ${{ steps.digests.outputs.dakota_digest }}
+      nvidia_digest: ${{ steps.digests.outputs.nvidia_digest }}
+      aarch64_digest: ${{ steps.aarch64.outputs.aarch64_digest }}
+      aarch64_present: ${{ steps.aarch64.outputs.present }}
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      COSIGN_IDENTITY_REGEXP: ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)$
+      COSIGN_ISSUER: https://token.actions.githubusercontent.com
+    steps:
+      - name: Install skopeo
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq skopeo
+
+      - name: Install cosign
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 \
+            -o "$RUNNER_TEMP/cosign"
+          sudo install -m 0755 "$RUNNER_TEMP/cosign" /usr/local/bin/cosign
+          cosign version
+
+      - name: Inspect SHA-pinned images and capture digests
+        id: digests
+        run: |
+          set -euo pipefail
+
+          # dakota
+          if ! skopeo inspect --no-tags \
+              "docker://ghcr.io/projectbluefin/dakota:${TARGET_SHA}" > /tmp/dakota.json 2>&1; then
+            echo "::error::ghcr.io/projectbluefin/dakota:${TARGET_SHA} not found in GHCR."
+            cat /tmp/dakota.json
+            exit 1
+          fi
+          DAKOTA_DIGEST=$(jq -r '.Digest' /tmp/dakota.json)
+          if [ -z "$DAKOTA_DIGEST" ] || [ "$DAKOTA_DIGEST" = "null" ]; then
+            echo "::error::Failed to resolve digest for dakota:${TARGET_SHA}"
+            exit 1
+          fi
+          echo "dakota_digest=${DAKOTA_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "dakota:${TARGET_SHA} → ${DAKOTA_DIGEST}"
+
+          # dakota-nvidia — pair invariant: both must exist
+          if ! skopeo inspect --no-tags \
+              "docker://ghcr.io/projectbluefin/dakota-nvidia:${TARGET_SHA}" > /tmp/nvidia.json 2>&1; then
+            echo "::error::ghcr.io/projectbluefin/dakota-nvidia:${TARGET_SHA} not found. dakota and dakota-nvidia must be promoted as a pair — refusing to roll back a partial set."
+            cat /tmp/nvidia.json
+            exit 1
+          fi
+          NVIDIA_DIGEST=$(jq -r '.Digest' /tmp/nvidia.json)
+          if [ -z "$NVIDIA_DIGEST" ] || [ "$NVIDIA_DIGEST" = "null" ]; then
+            echo "::error::Failed to resolve digest for dakota-nvidia:${TARGET_SHA}"
+            exit 1
+          fi
+          echo "nvidia_digest=${NVIDIA_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "dakota-nvidia:${TARGET_SHA} → ${NVIDIA_DIGEST}"
+
+      - name: Verify cosign signature on dakota:${{ inputs.target_sha }}
+        env:
+          DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota_digest }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
+            --certificate-oidc-issuer "$COSIGN_ISSUER" \
+            "ghcr.io/projectbluefin/dakota@${DAKOTA_DIGEST}"
+
+      - name: Verify cosign signature on dakota-nvidia:${{ inputs.target_sha }}
+        env:
+          NVIDIA_DIGEST: ${{ steps.digests.outputs.nvidia_digest }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
+            --certificate-oidc-issuer "$COSIGN_ISSUER" \
+            "ghcr.io/projectbluefin/dakota-nvidia@${NVIDIA_DIGEST}"
+
+      - name: Inspect and verify aarch64 component (if include_multiarch)
+        id: aarch64
+        if: ${{ inputs.include_multiarch }}
+        run: |
+          set -euo pipefail
+          if ! skopeo inspect --no-tags \
+              "docker://ghcr.io/projectbluefin/dakota:aarch64-${TARGET_SHA}" > /tmp/arm.json 2>&1; then
+            echo "::error::include_multiarch=true but ghcr.io/projectbluefin/dakota:aarch64-${TARGET_SHA} not found. Set include_multiarch=false to revert x86_64 only, or pick a target_sha that has a published aarch64 image."
+            cat /tmp/arm.json
+            exit 1
+          fi
+          AARCH64_DIGEST=$(jq -r '.Digest' /tmp/arm.json)
+          if [ -z "$AARCH64_DIGEST" ] || [ "$AARCH64_DIGEST" = "null" ]; then
+            echo "::error::Failed to resolve digest for dakota:aarch64-${TARGET_SHA}"
+            exit 1
+          fi
+          echo "aarch64_digest=${AARCH64_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "present=true" >> "$GITHUB_OUTPUT"
+          echo "dakota:aarch64-${TARGET_SHA} → ${AARCH64_DIGEST}"
+
+          cosign verify \
+            --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
+            --certificate-oidc-issuer "$COSIGN_ISSUER" \
+            "ghcr.io/projectbluefin/dakota@${AARCH64_DIGEST}"
+
+      - name: Verify summary
+        env:
+          DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota_digest }}
+          NVIDIA_DIGEST: ${{ steps.digests.outputs.nvidia_digest }}
+          AARCH64_DIGEST: ${{ steps.aarch64.outputs.aarch64_digest }}
+          REASON: ${{ inputs.reason }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          INCLUDE_MULTIARCH: ${{ inputs.include_multiarch }}
+        run: |
+          {
+            echo "## Rollback target verified"
+            echo ""
+            echo "- **target_sha:** \`${TARGET_SHA}\`"
+            echo "- **reason:** ${REASON}"
+            echo "- **dry_run:** \`${DRY_RUN}\`"
+            echo "- **include_multiarch:** \`${INCLUDE_MULTIARCH}\`"
+            echo "- **dakota digest:** \`${DAKOTA_DIGEST}\`"
+            echo "- **dakota-nvidia digest:** \`${NVIDIA_DIGEST}\`"
+            if [ -n "${AARCH64_DIGEST:-}" ]; then
+              echo "- **aarch64 digest:** \`${AARCH64_DIGEST}\`"
+            fi
+            echo ""
+            echo "All cosign signatures verified against \`publish.yml@refs/heads/testing\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  rollback:
+    name: Move :stable tags
+    needs: verify
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      DAKOTA_DIGEST: ${{ needs.verify.outputs.dakota_digest }}
+      NVIDIA_DIGEST: ${{ needs.verify.outputs.nvidia_digest }}
+      AARCH64_DIGEST: ${{ needs.verify.outputs.aarch64_digest }}
+    steps:
+      - name: Install skopeo
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq skopeo
+
+      - name: Login to GHCR (skopeo)
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | skopeo login ghcr.io --username "$GH_ACTOR" --password-stdin
+
+      - name: Revert dakota:stable to target_sha
+        run: |
+          set -euo pipefail
+          skopeo copy --preserve-digests --all \
+            "docker://ghcr.io/projectbluefin/dakota:${TARGET_SHA}" \
+            "docker://ghcr.io/projectbluefin/dakota:stable"
+
+      - name: Revert dakota-nvidia:stable to target_sha
+        run: |
+          set -euo pipefail
+          skopeo copy --preserve-digests --all \
+            "docker://ghcr.io/projectbluefin/dakota-nvidia:${TARGET_SHA}" \
+            "docker://ghcr.io/projectbluefin/dakota-nvidia:stable"
+
+      - name: Verify reverted :stable digests match target
+        run: |
+          set -euo pipefail
+          dakota_now=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:stable" | jq -r .Digest)
+          if [ "$dakota_now" != "$DAKOTA_DIGEST" ]; then
+            echo "::error::dakota:stable digest=$dakota_now, expected $DAKOTA_DIGEST"
+            exit 1
+          fi
+          nvidia_now=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota-nvidia:stable" | jq -r .Digest)
+          if [ "$nvidia_now" != "$NVIDIA_DIGEST" ]; then
+            echo "::error::dakota-nvidia:stable digest=$nvidia_now, expected $NVIDIA_DIGEST"
+            exit 1
+          fi
+          echo "Both :stable tags now point at the verified target digests."
+
+      - name: Login to GHCR (podman)
+        if: ${{ inputs.include_multiarch && needs.verify.outputs.aarch64_present == 'true' }}
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | podman login ghcr.io --username "$GH_ACTOR" --password-stdin
+
+      - name: Rebuild :stable-multiarch from verified components
+        if: ${{ inputs.include_multiarch && needs.verify.outputs.aarch64_present == 'true' }}
+        run: |
+          set -euo pipefail
+          # Mirror execute-release.yml's create-multiarch-stable step shape. The
+          # x86_64 component references the just-reverted :stable tag; the
+          # aarch64 component references the verified digest directly so we
+          # publish exactly what cosign signed in the verify job.
+          podman manifest create \
+            "ghcr.io/projectbluefin/dakota:stable-multiarch" \
+            "ghcr.io/projectbluefin/dakota:stable" \
+            "ghcr.io/projectbluefin/dakota@${AARCH64_DIGEST}"
+          podman manifest push --all \
+            "ghcr.io/projectbluefin/dakota:stable-multiarch" \
+            "docker://ghcr.io/projectbluefin/dakota:stable-multiarch"
+          echo "Rebuilt :stable-multiarch (aarch64=${AARCH64_DIGEST})"
+
+  record:
+    name: Record rollback in audit trail
+    needs: [verify, rollback]
+    if: ${{ always() && !inputs.dry_run && needs.rollback.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TARGET_SHA: ${{ inputs.target_sha }}
+      REASON: ${{ inputs.reason }}
+      ACTOR: ${{ github.actor }}
+      DAKOTA_DIGEST: ${{ needs.verify.outputs.dakota_digest }}
+      NVIDIA_DIGEST: ${{ needs.verify.outputs.nvidia_digest }}
+      AARCH64_DIGEST: ${{ needs.verify.outputs.aarch64_digest }}
+      INCLUDE_MULTIARCH: ${{ inputs.include_multiarch }}
+    steps:
+      - name: Compose rollback notes
+        id: notes
+        run: |
+          set -euo pipefail
+          TS=$(date -u +%s)
+          TS_HUMAN=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          TAG="rollback-${TARGET_SHA}-${TS}"
+          {
+            echo "# :stable rollback"
+            echo ""
+            echo "**Actor:** @${ACTOR}"
+            echo "**Timestamp:** ${TS_HUMAN}"
+            echo "**Target SHA:** \`${TARGET_SHA}\`"
+            echo ""
+            echo "## Reason"
+            echo ""
+            echo "${REASON}"
+            echo ""
+            echo "## Reverted digests"
+            echo ""
+            echo "| Image | Tag | Digest |"
+            echo "|---|---|---|"
+            echo "| dakota | :stable | \`${DAKOTA_DIGEST}\` |"
+            echo "| dakota-nvidia | :stable | \`${NVIDIA_DIGEST}\` |"
+            if [ "${INCLUDE_MULTIARCH}" = "true" ] && [ -n "${AARCH64_DIGEST}" ]; then
+              echo "| dakota (aarch64) | :stable-multiarch | \`${AARCH64_DIGEST}\` |"
+            fi
+            echo ""
+            echo "All digests were cosign-verified against \`publish.yml@refs/heads/testing\` before tags were moved."
+          } > rollback-notes.md
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "ts_human=${TS_HUMAN}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release documenting rollback
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.notes.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # The release is tagged at the target_sha so the audit trail points
+          # at the commit whose image now serves :stable. Marked prerelease so
+          # it does not displace the most-recent stable release listing.
+          gh release create "$TAG" \
+            --repo "$REPO" \
+            --target "$TARGET_SHA" \
+            --title "Rollback :stable → ${TARGET_SHA}" \
+            --notes-file rollback-notes.md \
+            --prerelease
+
+      - name: Step summary
+        env:
+          TAG: ${{ steps.notes.outputs.tag }}
+          TS_HUMAN: ${{ steps.notes.outputs.ts_human }}
+        run: |
+          {
+            echo "## :stable rolled back"
+            echo ""
+            echo "- **target_sha:** \`${TARGET_SHA}\`"
+            echo "- **actor:** @${ACTOR}"
+            echo "- **timestamp:** ${TS_HUMAN}"
+            echo "- **reason:** ${REASON}"
+            echo "- **dakota digest:** \`${DAKOTA_DIGEST}\`"
+            echo "- **dakota-nvidia digest:** \`${NVIDIA_DIGEST}\`"
+            if [ "${INCLUDE_MULTIARCH}" = "true" ] && [ -n "${AARCH64_DIGEST}" ]; then
+              echo "- **aarch64 digest:** \`${AARCH64_DIGEST}\`"
+            fi
+            echo "- **audit release:** \`${TAG}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
