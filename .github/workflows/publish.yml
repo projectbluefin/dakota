@@ -6,8 +6,6 @@ on:
     workflows: ["Build Bluefin dakota"]
     types: [completed]
     branches:
-      - main
-      - 'gh-readonly-queue/main/**'
       - next
       - 'gh-readonly-queue/next/**'
       - testing
@@ -25,7 +23,7 @@ permissions:
   actions: read
 
 concurrency:
-  # Separate publish queues per branch so next and main don't collide.
+  # Separate publish queues per branch so next and testing don't collide.
   group: publish-${{ github.event.workflow_run.head_branch || github.ref_name }}
   cancel-in-progress: false
 
@@ -43,9 +41,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event != 'pull_request' &&
-       (github.event.workflow_run.head_branch == 'main' ||
-        startsWith(github.event.workflow_run.head_branch, 'gh-readonly-queue/main/') ||
-        github.event.workflow_run.head_branch == 'next' ||
+       (github.event.workflow_run.head_branch == 'next' ||
         startsWith(github.event.workflow_run.head_branch, 'gh-readonly-queue/next/') ||
         github.event.workflow_run.head_branch == 'testing' ||
         startsWith(github.event.workflow_run.head_branch, 'gh-readonly-queue/testing/')))
@@ -67,13 +63,10 @@ jobs:
           # Only trunk branches (direct pushes / schedule) advance stream tags.
           # Merge-queue builds (gh-readonly-queue/**) publish an immutable :SHA
           # tag only — they must NOT move public stream tags before the commit lands.
-          # main     → :testing  (bookmark fast-forward; TODO: remove after #1079)
           # testing  → :testing  (every merge to testing publishes immediately)
           # next     → :next     (rolling GNOME master / bleeding edge)
           # queue/** → (empty)   :SHA only, no stream tag
-          if [[ "$BRANCH" == "main" ]]; then
-            echo "testing_tag=testing" >> "$GITHUB_OUTPUT"
-          elif [[ "$BRANCH" == "next" ]]; then
+          if [[ "$BRANCH" == "next" ]]; then
             echo "testing_tag=next" >> "$GITHUB_OUTPUT"
           elif [[ "$BRANCH" == "testing" ]]; then
             echo "testing_tag=testing" >> "$GITHUB_OUTPUT"
@@ -679,7 +672,7 @@ jobs:
       needs.publish-image.result == 'success' &&
       needs.boot-check.result == 'success' &&
       needs.setup.outputs.testing_tag != '' &&
-      (github.event_name == 'workflow_run' || github.ref_name == 'main')
+      github.event_name == 'workflow_run'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false

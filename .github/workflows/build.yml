@@ -8,9 +8,9 @@ on:
   schedule:
     - cron: '0 13 * * *'
   pull_request:
-    branches: [testing, next, main]
+    branches: [testing, next]
   merge_group:
-    branches: [testing, next, main]
+    branches: [testing, next]
   push:
     # main is a release bookmark — pushes to main after promotion should not
     # trigger a full BST build. Only testing (trunk) and next (rolling) build.
