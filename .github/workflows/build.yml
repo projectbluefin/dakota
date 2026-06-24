@@ -1,12 +1,20 @@
 name: Build Bluefin dakota
 
 on:
+  # Fires daily at 13:00 UTC — 5 hours after the gnome-build-meta nightly
+  # (~08:00 UTC) to absorb nightly deltas before building.
+  # NOTE: schedule triggers run on the default branch; set testing as the
+  # default branch in repo settings for this to target testing.
+  schedule:
+    - cron: '0 13 * * *'
   pull_request:
-    branches: [main, next, testing]
+    branches: [testing, next, main]
   merge_group:
-    branches: [main, next, testing]
+    branches: [testing, next, main]
   push:
-    branches: [main, next, testing]
+    # main is a release bookmark — pushes to main after promotion should not
+    # trigger a full BST build. Only testing (trunk) and next (rolling) build.
+    branches: [next, testing]
     paths-ignore:
       # Workflow files and docs don't affect the built image.
       # .github/actions/** is intentionally NOT ignored — local composite

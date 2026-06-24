@@ -10,10 +10,10 @@ name: Build Bluefin dakota (aarch64)
 #   - No remote execution (no RE service for ARM); enable-push: true so artifacts
 #     land in the remote CAS for subsequent builds and warm-cache runs.
 #
-# Triggers mirror x86_64 build.yml:
+# Triggers:
 #   - push: testing / main (BST-affecting paths only; docs/workflow-only changes ignored)
-#   - schedule: Tuesday 04:00 UTC — same cadence as promote-testing-to-main so the
-#     aarch64 image may be current when execute-release creates a multi-arch manifest
+#   - workflow_run: fires after x86_64 publish completes on testing — ARM builds
+#     after x86 CAS writes are done, avoiding CAS write contention
 #   - workflow_dispatch: manual recovery / on-demand
 #
 # Published tags (when qualifying event on testing/main):
@@ -29,9 +29,12 @@ on:
       - '**.md'
       - 'AGENTS.md'
       - 'files/scripts/**'
-  schedule:
-    # Tuesday 04:00 UTC — same window as promote-testing-to-main.yml schedule
-    - cron: '0 4 * * 2'
+  # Triggered after x86_64 publish completes — ARM builds after x86 CAS writes
+  # are done, avoiding CAS write contention.
+  workflow_run:
+    workflows: ["Publish Bluefin dakota"]
+    types: [completed]
+    branches: [testing]
   workflow_dispatch:
 
 permissions: read-all
@@ -49,6 +52,10 @@ jobs:
   build-aarch64:
     name: Build OCI image (aarch64)
     runs-on: ubuntu-24.04-arm
+    # Skip if triggered by workflow_run but the upstream publish failed.
+    if: >
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     # ARM failures are non-blocking and never affect x86_64 publication.
     continue-on-error: true
     timeout-minutes: 420
@@ -136,7 +143,7 @@ jobs:
       - name: Login to GHCR
         if: >-
           github.event_name == 'push' ||
-          github.event_name == 'schedule' ||
+          github.event_name == 'workflow_run' ||
           github.event_name == 'workflow_dispatch'
         env:
           GH_ACTOR: ${{ github.actor }}
@@ -146,7 +153,7 @@ jobs:
       - name: Tag image for GHCR
         if: >-
           github.event_name == 'push' ||
-          github.event_name == 'schedule' ||
+          github.event_name == 'workflow_run' ||
           github.event_name == 'workflow_dispatch'
         run: |
           sudo podman tag "localhost/${{ steps.export.outputs.image_ref }}" \
@@ -158,7 +165,7 @@ jobs:
         id: push
         if: >-
           github.event_name == 'push' ||
-          github.event_name == 'schedule' ||
+          github.event_name == 'workflow_run' ||
           github.event_name == 'workflow_dispatch'
         run: |
           for tag in aarch64 "aarch64-${{ github.sha }}"; do
