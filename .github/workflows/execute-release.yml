@@ -21,6 +21,10 @@ permissions:
   pull-requests: write
   statuses: write
 
+concurrency:
+  group: execute-release
+  cancel-in-progress: false
+
 jobs:
   freshness-check:
     runs-on: ubuntu-latest
@@ -52,6 +56,17 @@ jobs:
 
           # Verify the SHA-tagged image exists in GHCR (proves this SHA was published)
           skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:${BUILD_SHA}" > /dev/null
+
+          # Guard: if testing advanced since the build, the reusable fast-forward would
+          # point main to a newer commit than the image we're promoting. Skip promotion.
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            CURRENT_SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/testing" --jq '.object.sha')
+            if [ "$CURRENT_SHA" != "$BUILD_SHA" ]; then
+              echo "::warning::testing has advanced (build: ${BUILD_SHA}, current: ${CURRENT_SHA}). Skipping promotion to avoid SHA mismatch on main fast-forward. Will promote next build."
+              echo "should-release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
 
           # Compare :testing and :stable digests
           TESTING_DIGEST=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:testing" \
@@ -87,8 +102,8 @@ jobs:
       registry: ghcr.io/projectbluefin
       variants: >-
         [
-          {"image":"dakota","source_tag":"testing","target_tag":"stable"},
-          {"image":"dakota-nvidia","source_tag":"testing","target_tag":"stable"}
+          {"image":"dakota","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"},
+          {"image":"dakota-nvidia","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"}
         ]
       cosign_identity_regexp: ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
       fast_forward_branch: main
