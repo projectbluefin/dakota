@@ -20,6 +20,17 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
+# Join the global BST concurrency group so this dispatcher waits behind
+# any in-flight BuildStream build on testing or any merge-queue ref. The
+# actual BST run is on build.yml (whose `build` job also joins this
+# group), so this serves as defense in depth — preventing the dispatcher
+# from queueing a second build before the first one releases the CAS.
+# cancel-in-progress: false so a running build is never killed by a
+# scheduled dispatch.
+concurrency:
+  group: dakota-bst-build-global
+  cancel-in-progress: false
+
 jobs:
   dispatch:
     name: Trigger next branch build

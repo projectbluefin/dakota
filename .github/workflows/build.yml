@@ -36,21 +36,11 @@ env:
   IMAGE_NAME: dakota
   IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
 
-# Concurrency: one BST build per branch at a time.
-# push/main and merge_group/main share group "bst-build-main" so they
-# never run simultaneously and starve the remote CAS.
-# cancel-in-progress: true for push/dispatch so stale builds are dropped
-# when a newer commit arrives. merge_group runs queue (false) so in-flight
-# gate checks are not cancelled by a concurrent push.
-concurrency:
-  group: >-
-    bst-build-${{
-      startsWith(github.ref_name, 'gh-readonly-queue/main') && 'main' ||
-      startsWith(github.ref_name, 'gh-readonly-queue/testing') && 'testing' ||
-      startsWith(github.ref_name, 'gh-readonly-queue/next') && 'next' ||
-      github.ref_name
-    }}
-  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+# Concurrency: enforced at the `build` job level (see below) using the
+# shared global group `dakota-bst-build-global`. The PR-only `validate`
+# job runs `bst show` (metadata only, no CAS traffic) and has its own
+# per-PR concurrency block — it intentionally does NOT join the global
+# group so PR validation is not blocked by long-running trunk builds.
 
 jobs:
   # ── Default-branch precondition ──────────────────────────────────────────
@@ -138,6 +128,16 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    # Global BST concurrency: only one BuildStream build may run across
+    # ALL branches and workflows. The remote CAS at cache.projectbluefin.io
+    # is rate-limited and supports a single build at a time — concurrent
+    # builds tank cache hit rate and risk 6-hour timeouts. The same group
+    # name is used by nightly-next-build.yml so cross-workflow dispatch
+    # also serializes here. cancel-in-progress: false so an in-flight
+    # build on one branch is never killed by a push to another branch.
+    concurrency:
+      group: dakota-bst-build-global
+      cancel-in-progress: false
     # Variants build serially — one BST build at a time per the hard rule.
     # Shared runners and CAS write bandwidth cannot sustain concurrent builds.
     strategy:
