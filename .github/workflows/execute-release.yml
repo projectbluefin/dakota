@@ -1,10 +1,16 @@
 name: Execute Release
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["Publish Bluefin dakota"]
+    types: [completed]
+    branches: [testing]
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — verify gates but do not promote'
+        type: boolean
+        default: false
 
 permissions:
   actions: read
@@ -13,35 +19,69 @@ permissions:
   issues: write
   packages: write
   pull-requests: write
+  statuses: write
 
 jobs:
-  check-trigger:
+  freshness-check:
     runs-on: ubuntu-latest
     outputs:
-      is-promotion: ${{ steps.check.outputs.is-promotion }}
+      should-release: ${{ steps.compare.outputs.should-release }}
+      build_sha: ${{ steps.compare.outputs.build_sha }}
     steps:
-      - id: check
+      - name: Check publish conclusion and compare digests
+        id: compare
         env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "is-promotion=true" >> "$GITHUB_OUTPUT"
-          elif echo "$COMMIT_MSG" | grep -qE "^ci\(promote\): dakota testing|^chore: promote testing to main"; then
-            echo "is-promotion=true" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+
+          # Skip if triggered by a failed publish workflow
+          if [ "${{ github.event_name }}" = "workflow_run" ] && \
+             [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "Publish workflow did not succeed (conclusion: ${{ github.event.workflow_run.conclusion }}). Skipping."
+            echo "should-release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Resolve the SHA that was built and published
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            BUILD_SHA="${{ github.event.workflow_run.head_sha }}"
           else
-            echo "is-promotion=false" >> "$GITHUB_OUTPUT"
+            BUILD_SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/testing" --jq '.object.sha')
+          fi
+
+          # Verify the SHA-tagged image exists in GHCR (proves this SHA was published)
+          skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:${BUILD_SHA}" > /dev/null
+
+          # Compare :testing and :stable digests
+          TESTING_DIGEST=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:testing" \
+            | jq -r '.Digest')
+
+          STABLE_DIGEST=""
+          if skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:stable" > /dev/null 2>&1; then
+            STABLE_DIGEST=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:stable" \
+              | jq -r '.Digest')
+          fi
+
+          if [ -n "$STABLE_DIGEST" ] && [ "$TESTING_DIGEST" = "$STABLE_DIGEST" ]; then
+            echo "should-release=false" >> "$GITHUB_OUTPUT"
+            echo ":testing and :stable are identical ($TESTING_DIGEST) — nothing to promote"
+          else
+            echo "should-release=true" >> "$GITHUB_OUTPUT"
+            echo "build_sha=${BUILD_SHA}" >> "$GITHUB_OUTPUT"
+            echo ":testing ($TESTING_DIGEST) differs from :stable (${STABLE_DIGEST:-not found}) — promotion needed"
           fi
 
   execute:
-    needs: [check-trigger]
-    if: needs.check-trigger.outputs.is-promotion == 'true'
+    needs: [freshness-check]
+    if: needs.freshness-check.outputs.should-release == 'true' && inputs.dry_run != true
     permissions:
       actions: read
       contents: write
       issues: write
       packages: write
       pull-requests: write
+      statuses: write
     uses: projectbluefin/actions/.github/workflows/reusable-execute-release.yml@v1
     with:
       registry: ghcr.io/projectbluefin
@@ -51,6 +91,7 @@ jobs:
           {"image":"dakota-nvidia","source_tag":"testing","target_tag":"stable"}
         ]
       cosign_identity_regexp: ^https://github\.com/projectbluefin/(dakota|actions)/\.github/workflows/
+      fast_forward_branch: main
     secrets: inherit
 
   release-notes:
@@ -68,9 +109,9 @@ jobs:
       # Use the BST-native SBOM from publish.yml's publish-sbom job.
       # Inline syft with rpm cataloger returns 0 packages on BST images.
       build_workflow: publish.yml
-      build_branch: main
+      build_branch: testing
       sbom_artifact: sbom-dakota
-      checkout_ref: main
+      checkout_ref: testing
       project_name: Dakota
       badge_label: Stable
       accent_color: "#0ea5e9"
