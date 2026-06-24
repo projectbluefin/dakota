@@ -62,9 +62,12 @@ jobs:
     outputs:
       pushed: ${{ steps.push.outputs.pushed }}
       sha: ${{ steps.context.outputs.sha }}
+      aarch64_digest: ${{ steps.push.outputs.digest }}
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
 
     steps:
       - name: Resolve build context
@@ -148,18 +151,11 @@ jobs:
         env:
           GH_ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: echo "$GH_TOKEN" | sudo podman login ghcr.io --username "$GH_ACTOR" --password-stdin
-
-      - name: Tag image for GHCR
-        if: >-
-          github.event_name == 'push' ||
-          github.event_name == 'workflow_run' ||
-          github.event_name == 'workflow_dispatch'
         run: |
-          sudo podman tag "localhost/${{ steps.export.outputs.image_ref }}" \
-            "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:aarch64"
-          sudo podman tag "localhost/${{ steps.export.outputs.image_ref }}" \
-            "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:aarch64-${{ github.sha }}"
+          echo "$GH_TOKEN" | sudo podman login ghcr.io --username "$GH_ACTOR" --password-stdin
+          mkdir -p ~/.docker
+          echo "$GH_TOKEN" | podman login ghcr.io --username "$GH_ACTOR" --password-stdin \
+            --compat-auth-file ~/.docker/config.json
 
       - name: Push to GHCR
         id: push
@@ -167,16 +163,57 @@ jobs:
           github.event_name == 'push' ||
           github.event_name == 'workflow_run' ||
           github.event_name == 'workflow_dispatch'
+        env:
+          BUILD_SHA: ${{ github.sha }}
         run: |
-          for tag in aarch64 "aarch64-${{ github.sha }}"; do
-            PUSH_OK=false
-            for attempt in 1 2 3; do
-              # zstd: plain (not chunked) — matches x86_64 push convention
-              sudo podman push --compression-format=zstd \
-                "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}" && { PUSH_OK=true; break; }
-              echo "Push attempt ${attempt} failed for tag ${tag}, retrying in 5s..."
-              sleep 5
-            done
-            $PUSH_OK || { echo "WARNING: all push attempts failed for :${tag} — non-blocking"; }
+          IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
+          LOCAL="localhost/${{ steps.export.outputs.image_ref }}"
+
+          # Tag the immutable SHA-pinned ref first; push it with --digestfile so
+          # the captured digest matches exactly what was uploaded. The floating
+          # :aarch64 tag is pushed afterwards and points at the same manifest.
+          sudo podman tag "${LOCAL}" "${IMAGE}:aarch64-${BUILD_SHA}"
+          sudo podman tag "${LOCAL}" "${IMAGE}:aarch64"
+
+          PUSH_OK=false
+          for attempt in 1 2 3; do
+            sudo podman push --compression-format=zstd \
+              --digestfile "${RUNNER_TEMP}/digest.txt" \
+              "${IMAGE}:aarch64-${BUILD_SHA}" && { PUSH_OK=true; break; }
+            echo "Push attempt ${attempt} failed for :aarch64-${BUILD_SHA}, retrying in 5s..."
+            [ "$attempt" -lt 3 ] && sleep 5
           done
+          if [ "$PUSH_OK" != "true" ]; then
+            echo "ERROR: all push attempts failed for :aarch64-${BUILD_SHA} — aarch64 build not signed/published"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          DIGEST="$(cat "${RUNNER_TEMP}/digest.txt")"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+          # Floating :aarch64 — best-effort, never blocks signing of the pinned tag.
+          for attempt in 1 2 3; do
+            sudo podman push --compression-format=zstd \
+              "${IMAGE}:aarch64" && break
+            echo "Push attempt ${attempt} failed for :aarch64, retrying in 5s..."
+            [ "$attempt" -lt 3 ] && sleep 5
+          done
+
           echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Install oras
+        if: steps.push.outputs.pushed == 'true'
+        uses: oras-project/setup-oras@38de303aac69abb66f3e6255b7198bff35f323e3 # v2.0.0
+
+      - name: Sign image and create attestation
+        # Mirrors publish.yml exactly. generate-sbom: false — dakota uses BST-native
+        # provenance (just sbom) handled separately; Syft post-build scan is less
+        # accurate for BST builds.
+        if: steps.push.outputs.pushed == 'true'
+        uses: projectbluefin/actions/bootc-build/sign-and-publish@v1
+        with:
+          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}
+          digest: ${{ steps.push.outputs.digest }}
+          generate-sbom: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
