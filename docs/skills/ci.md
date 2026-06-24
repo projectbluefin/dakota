@@ -2262,3 +2262,91 @@ flow (issue 1073). Key operational facts for CI debugging:
 
 **`testing` is now the default GitHub branch.** All PRs target `testing`. The old `main`-targeting PRs pattern is gone. `main` is a bookmark.
 
+### execute-release startup_failure: ${{ }} wrapper in if: condition (2026-06-24)
+
+**Symptom:** `execute-release.yml` shows `startup_failure` on every run triggered by
+`workflow_run`. No jobs appear. Zero log output.
+
+**Root cause:** Using `${{ }}` expression syntax inside a job `if:` condition that
+references `inputs` context:
+
+```yaml
+# BROKEN — startup_failure when triggered by workflow_run
+if: ${{ inputs.dry_run != true && github.event_name == 'workflow_run' }}
+```
+
+When the workflow is triggered by `workflow_run`, the `inputs` context is absent.
+The `${{ }}` wrapper attempts to evaluate it and errors at startup before any jobs
+are created. Bare `if:` expressions handle absent contexts safely (`null != true = true`).
+
+```yaml
+# CORRECT — works for both workflow_run and workflow_dispatch triggers
+if: inputs.dry_run != true && github.event_name == 'workflow_run'
+```
+
+**Diagnosis:** Startup_failure with zero jobs is almost always a workflow syntax or
+context error. Check every `if:` condition that uses `${{ }}` with contexts that may
+be absent for the triggering event.
+
+**Fix in PR #1091 (2026-06-24):** removed `${{ }}` wrapper from `post-release-verify` job.
+
+### CAS server drops connections mid-build: disable remote-execution + push (2026-06-24)
+
+**Symptom:** Builds proceed cleanly for ~3-4 hours (792+ elements pulled from CAS),
+then fail with:
+
+```
+grpc._channel._InactiveRpcError:
+  status = StatusCode.UNAVAILABLE
+  details = "ipv4:77.42.112.172:11002: Failed to connect to remote host: Connection refused"
+```
+
+Pipeline summary shows:
+```
+Build Queue:    processed 0,   failed 5
+Src-push Queue: processed 0,   failed 5
+```
+
+**Root cause:** `cache.storage-service` in `buildstream-ci.conf` routes the local
+buildbox-casd daemon through the remote CAS. When the remote CAS drops (crash,
+disk full, OOM), the local casd loses its storage backend — BST cannot store
+newly-built artifacts and the build fails even though all artifact pulls had succeeded.
+
+**BST constraint:** `remote-execution` in `buildstream-ci.conf` requires `storage-service`
+to be specified (either globally in `cache:` or in the `remote-execution:` block).
+Setting `enable-push: false` alone is insufficient — the action generates
+`remote-execution:` config only when `enable-remote-execution: 'true'`, and BST will
+reject the config at load time with:
+```
+Error loading user configuration: Remote execution requires 'storage-service' to be specified
+```
+
+**Fix:** Set both `enable-remote-execution: 'false'` AND `enable-push: 'false'`:
+
+```yaml
+# build.yml — workaround when CAS server is unhealthy
+uses: ./.github/actions/generate-bst-ci-config
+with:
+  enable-remote-execution: 'false'
+  enable-push: 'false'
+```
+
+This removes the `storage-service` and `remote-execution` blocks entirely. Local casd
+uses runner disk. Pulls still read from `gbm.gnome.org:11003` and `cache.projectbluefin.io:11001`
+(read-only). Missing elements build from source locally.
+
+**Re-enable both** once the CAS server (`cache.projectbluefin.io:11002`) is confirmed stable.
+One-line revert: change both back to `'true'`.
+
+**Server recovery:** SSH into the Hetzner AX102-U and check:
+```bash
+systemctl status buildbox-casd
+df -h            # watch for full disks from partial build blobs
+journalctl -u buildbox-casd -n 50
+```
+
+**Distinguish from "CAS down at startup":** If the CAS is unreachable at startup,
+BST fails immediately during "Loading elements" with a cryptic `BUG: Message handling
+out of sync` error (see the older 2026-06-07 pattern). The 2026-06-24 pattern is
+different — CAS is healthy at start, drops after hours of load.
+

@@ -542,12 +542,18 @@ cat /tmp/bst-logs/_casd/*.log | grep -E "connect|refused|ERROR" | tail -10
 ```
 
 **Fix:** The remote CAS is infrastructure — it needs to be restarted on the server.
-If the cache is truly down, the build cannot proceed (without the `cache.storage-service`,
-BST has no local artifact store and cold-rebuilds everything which times out).
+If the cache is truly down at startup, the build cannot proceed (without the
+`cache.storage-service`, BST has no local artifact store).
+
+**There is now a CI workaround for CAS drops mid-build.** See `ci.md` —
+"CAS server drops connections mid-build: disable remote-execution + push (2026-06-24)"
+for the `enable-remote-execution: 'false'` + `enable-push: 'false'` pattern that
+allows builds to complete using local runner disk when the CAS is unstable.
+
 Re-trigger the build once the cache is back up:
 
 ```bash
-gh workflow run "Build Bluefin dakota" --repo projectbluefin/dakota --ref main
+gh workflow run "Build Bluefin dakota" --repo projectbluefin/dakota --ref testing
 ```
 
 **Ghost-local workaround:** Does not apply — ghost's userconfig has no remote CAS
