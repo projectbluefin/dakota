@@ -53,6 +53,26 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
+  # ── Default-branch precondition ──────────────────────────────────────────
+  # Scheduled triggers always run on the repository default branch. If the
+  # default branch is not 'testing', the daily build silently targets the
+  # wrong ref. Fail fast and loudly when that invariant is violated.
+  verify-default-branch:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Verify repository default branch is 'testing'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          db=$(gh api "repos/${GITHUB_REPOSITORY}" --jq .default_branch)
+          if [ "$db" != "testing" ]; then
+            echo "::error::default branch is '$db', expected 'testing'. Daily schedule will silently target wrong branch. Fix repo settings."
+            exit 1
+          fi
+
   # ── Fast PR validation ───────────────────────────────────────────────────
   # Fires only on pull_request. Runs bst show on the full element graph for
   # both variants. Zero remote-execution — does not touch cache.projectbluefin.io.
@@ -114,6 +134,7 @@ jobs:
   # PRs are validated by the validate job above; the full build is the
   # merge-queue gate. This keeps cache.projectbluefin.io free from PR traffic.
   build:
+    needs: [verify-default-branch]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
