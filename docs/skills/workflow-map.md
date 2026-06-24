@@ -67,7 +67,7 @@ Successful publish.yml on testing
        │    └─ skip if equal (already up to date)
        ├─ cosign verify :testing
        ├─ boot-check gate
-       ├─ skopeo copy :testing → :stable / :latest
+       ├─ skopeo copy :testing → :stable
        ├─ fast-forward main bookmark
        └─ create GitHub Release
 
@@ -100,7 +100,7 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 | Branch | Trigger | Published tag(s) | Notes |
 |---|---|---|---|
 | `testing` | `push` (BST-affecting paths only) or `schedule: 13:00 UTC` | `:testing` | **Development trunk. Primary `:testing` publish path.** Every BST-affecting push builds → publishes → promotes. Doc/workflow-only pushes are ignored (paths-ignore). |
-| `main` | fast-forward from `execute-release.yml` | `:latest`, `:stable` | **Release bookmark only.** Only `execute-release.yml` writes here after a successful SHA freshness check + cosign verify + boot-check. No PRs target `main`. |
+| `main` | fast-forward from `execute-release.yml` | `:stable` | **Release bookmark only.** Only `execute-release.yml` writes here after a successful SHA freshness check + cosign verify + boot-check. No PRs target `main`. |
 | `next` | `push` or `sync-next-from-main` dispatch | `:next`, `:btw` | Rolling GNOME master; never stable. No PR requirement on branch protection. |
 | `gh-readonly-queue/testing/*` | merge-queue | (build only, no tag) | Gate before merge to `testing`. |
 | `gh-readonly-queue/next/*` | merge-queue | (build only, no tag) | Gate before merge to `next`. |
@@ -114,7 +114,7 @@ push to testing (BST-affecting) or daily 13:00 UTC schedule
       → :testing tag published to GHCR
   → execute-release.yml (workflow_run from publish on testing)
       → SHA freshness check → cosign verify → boot-check
-      → skopeo copy :testing → :stable / :latest
+      → skopeo copy :testing → :stable
       → fast-forward main bookmark
   → build-aarch64.yml (workflow_run from publish on testing)
       → :aarch64 / :aarch64-<sha> published (decoupled, never blocks release)

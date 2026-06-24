@@ -176,7 +176,6 @@ testing (development trunk — all PRs land here)
                               (workflow_run from publish, daily if :testing != :stable)
                               SHA-based freshness check → cosign verify → boot-check gate
                                        │
-                                       ├─► :latest  (+ fast-forwards main bookmark)
                                        └─► :stable  (+ fast-forwards main bookmark)
 ```
 
@@ -184,8 +183,7 @@ testing (development trunk — all PRs land here)
 |---|---|---|---|
 | Development | `:sha` | Every merge to `testing` | None |
 | Testing | `:testing` | Daily (13:00 UTC build) | boot-check |
-| Latest | `:latest` | Daily (if :testing != :stable) | SHA freshness check + cosign verify + boot-check |
-| Stable | `:stable` | Daily (if :testing != :stable) | Same as `:latest` |
+| Stable | `:stable` | Daily (if :testing != :stable) | SHA freshness check + cosign verify + boot-check |
 
 **All PRs target `testing`.** This includes contributor PRs, Renovate PRs, and BST source bump PRs. The `main` git branch is a release bookmark only — it is fast-forwarded by `execute-release.yml` after each successful promotion and must not be used as a PR base.
 

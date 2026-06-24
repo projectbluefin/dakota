@@ -52,7 +52,7 @@ Route through `ci.md` first, then come here only when the focused skills do not 
 | Build timeout | 330 min (job: 360 min) |
 | Remote cache server | `cache.projectbluefin.io:11002` |
 | Cache auth | mTLS — `CASD_CLIENT_CERT` (repo variable) + `CASD_CLIENT_KEY` (secret) |
-| Published image | `ghcr.io/projectbluefin/dakota:{testing,latest,stable}` and `:$SHA` |
+| Published image | `ghcr.io/projectbluefin/dakota:{testing,stable,next,btw}` and `:$SHA` |
 | Build logs artifact | `buildstream-logs-x86_64-<variant>` (7-day retention) |
 | Trigger (validate) | `pull_request` — `bst show --deps all`, no CAS |
 | Trigger (build) | `merge_group`, `workflow_dispatch` (no daily schedule) |

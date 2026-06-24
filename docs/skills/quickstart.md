@@ -130,6 +130,6 @@ factory restart sequence is:
 4. `publish.yml` auto-triggers via `workflow_run`. If not, dispatch manually.
 5. After `:testing` lands, dispatch `weekly-testing-promotion.yml` and get
    2 human approvals at https://github.com/projectbluefin/dakota/deployments
-   to promote `:testing` → `:latest` + `:stable`.
+   to promote `:testing` → `:stable`.
 
 Full details: `release-promotion.md` and `ci-tooling.md`.

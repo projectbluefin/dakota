@@ -27,11 +27,11 @@ dakota  (next→:next/:btw, rolling nightly, no stable promotion)
 ```
 
 Each image repo pulls `ghcr.io/projectbluefin/common:latest` as a base layer.
-testsuite gates `:testing` promotion nightly and `:latest`/`:stable` promotion weekly.
+testsuite gates `:testing` promotion nightly and `:stable` promotion weekly.
 
 **Dakota image streams:**
 - `:testing` — `testing` branch, publishes on every BST-changing push (GHA-only changes filtered)
-- `:latest` / `:stable` — `main` branch, promoted from `testing` weekly via e2e-gated squash PR
+- `:stable` — `main` branch, promoted from `testing` weekly via e2e-gated squash PR
 - `:next` / `:btw` — `next` branch, GNOME 51 master, fully automated rolling nightly, **no promotion to stable ever**
 
 **`elements/bluefin/common.bst` strips bluefin-only content from common.** Any file added to `common/system_files/shared/` that does not apply to a fresh dakota install must be explicitly `rm -f`'d in the `install-commands` block of that element. Current stripped files: `rechunker-group-fix` script, service, and preset (chunka migration aid — not needed on fresh dakota).

@@ -96,7 +96,7 @@ The rationalizations that have caused real production failures:
 |---|---|---|
 | `build.yml` | `push: testing/next` (paths-ignore: docs/workflows/md), `merge_group`, `workflow_dispatch`, `schedule: daily 13:00 UTC` — NOT `pull_request` | BST build → artifacts into remote CAS. Does NOT push to GHCR. `validate` job runs on `pull_request` only; `build` job runs on everything else. |
 | `publish.yml` | `workflow_run` from `build.yml` (branches: testing, next, + their gh-readonly-queue/* paths) | Export from CAS → push `:$sha` → sign/attest → promote to `:testing`/`:next`. No build happens here. |
-| `execute-release.yml` | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch` | SHA freshness check (:testing vs :stable). If different: cosign verify → boot-check → skopeo copy `:testing` → `:stable`/`:latest` → fast-forward main → create GitHub Release. Skips if equal. |
+| `execute-release.yml` | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch` | SHA freshness check (:testing vs :stable). If different: cosign verify → boot-check → skopeo copy `:testing` → `:stable` → fast-forward main → create GitHub Release. Skips if equal. |
 | ~~`promote-testing-to-main.yml`~~ | DELETED | Was: `push: testing`, schedule Tue 04:00 UTC, manual. |
 | ~~`pr-release-gate.yml`~~ | DELETED | Was: `pull_request` to `main`. |
 | ~~`sync-main-to-testing.yml`~~ | DELETED | Was: `push: main`. |
@@ -771,17 +771,17 @@ The GitHub release (notes + card + SBOM) is created automatically by
 
 ### check-diff skip silently skips missing variant :stable tags (2026-06-08)
 
-`check-diff` compares `dakota:testing` vs `dakota:latest` only. If they match,
+`check-diff` compares `dakota:testing` vs `dakota:stable` only. If they match,
 `has_diff=false` and the entire `promote` matrix is skipped — including the
 nvidia variant. This means if `dakota-nvidia:stable` was never created (e.g.,
-nvidia `:testing` didn't exist during the first promotion that set `:latest`),
+nvidia `:testing` didn't exist during the first promotion that set `:stable`),
 it will silently never get set on subsequent runs where the default image hasn't
 changed.
 
 **How it breaks:**
 
 1. First promotion: NVIDIA `:testing` not found → `has_nvidia=false` → nvidia skipped
-2. Next promotion: NVIDIA `:testing` now exists, but `dakota:testing == dakota:latest`
+2. Next promotion: NVIDIA `:testing` now exists, but `dakota:testing == dakota:stable`
    → `has_diff=false` → entire promote job skipped → `dakota-nvidia:stable` never set
 
 **Fix (manual):** Copy from the matching `:testing` digest directly:

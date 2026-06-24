@@ -75,7 +75,7 @@ Ready to build something? See the [agent-ready queue](https://github.com/project
 
 | Tag | Stream | What it is |
 |---|---|---|
-| `:latest` | Stable | GNOME 50 — production. Weekly promotion from `:testing`. |
+| `:stable` | Stable | GNOME 50 — production. Weekly promotion from `:testing`. |
 | `:testing` | Dev | GNOME 50 — daily builds from `main`. Gated by e2e before promotion. |
 | `:next` | Rolling | **GNOME master — the bleeding edge.** Tracks gnome-build-meta `master` daily. Auto-updates, zero maintenance. |
 | `:btw` | Rolling | Alias for `:next`. |

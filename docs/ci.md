@@ -28,7 +28,7 @@ build.yml (main|testing|next) → [workflow_run] → publish.yml
 
 `promote` depends only on `publish-image`, not on SBOM — saves 10–15 min on the critical path.
 
-**`execute-release.yml`** fires on `push: main` and `workflow_dispatch`. A `check-trigger` job reads the commit message — proceeds only when it matches `^ci\(promote\): dakota testing` or `^chore: promote testing to main`. `workflow_dispatch` bypasses the gate. On success: copies `:testing` → `:stable`/`:latest`, then generates a GitHub Release with SBOM diff.
+**`execute-release.yml`** fires on `push: main` and `workflow_dispatch`. A `check-trigger` job reads the commit message — proceeds only when it matches `^ci\(promote\): dakota testing` or `^chore: promote testing to main`. `workflow_dispatch` bypasses the gate. On success: copies `:testing` → `:stable`, then generates a GitHub Release with SBOM diff.
 
 **Critical ordering:** `publish.yml` pulls the OCI artifact from CAS. The artifact is only in CAS if `build.yml` ran first for that SHA. Always dispatch `build.yml --ref testing` (or let push trigger it) before manually dispatching `publish.yml`.
 
@@ -43,7 +43,7 @@ push to testing (BST-affecting)
        → pr-release-gate.yml (cosign verify)
        → auto-merge → push to main (commit: "ci(promote): dakota testing ...")
            → execute-release.yml (check-trigger passes)
-               → :testing copied to :stable / :latest
+               → :testing copied to :stable
                → GitHub Release created
 ```
 
@@ -59,17 +59,17 @@ No daily build schedule. Builds fire on push, merge_group, or workflow_dispatch 
 
 ## Published images
 
-`ghcr.io/projectbluefin/dakota:{testing,latest,stable}` and `ghcr.io/projectbluefin/dakota:<sha>`
+`ghcr.io/projectbluefin/dakota:{testing,stable,next,btw}` and `ghcr.io/projectbluefin/dakota:<sha>`
 
 Streams:
 - `:testing` — published on every BST-affecting push to `testing` or `main` branch
-- `:latest` / `:stable` — promoted from `:testing` via `execute-release.yml` after promotion PR merges to main (Tuesday 04:00 UTC scheduled path, or manual dispatch)
+- `:stable` — promoted from `:testing` via `execute-release.yml` after promotion PR merges to main (Tuesday 04:00 UTC scheduled path, or manual dispatch)
 
 Never bypass the merge queue with `--admin`.
 
 ## Manual stable promotion
 
-To manually cut a `:stable` and `:latest` release:
+To manually cut a `:stable` release:
 
 ```bash
 # 1. Ensure :testing exists and promotion PR is open

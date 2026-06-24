@@ -11,7 +11,7 @@ metadata:
 
 ## Overview
 
-Promotion from `testing` to `:stable`/`:latest` is **fully automated and daily** — no human approval required at any stage.
+Promotion from `testing` to `:stable` is **fully automated and daily** — no human approval required at any stage.
 
 ```text
 testing (trunk) → build.yml → publish.yml → :testing tag
@@ -19,7 +19,7 @@ testing (trunk) → build.yml → publish.yml → :testing tag
                                          execute-release.yml (workflow_run from publish)
                                          SHA freshness check → cosign verify → boot-check
                                                   │
-                                         :stable / :latest + fast-forward main bookmark
+                                         :stable + fast-forward main bookmark
 ```
 
 `main` is a release bookmark only. It is fast-forwarded by `execute-release.yml` after each successful promotion. Do not open PRs against `main`.
@@ -34,7 +34,7 @@ Use when the task mentions:
 - SHA-based freshness check or `workflow_run` from `publish.yml`
 - `main-bookmark-protection` ruleset
 - cosign verify in the release path
-- stable release, `:latest`, `:stable`, or daily promotion flow
+- stable release, `:stable`, or daily promotion flow
 - `testing-merge-queue-no-review` ruleset
 
 ## When NOT to Use
@@ -52,7 +52,7 @@ Use when the task mentions:
    - `execute-release.yml` SHA freshness check
    - cosign verify `:testing`
    - boot-check gate
-   - skopeo copy `:testing` → `:stable`/`:latest`
+   - skopeo copy `:testing` → `:stable`
    - fast-forward `main` bookmark
 3. **`execute-release.yml` fires via `workflow_run` from `publish.yml` on the `testing` branch.**
    It checks whether the SHA published as `:testing` differs from the current `:stable`. If
@@ -79,7 +79,7 @@ push to testing (BST-affecting paths)
           → skip if equal (already up to date)
           → cosign verify :testing
           → boot-check gate
-          → skopeo copy :testing → :stable / :latest
+          → skopeo copy :testing → :stable
           → fast-forward main bookmark
           → create GitHub Release
 ```
