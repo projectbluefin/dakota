@@ -106,11 +106,11 @@ The rationalizations that have caused real production failures:
 
 | Job | pull_request | push testing/next | merge_group | workflow_dispatch | schedule |
 |---|---|---|---|---|---|
-| `validate` | Yes | No | No | No | No |
+| `validate` | Yes | No | Yes | No | No |
 | `e2e` | Yes (change-detected) | No | No | Yes | No |
-| `build` | No | Yes (paths-ignore) | Yes | Yes | Daily 13:00 UTC |
+| `build` | No | No | No | Yes | Daily 13:00 UTC |
 | `execute-release` | No | No | No | Yes | Via workflow_run from publish |
-| Push to GHCR? | No | Via publish.yml | Via publish.yml | Via publish.yml | Via publish.yml |
+| Push to GHCR? | No | Via publish.yml | No (validate only) | Via publish.yml | Via publish.yml |
 
 **push paths-ignore:** `.github/workflows/**`, `docs/**`, `**.md`, `AGENTS.md` — doc/workflow-only pushes do NOT trigger a build. This is intentional; it means a CI-only commit advancing the branch HEAD will leave no build artifact for that SHA.
 
@@ -122,7 +122,7 @@ The rationalizations that have caused real production failures:
 
 **e2e change detection:** `e2e` uses a `should-run` job that diffs the PR branch against its base. It runs when `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf` change; otherwise the `e2e` job is skipped. Skipped satisfies the required status check.
 
-**Merge queue path:** `build` fires on `merge_group` — full OCI build, real CI gate before merge. PRs target `testing`; `next` retains its own merge queue.
+**Merge queue path:** `validate` fires on `merge_group` — fast bst show check only, no CAS traffic. The full BST `build` job is intentionally excluded from merge_group. PRs need only `validate` to merge. This prevents 5-hour BST builds from being triggered and cancelled every time a PR merges (which was starving the scheduled daily build and never warming the CAS).
 
 **Daily build schedule:** `build.yml` fires at 13:00 UTC daily (after `nightly-next-build` completes). This keeps CAS warm and ensures a fresh `:testing` tag each day even without a code push. `cache-warm.yml` was deleted — the daily build replaces it.
 
@@ -349,7 +349,7 @@ Ruleset: `testing-merge-queue-no-review`
 | Rule | Value |
 |---|---|
 | Required reviews | 0 (fully automated) |
-| Required status checks | `validate` + `e2e` |
+| Required status checks | `validate` only |
 | Merge queue | enabled (SQUASH, ALLGREEN) |
 | Force push | blocked |
 | Deletion | blocked |
@@ -455,39 +455,88 @@ podman run --rm --network=host ...
 podman run --rm --network=host --security-opt seccomp=unconfined ...
 ```
 
-### Daily :testing model — strict schedule (2026-06-25)
+### Daily :testing model — schedule/dispatch only (2026-06-25)
 
-The pipeline was redesigned so `:testing` publishes only once a day on schedule.
-PR merges warm the CAS via `merge_group`, but the push trigger was removed from
-`build.yml` to prevent global CAS concurrency starvation; builds now fire on
-schedule (`13:00 UTC`), `merge_group`, and `workflow_dispatch`.
+The pipeline was redesigned so the full OCI build fires ONLY on `schedule` (13:00 UTC) and
+`workflow_dispatch`. `merge_group` is intentionally excluded from the `build` job.
+
+**Why merge_group was excluded:**
+- Full BST builds take 4–6 hours. A PR merging through the merge queue fires a
+  `merge_group` event, which started a 5-hour build that was always cancelled before
+  completion (the PR merges, the workflow finishes, the concurrency group is released
+  without a push). Every merge queue event was wasting a CAS slot and starving the
+  scheduled build — the cache was NEVER warming.
+- `validate` (fast bst show, <30 min, no CAS writes) is the only check the merge queue
+  needs. This satisfies the ruleset required status check `validate`.
 
 **New flow:**
 ```
-PR merge_group → build.yml → publish.yml → :$sha → :testing  (no e2e)
-                                                           │
-                     weekly-testing-promotion.yml ─────────┘
-                     (e2e gate here, then :stable)
+PR → merge_group → validate only (bst show, ~15 min) → squash merge
+schedule 13:00 UTC → build.yml (full BST build + push) → publish.yml → :testing
+workflow_dispatch → build.yml (full BST build + push) → publish.yml → :testing
+execute-release.yml (workflow_run from publish) → :stable update if :testing advanced
 ```
 
-**Implication:** `:testing` may briefly be broken if a PR introduces a regression.
-The e2e gate at the weekly promotion prevents regressions from reaching `:stable`.
+**Implication:** `:testing` updates once per day from the scheduled build, not on every
+merge. A fast PR path means more merges can land before the daily build — that's fine.
 
 **If :testing breaks:** look at the last few merge SHAs and bisect with
 `gh run list --workflow "Publish Bluefin dakota" --limit 10`.
 
-**TOCTOU guard interaction:** the weekly promotion's lock-sha step uses a GitHub
-compare API ancestor check rather than exact equality. With continuous builds,
-main will often be 1–2 commits ahead of `:testing` by Tuesday 06:00 UTC. An
-exact-equality check would cause every promotion to fail. The ancestor check
-allows promotion as long as `:testing` is a valid ancestor of main (i.e.,
-histories have not diverged):
+### merge_group build trigger causes agent cancellation cycle (2026-06-25)
+
+When `build` fires on `merge_group`, the typical flow is:
+
+1. PR merges → merge queue fires `merge_group` → `build` job starts
+2. Full BST build takes 4-6 hours
+3. Pre-flight-obsessed agent sees active build → cancels it before dispatching
+4. Agent dispatches `workflow_dispatch` → new build starts
+5. Another agent action triggers another pre-flight → cancels THAT build too
+6. Cycle repeats: CAS is never warmed, every build starts cold
+
+**Fix (PR #1102):** Remove `merge_group` from the `build` job condition entirely.
+`if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'`
+
+This also means merge queues can't accidentally trigger expensive BST builds.
+Agents following the pre-flight rule won't see merge_group builds as "active" since
+they never start in the first place.
+
+### aarch64 push trigger fires on .github/actions/** changes (2026-06-25)
+
+`build-aarch64.yml` had `.github/workflows/**` in `paths-ignore` but NOT
+`.github/actions/**`. Merging any PR that changes an action file (e.g.
+`generate-bst-ci-config/action.yml`) fired an aarch64 BST build immediately,
+contending with the scheduled x86_64 build for CAS bandwidth.
+
+**Fix (PR #1103):** Add `.github/actions/**` to paths-ignore. The `workflow_run`
+trigger (fires after x86_64 publish) already covers aarch64 rebuilds from real
+content changes. CI-only action file changes should never trigger a BST build.
+
+```yaml
+paths-ignore:
+  - '.github/workflows/**'
+  - '.github/actions/**'  # ← added
+  - 'docs/**'
+  - '**.md'
+  - 'AGENTS.md'
+  - 'files/scripts/**'
+```
+
+### Admin bypass required for CI-fix PRs to testing (2026-06-25)
+
+When the fix for a CI problem is a PR to `testing`, DO NOT use the merge queue for
+that PR. The merge queue will trigger `validate` (fine) AND — if the fix is merging
+the broken `if: != pull_request` condition that fires on merge_group — a full 5-hour
+BST build that cancels itself. Admin direct-merge via the GitHub API breaks this cycle:
 
 ```bash
-COMPARE=$(gh api "repos/${REPO}/compare/${SOURCE_SHA}...${CURRENT_SHA}" --jq '.status')
-# "ahead" = main advanced past :testing = normal and fine
-# anything else = diverged = abort
+gh api repos/projectbluefin/dakota/pulls/NNN/merge \
+  -X PUT -f merge_method=squash \
+  -f commit_title="..." -f commit_message="..."
 ```
+
+This requires repo admin access (`current_user_can_bypass: always` in ruleset).
+Only use this for CI-fix PRs where the merge queue itself is the blocker.
 
 ### publish.yml startup_failure = :testing is stale (2026-06-04)
 
