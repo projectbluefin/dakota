@@ -169,14 +169,25 @@ When `enable-push: false` (local-first mode):
 ```yaml
 - name: Push OCI artifact to remote CAS
   env:
-    BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+    BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-push.conf
   run: |
-    just bst artifact push --deps none ${{ matrix.element }}
+    just bst artifact push --deps all ${{ matrix.element }}
 ```
 
-`--deps none` pushes only the top-level OCI element. BST artifact push is idempotent —
-already-cached elements are skipped. This step runs after a successful build and populates
-the cache with exactly what the next build needs to start warm.
+`generate-bst-ci-config` writes TWO configs:
+- `buildstream-ci.conf` — used during the build phase: `push: false`, no `storage-service`. BST reads from CAS but never writes during the build.
+- `buildstream-push.conf` — used for the post-build push only: `push: true`, no `storage-service`. No sustained gRPC stream, just a targeted push after the build completes.
+
+`--deps all` pushes the entire locally-built artifact tree, not just the top-level OCI element.
+This is critical for cold starts: after a build that rebuilt many elements (e.g. after the cache
+went cold), `--deps none` would leave all intermediate artifacts un-pushed and the next build
+would be cold again. BST artifact push is idempotent — elements already in the remote CAS are
+skipped, so `--deps all` is safe and fast on a warm cache.
+
+**Why `push: false` in buildstream-ci.conf does NOT mean the push step is a noop:**
+They use different config files. The build phase uses `buildstream-ci.conf` (`push: false`) so
+BST never streams writes during a 4-6 hour build. The push step uses `buildstream-push.conf`
+(`push: true`) so `bst artifact push` can actually write to the server.
 
 **What "warm cache" means in practice:** A warm build skips the element graph entirely for
 unchanged upstream refs and only rebuilds elements whose inputs changed since the last push.

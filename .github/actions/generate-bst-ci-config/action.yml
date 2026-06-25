@@ -140,3 +140,55 @@ runs:
 
         echo "=== BuildStream CI config ==="
         cat buildstream-ci.conf
+
+        # Always generate a push-only config for the post-build artifact push step.
+        # push: true so bst artifact push can write; no storage-service so casd
+        # stays local and there is no sustained gRPC stream during the push phase.
+        if [[ -n "${CASD_CLIENT_CERT:-}" ]] && [[ -n "${CASD_CLIENT_KEY:-}" ]]; then
+          cat > buildstream-push.conf <<'BSTCONFPUSH'
+        scheduler:
+          on-error: continue
+          fetchers: 32
+          builders: 4
+          network-retries: 3
+
+        logging:
+          message-format: '[%{wallclock}][%{elapsed}][%{key}][%{element}] %{action} %{message}'
+          error-lines: 80
+
+        cachedir: /root/.cache/buildstream
+        logdir: /src/logs
+
+        build:
+          retry-failed: True
+
+        artifacts:
+          servers:
+          - url: https://cache.projectbluefin.io:11002
+            push: true
+            connection-config:
+              keepalive-time: 180
+              retry-limit: 5
+              retry-delay: 1000
+              request-timeout: 180
+            auth:
+              client-key: /src/client.key
+              client-cert: /src/client.crt
+
+        source-caches:
+          servers:
+          - url: https://cache.projectbluefin.io:11002
+            push: true
+            connection-config:
+              keepalive-time: 180
+              retry-limit: 5
+              retry-delay: 1000
+              request-timeout: 180
+            auth:
+              client-key: /src/client.key
+              client-cert: /src/client.crt
+
+        BSTCONFPUSH
+          echo "=== BuildStream push config ==="
+          cat buildstream-push.conf
+        fi

@@ -240,15 +240,16 @@ jobs:
             | python3 files/scripts/bst-progress.py
         timeout-minutes: 330
 
-      # Push the built artifact to the remote CAS so the export job can pull it.
-      # Remote execution may populate the artifact cache implicitly, but an
-      # explicit push guarantees the artifact is there regardless of BST internals.
-      # Push both variants so publish.yml can fetch each from CAS.
+      # Push all locally-built artifacts to remote CAS so publish.yml can export
+      # and the next scheduled build starts warm. Uses buildstream-push.conf
+      # (push: true, no storage-service) so bst artifact push can write without
+      # a sustained gRPC stream during the build phase. --deps all ensures every
+      # element rebuilt locally during a cold start is cached for future builds.
       - name: Push OCI artifact to remote CAS
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-push.conf
         run: |
-          just bst artifact push --deps none ${{ matrix.element }}
+          just bst artifact push --deps all ${{ matrix.element }}
 
       # ── Upload build logs ─────────────────────────────────────────────
       # Always upload, even on failure, so build failures can be diagnosed.
