@@ -11,19 +11,6 @@ on:
     branches: [testing, next]
   merge_group:
     branches: [testing, next]
-  push:
-    # main is a release bookmark — pushes to main after promotion should not
-    # trigger a full BST build. Only testing (trunk) and next (rolling) build.
-    branches: [next, testing]
-    paths-ignore:
-      # Workflow files and docs don't affect the built image.
-      # .github/actions/** is intentionally NOT ignored — local composite
-      # actions (check-bst2-pin, generate-bst-ci-config) are used in the build.
-      - '.github/workflows/**'
-      - 'docs/**'
-      - '**.md'
-      - 'AGENTS.md'
-      - 'files/scripts/**'
   workflow_dispatch:
     # WARNING: Do not manually dispatch immediately after auto/track-* ref bumps
     # (e.g. Renovate PRs updating gnome-build-meta.bst). Cold builds of GNOME
