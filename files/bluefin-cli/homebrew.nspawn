@@ -1,0 +1,31 @@
+[Exec]
+# SECURITY NOTE: PrivateUsers=no means container root == host root.
+# This is intentional for Tier 1 (dev ergonomics, bind-mount compatibility),
+# but it means a container escape is a host-root event.
+#
+# PENDING DECISION: switch to PrivateUsers=pick + idmapped mounts for /home/linuxbrew
+# (kernel 5.12+ idmapped mount support; requires systemd-nspawn to apply id-remapping
+# to bind mounts, which is NOT currently handled by PrivateUsersOwnership=auto).
+# Until that is resolved, Tier 1 is NOT a hard security boundary. Document this honestly.
+PrivateUsers=no
+ResolvConf=bind-host
+
+# IMPORTANT — Homebrew 6 uses bubblewrap (bwrap) for formula sandboxing on Linux.
+# bubblewrap requires: clone3, mount, pivot_root, open_tree, move_mount, unshare.
+# Do NOT add @mount to SystemCallFilter deny list — it will silently break brew installs.
+# Test with: brew install hello  (source build, not just --version)
+DropCapability=CAP_SYS_ADMIN CAP_SYS_PTRACE CAP_NET_ADMIN CAP_SYS_RAWIO CAP_SYS_MODULE CAP_AUDIT_CONTROL
+SystemCallFilter=~@reboot @swap @obsolete
+NoNewPrivileges=yes
+
+[Files]
+# Brew prefix lives on the host and persists across container image updates.
+# Packages installed by the user are never lost when the container is re-imaged.
+Bind=/home/linuxbrew
+# Separate mount for cache/temp/locks — prevents btrfs CoW churn on hot-write dirs.
+# These dirs are ephemeral; losing them on update is fine.
+# Bind=/var/cache/bluefin-cli/homebrew-cache:/home/linuxbrew/.cache/Homebrew
+
+[Network]
+# Share host network stack — no virtual ethernet overhead.
+VirtualEthernet=no
