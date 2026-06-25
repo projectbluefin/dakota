@@ -33,8 +33,7 @@ Use when you need to answer:
    - `pull_request`
    - `merge_group`
    - `workflow_run`
-   - `push: testing`
-   - `push: main`
+   - `schedule`
    - `workflow_dispatch`
 2. **Map the event to the owning workflow.**
 3. **Only then inspect logs or edit config.**

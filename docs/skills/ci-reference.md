@@ -55,10 +55,10 @@ Route through `ci.md` first, then come here only when the focused skills do not 
 | Published image | `ghcr.io/projectbluefin/dakota:{testing,stable,next,btw}` and `:$SHA` |
 | Build logs artifact | `buildstream-logs-x86_64-<variant>` (7-day retention) |
 | Trigger (validate) | `pull_request` — `bst show --deps all`, no CAS |
-| Trigger (build) | `merge_group`, `workflow_dispatch` (no daily schedule) |
-**Nightly schedule rationale** — no longer applicable; schedule trigger was removed in favour of continuous builds on every merge.
+| Trigger (build) | `schedule: daily 13:00 UTC`, `merge_group`, `workflow_dispatch` (no push trigger) |
+**Nightly schedule rationale** — builds on `testing` run once a day at 13:00 UTC (after GNOME nightlies and the `next` branch build) using the CAS cache pre-warmed by `merge_group` PR runs.
 
-**Merge queue path:** `build` fires on `merge_group` — full OCI build, real CI gate before merge. On success, `publish.yml` immediately promotes the new image to `:testing`.
+**Merge queue path:** `build` fires on `merge_group` — full OCI build, real CI gate before merge. This warms the CAS cache but does not push a public stream tag. The daily schedule does the publishing.
 
 ## Workflow Files
 
@@ -66,7 +66,7 @@ Route through `ci.md` first, then come here only when the focused skills do not 
 |---|---|
 | `.github/workflows/build.yml` | BST build + push artifacts to remote CAS. Fires on `merge_group` and `workflow_dispatch` only (no schedule). Does NOT push to GHCR directly. |
 | `.github/workflows/publish.yml` | 3-stage pipeline: setup → publish → promote. Pulls artifact from CAS, exports OCI, pushes `:$sha`, signs, attests, then immediately promotes to `:testing` on every successful merge. No e2e gate — that lives only in the weekly promotion. |
-| `.github/workflows/promote-testing-to-main.yml` | Thin caller for `reusable-promote.yml` in `projectbluefin/actions`. Fires on `push: testing`, nightly schedule (23:00 UTC), and `workflow_dispatch`. Opens or updates the promotion PR that gates `:testing` → `:stable`. |
+| ~~`.github/workflows/promote-testing-to-main.yml`~~ | DELETED | Thin caller for `reusable-promote.yml` in `projectbluefin/actions`. Deleted in the OCI-native redesign (2026-06-23) in favour of automated promotion via `execute-release.yml`. |
 | `.github/workflows/execute-release.yml` | Fires on `push: main` + `workflow_dispatch`. A `check-trigger` job reads the squash-merge commit message — only proceeds when it starts with `ci: promote testing images to stable`. Calls `reusable-execute-release.yml` (copies image tags) then `reusable-release.yml` (generates GitHub Release + SBOM diff). |
 | `.github/workflows/e2e.yml` | Smoke test via projectbluefin/testsuite. Fires on PR; `should-run` job skips the test when no image-affecting paths changed. |
 | `.github/workflows/vulnerability-scan.yml` | Weekly Monday 08:00 UTC CVE scan via `reusable-vulnerability-scan.yml`. Also available as `workflow_dispatch` with optional `image_ref` input. Results surface in the GitHub Security tab. |
@@ -389,11 +389,12 @@ podman run --rm --network=host ...
 podman run --rm --network=host --security-opt seccomp=unconfined ...
 ```
 
-### Continuous :testing model — every merge ships immediately (2026-06-07)
+### Daily :testing model — strict schedule (2026-06-25)
 
-The pipeline was redesigned so every PR merge produces a new `:testing` image
-without any e2e gate in the publish path. The schedule trigger was removed from
-`build.yml`; builds now only fire on `merge_group` and `workflow_dispatch`.
+The pipeline was redesigned so `:testing` publishes only once a day on schedule.
+PR merges warm the CAS via `merge_group`, but the push trigger was removed from
+`build.yml` to prevent global CAS concurrency starvation; builds now fire on
+schedule (`13:00 UTC`), `merge_group`, and `workflow_dispatch`.
 
 **New flow:**
 ```
@@ -1020,8 +1021,7 @@ testing advanced without a prior main publish.
 
 **Fix (PR 766):** add `testing` and `gh-readonly-queue/testing/**` to the
 `workflow_run.branches` filter, extend the `setup` job `if` condition, and map
-`testing` branch → `testing_tag=testing`. Match bluefin/bluefin-lts: every merge
-to testing publishes `:testing` immediately.
+`testing` branch → `testing_tag=testing`. Match bluefin/bluefin-lts: testing pushes publish `:testing`.
 
 ### track-bst-sources: branch from origin/$BASE_BRANCH, not origin/main (2026-06-10)
 
@@ -1759,7 +1759,7 @@ Never rely on `actions/cache` to guarantee the directory exists.
 The testsuite `smoke` suite runs AT-SPI / GNOME Settings accessibility
 tests that take **80+ minutes** in a VM and fail on timing sensitivity
 in VMs, not on real image defects. Using it as a hard promote gate
-blocks `:testing` on every merge without catching real regressions
+blocks `:testing` without catching real regressions
 (boot failures, composefs xattr breakage are caught by user reports,
 not AT-SPI tests).
 

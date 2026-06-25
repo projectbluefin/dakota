@@ -66,10 +66,10 @@ Published image: `ghcr.io/projectbluefin/dakota:{testing,stable,next,btw}`
 
 | Tag | Branch | GNOME | Cadence | Stability |
 |-----|--------|-------|---------|-----------|
-| `:testing` | `main` | GNOME 50 (stable) | Every merged PR | e2e-gated |
-| `:stable` | `main` | GNOME 50 (stable) | Weekly promotion | Production |
-| `:next` | `next` | GNOME 51 (master) | On junction bump (~nightly) | Experimental |
-| `:btw` | `next` | GNOME 51 (master) | Same as `:next`, nvidia variant | Experimental |
+| `:testing` | `testing` | GNOME 50 (stable) | Daily (13:00 UTC) | boot-check gated |
+| `:stable` | `main` (bookmark) | GNOME 50 (stable) | Auto-promotes from testing | Production |
+| `:next` | `next` | GNOME 51 (master) | Daily (03:00 UTC) | Experimental |
+| `:btw` | `next` | GNOME 51 (master) | Daily (03:00 UTC), nvidia | Experimental |
 
 ### `:next` / `:btw` — Rolling GNOME 51 stream
 

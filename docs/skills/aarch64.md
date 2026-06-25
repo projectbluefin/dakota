@@ -30,7 +30,7 @@ Load this skill when:
 aarch64 is a **separate workflow** (`build-aarch64.yml`), not a job in `build.yml`:
 
 ```
-build-aarch64.yml (push: testing/main, Tue schedule, dispatch)
+build-aarch64.yml (workflow_run from publish, dispatch)
   └─ build-aarch64 job (ubuntu-24.04-arm, continue-on-error: true)
        ├─ BST build (no RE, enable-push: true)
        ├─ export + bootc lint
@@ -42,13 +42,13 @@ execute-release.yml (after :stable is live)
           (skips silently if absent — x86_64 stable already live)
 ```
 
-**No job in `publish.yml`, `promote-testing-to-main.yml`, or `execute-release.yml` has `needs:` on `build-aarch64.yml`.** The coupling is zero.
+**No job in `publish.yml` or `execute-release.yml` has `needs:` on `build-aarch64.yml`.** The coupling is zero.
 
 ## Hard Rules
 
 - `build-aarch64.yml` must have `continue-on-error: true` at the job level
 - `build-aarch64.yml` must use a separate concurrency group (`build-aarch64-${{ github.ref }}`)
-- Do not add aarch64 to `needs:` in `publish.yml`, `promote-testing-to-main.yml`, or `execute-release.yml`
+- Do not add aarch64 to `needs:` in `publish.yml` or `execute-release.yml`
 - The `create-multiarch-stable` job in `execute-release.yml` must be `continue-on-error: true` and must never be in the critical path for `:stable`
 - No Remote Execution for ARM yet (`enable-remote-execution: false`). Use `enable-push: true` to populate CAS for subsequent builds.
 
@@ -121,5 +121,3 @@ The `build-aarch64` job was originally in `build.yml` with `if: false` (disabled
 ### Publish skips after docs-only commits (2026-06-22)
 
 When all recent commits on `testing` are paths-ignored (docs/AGENTS.md only), no automatic build fires and `:testing` goes stale. The correct recovery is a manual `workflow_dispatch` on `build.yml` targeting the `testing` branch. After the build, `publish.yml` fires automatically (the `workflow_dispatch` event passes the `event != 'pull_request'` gate in the setup job).
-
-The `promote-testing-to-main.yml` does NOT fire from `publish.yml` completing — it only fires on `push: testing` (git push). The Tuesday 04:00 UTC schedule is what drives the gate + auto-merge.

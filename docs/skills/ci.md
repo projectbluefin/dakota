@@ -442,11 +442,12 @@ podman run --rm --network=host ...
 podman run --rm --network=host --security-opt seccomp=unconfined ...
 ```
 
-### Continuous :testing model — every merge ships immediately (2026-06-07)
+### Daily :testing model — strict schedule (2026-06-25)
 
-The pipeline was redesigned so every PR merge produces a new `:testing` image
-without any e2e gate in the publish path. The schedule trigger was removed from
-`build.yml`; builds now only fire on `merge_group` and `workflow_dispatch`.
+The pipeline was redesigned so `:testing` publishes only once a day on schedule.
+PR merges warm the CAS via `merge_group`, but the push trigger was removed from
+`build.yml` to prevent global CAS concurrency starvation; builds now fire on
+schedule (`13:00 UTC`), `merge_group`, and `workflow_dispatch`.
 
 **New flow:**
 ```
@@ -1059,8 +1060,7 @@ testing advanced without a prior main publish.
 
 **Fix (PR 766):** add `testing` and `gh-readonly-queue/testing/**` to the
 `workflow_run.branches` filter, extend the `setup` job `if` condition, and map
-`testing` branch → `testing_tag=testing`. Match bluefin/bluefin-lts: every merge
-to testing publishes `:testing` immediately.
+`testing` branch → `testing_tag=testing`. Match bluefin/bluefin-lts: testing pushes publish `:testing`.
 
 ### track-bst-sources: branch from origin/$BASE_BRANCH, not origin/main (2026-06-10)
 
@@ -1805,7 +1805,7 @@ Never rely on `actions/cache` to guarantee the directory exists.
 The testsuite `smoke` suite runs AT-SPI / GNOME Settings accessibility
 tests that take **80+ minutes** in a VM and fail on timing sensitivity
 in VMs, not on real image defects. Using it as a hard promote gate
-blocks `:testing` on every merge without catching real regressions
+blocks `:testing` without catching real regressions
 (boot failures, composefs xattr breakage are caught by user reports,
 not AT-SPI tests).
 
