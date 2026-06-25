@@ -1,7 +1,31 @@
-# bluefin-cli skill
+---
+name: bluefin-cli
+description: Operational knowledge for the Bluefin CLI developer container — a ChromeOS-style systemd-nspawn container that ships Homebrew. Use when working on elements/bluefin/bluefin-cli.bst, files/bluefin-cli/*, or ujust setup-bluefin-cli.
+---
+
+# Bluefin CLI Skill
 
 Operational knowledge for the Bluefin CLI developer container — a ChromeOS-style
 systemd-nspawn container that ships Homebrew as an immutable OS component.
+
+## When to Use
+
+- Working on the `bluefin-cli.bst` BuildStream element
+- Editing container configs (`files/bluefin-cli/*` such as `.nspawn`, `.service`, `.transfer`, or the `brew` wrapper)
+- Adjusting developer container initialization, `ujust` setup commands, or systemd-sysupdate integrations
+
+## When NOT to Use
+
+- General BuildStream element syntax debugging (use `buildstream.md` instead)
+- Custom base OCI image assembly (use `oci-layers.md` instead)
+- Adding standard host-level packages to `deps.bst` (use `add-package.md` instead)
+
+## Core Process
+
+1. **Understand Container Layout:** Config files must match expected locations under `/etc/systemd/nspawn` and `/usr/lib/sysupdate.bluefin-cli.d/`.
+2. **Handle Host Seeding:** First-boot service must clone/seed `/home/linuxbrew/.linuxbrew` from `/var/lib/machines/homebrew/` before container starts.
+3. **Verify Sysupdate Matching:** `--component=bluefin-cli` in systemd-sysupdate matches configs in `/usr/lib/sysupdate.bluefin-cli.d/`.
+4. **Hardened nspawn Defaults:** Ensure `PrivateUsers=no` for bind mounts and allow `@mount` group (do NOT restrict) due to Homebrew 6 bubblewrap sandboxing requirements.
 
 ## What it is
 
@@ -126,6 +150,26 @@ Add to Snapper config: `SUBVOLUME_FILTER="/var/lib/machines"`
 
 These are NOT removed yet — this element is a placeholder. The `deps.bst` changes
 happen in a separate PR after the container image is published and tested.
+
+## Common Rationalizations
+
+- **"I can just use `PrivateUsers=pick`."** → Wrong. Bind-mounted directories like `/home/linuxbrew` will show up as `nobody/nogroup` inside the container since the host UID does not map.
+- **"I can restrict the `@mount` group under system call filters."** → Wrong. Homebrew 6 uses bubblewrap for Linux formula sandboxing, which requires `mount`, `pivot_root`, and other namespace system calls. Restricting `@mount` will silently break `brew install` for all source builds.
+- **"I can just create `/home/linuxbrew/.linuxbrew` on the host side dynamically."** → Wrong. Doing so with `mkdir` produces an empty directory, masking the populated Homebrew installation baked into the container.
+
+## Red Flags
+
+- `homebrew.nspawn` has `PrivateUsers=yes` or `PrivateUsers=pick` without complex idmapped setups.
+- `SystemCallFilter` denies `@mount` or similar group on a system hosting Homebrew 6.
+- The sysupdate configuration installs files directly to `/usr/lib/sysupdate.d/` while using `--component=bluefin-cli` (making the file invisible).
+- No host seeding logic (`cp -a`) exists in `bluefin-cli-init.service` or `ujust` setup paths.
+
+## Verification
+
+- [ ] `systemd-sysupdate --component=bluefin-cli update` runs successfully and detects transfer files.
+- [ ] `importctl import-tar` resolves and processes the correct `.tar.zst` file instead of attempting to import an unpacked directory.
+- [ ] The initial `/home/linuxbrew/.linuxbrew` directory is fully seeded from the container subvolume on first-boot.
+- [ ] `brew install hello` successfully compiles and installs a source package.
 
 ## Open questions (as of 2026-06-25)
 
