@@ -22,7 +22,7 @@ permissions:
   statuses: write
 
 concurrency:
-  group: execute-release
+  group: dakota-execute-release
   cancel-in-progress: false
 
 jobs:

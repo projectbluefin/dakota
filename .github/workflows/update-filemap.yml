@@ -28,8 +28,8 @@ on:
         default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: dakota-bst-build-global
+  cancel-in-progress: false
 
 permissions: read-all
 
