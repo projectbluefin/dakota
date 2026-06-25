@@ -25,6 +25,7 @@ on:
     branches: [main, testing]
     paths-ignore:
       - '.github/workflows/**'
+      - '.github/actions/**'
       - 'docs/**'
       - '**.md'
       - 'AGENTS.md'
