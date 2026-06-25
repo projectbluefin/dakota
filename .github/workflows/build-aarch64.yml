@@ -11,7 +11,6 @@ name: Build Bluefin dakota (aarch64)
 #     land in the remote CAS for subsequent builds and warm-cache runs.
 #
 # Triggers:
-#   - push: testing / main (BST-affecting paths only; docs/workflow-only changes ignored)
 #   - workflow_run: fires after x86_64 publish completes on testing — ARM builds
 #     after x86 CAS writes are done, avoiding CAS write contention
 #   - workflow_dispatch: manual recovery / on-demand
@@ -21,15 +20,6 @@ name: Build Bluefin dakota (aarch64)
 #   :aarch64-<sha>    — immutable per-commit tag
 
 on:
-  push:
-    branches: [main, testing]
-    paths-ignore:
-      - '.github/workflows/**'
-      - '.github/actions/**'
-      - 'docs/**'
-      - '**.md'
-      - 'AGENTS.md'
-      - 'files/scripts/**'
   # Triggered after x86_64 publish completes — ARM builds after x86 CAS writes
   # are done, avoiding CAS write contention.
   workflow_run:
