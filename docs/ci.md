@@ -6,7 +6,7 @@
 |---|---|---|
 | `validate` | `pull_request` | `bst show` — graph + patch check (~15 min) |
 | `e2e` | `pull_request` when `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf` changed | Smoke test in QEMU via projectbluefin/testsuite |
-| `build` | `push: main/next/testing` (paths-ignore: `.github/workflows/**`, `docs/**`, `**.md`, `AGENTS.md`), `merge_group`, `workflow_dispatch` — skips on `pull_request` | Full OCI build (~60–90 min) |
+| `build` | `merge_group`, `workflow_dispatch`, `schedule` — skips on `pull_request` | Full OCI build (~60–90 min) |
 | `build-aarch64` | disabled | ARM64 — pending investigation |
 
 ## Publish pipeline (publish.yml)
@@ -51,7 +51,7 @@ Schedule: `promote-testing-to-main.yml` runs `cron: '0 4 * * 2'` (Tuesday 04:00 
 
 ## Schedule
 
-No daily build schedule. Builds fire on push, merge_group, or workflow_dispatch only.
+Builds fire on schedule (13:00 UTC for testing, 03:00 UTC for next), merge_group, or workflow_dispatch.
 
 ## Remote cache
 

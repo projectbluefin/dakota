@@ -63,7 +63,7 @@ jobs:
           # Only trunk branches (direct pushes / schedule) advance stream tags.
           # Merge-queue builds (gh-readonly-queue/**) publish an immutable :SHA
           # tag only — they must NOT move public stream tags before the commit lands.
-          # testing  → :testing  (every merge to testing publishes immediately)
+          # testing  → :testing  (published daily on schedule)
           # next     → :next     (rolling GNOME master / bleeding edge)
           # queue/** → (empty)   :SHA only, no stream tag
           if [[ "$BRANCH" == "next" ]]; then

@@ -94,7 +94,7 @@ The rationalizations that have caused real production failures:
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `build.yml` | `push: testing/next` (paths-ignore: docs/workflows/md), `merge_group`, `workflow_dispatch`, `schedule: daily 13:00 UTC` — NOT `pull_request` | BST build → artifacts into remote CAS. Does NOT push to GHCR. `validate` job runs on `pull_request` only; `build` job runs on everything else. |
+| `build.yml` | `merge_group`, `workflow_dispatch`, `schedule: daily 13:00 UTC` — NOT `pull_request` | BST build → artifacts into remote CAS. Does NOT push to GHCR. `validate` job runs on `pull_request` only; `build` job runs on everything else. |
 | `publish.yml` | `workflow_run` from `build.yml` (branches: testing, next, + their gh-readonly-queue/* paths) | Export from CAS → push `:$sha` → sign/attest → promote to `:testing`/`:next`. No build happens here. |
 | `execute-release.yml` | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch` | SHA freshness check (:testing vs :stable). If different: cosign verify → boot-check → skopeo copy `:testing` → `:stable` → fast-forward main → create GitHub Release. Skips if equal. |
 | ~~`promote-testing-to-main.yml`~~ | DELETED | Was: `push: testing`, schedule Tue 04:00 UTC, manual. |
