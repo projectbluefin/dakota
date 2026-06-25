@@ -92,6 +92,7 @@ Use this file when:
 | Issue lifecycle / Actionadon / data donation | `actionadon.md` |
 | Installer work | `installer.md` |
 | VM stack context | `vm-stack.md` |
+| Bluefin CLI nspawn developer container | `bluefin-cli.md` |
 | Repo and product overview | `overview.md` |
 | PR review workflow | `pr-review.md` |
 | ujust recipes in `files/just-overrides/` | `.github/skills/ujust-recipes.md` |

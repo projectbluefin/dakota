@@ -35,7 +35,7 @@ jobs:
   # default branch is not 'testing', the daily build silently targets the
   # wrong ref. Fail fast and loudly when that invariant is violated.
   verify-default-branch:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -109,12 +109,14 @@ jobs:
         run: just bst show --deps all oci/bluefin-nvidia.bst
 
   # ── Full OCI build ────────────────────────────────────────────────────────
-  # Fires on merge_group, schedule, and workflow_dispatch — NOT on pull_request.
-  # PRs are validated by the validate job above; the full build is the
-  # merge-queue gate. This keeps cache.projectbluefin.io free from PR traffic.
+  # Fires on schedule (daily 13:00 UTC) and workflow_dispatch only.
+  # merge_group is intentionally excluded: the merge queue requires only
+  # `validate` to pass; a full BST build triggered by merge_group is always
+  # cancelled when the PR merges (before the 5h build can finish), which
+  # wastes the CAS slot and starves the scheduled build.
   build:
     needs: [verify-default-branch]
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     # Global BST concurrency: only one BuildStream build may run across
@@ -242,15 +244,16 @@ jobs:
             | python3 files/scripts/bst-progress.py
         timeout-minutes: 330
 
-      # Push the built artifact to the remote CAS so the export job can pull it.
-      # Remote execution may populate the artifact cache implicitly, but an
-      # explicit push guarantees the artifact is there regardless of BST internals.
-      # Push both variants so publish.yml can fetch each from CAS.
+      # Push all locally-built artifacts to remote CAS so publish.yml can export
+      # and the next scheduled build starts warm. Uses buildstream-push.conf
+      # (push: true, no storage-service) so bst artifact push can write without
+      # a sustained gRPC stream during the build phase. --deps all ensures every
+      # element rebuilt locally during a cold start is cached for future builds.
       - name: Push OCI artifact to remote CAS
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-push.conf
         run: |
-          just bst artifact push --deps none ${{ matrix.element }}
+          just bst artifact push --deps all ${{ matrix.element }}
 
       # ── Upload build logs ─────────────────────────────────────────────
       # Always upload, even on failure, so build failures can be diagnosed.

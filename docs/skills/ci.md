@@ -137,13 +137,15 @@ The rationalizations that have caused real production failures:
 **This is the primary BST caching strategy for Dakota. Everything else is a variation or a failure mode.**
 
 ```
-build phase:   runner local disk  ←── reads from cache.projectbluefin.io:11001 (read-only)
+build phase:   runner local disk  ←── reads from cache.projectbluefin.io:11002 (push: false)
                                   ←── reads from gbm.gnome.org:11003 (upstream elements)
                                        builds missing elements locally
                                        stores finished artifacts on runner disk
+               config: buildstream-ci.conf  (artifacts push: false, no storage-service)
 
-push phase:    runner local disk  ──► cache.projectbluefin.io:11002 (one targeted push)
-               bst artifact push --deps none <element>
+push phase:    runner local disk  ──► cache.projectbluefin.io:11002 (push: true, one-shot)
+               bst artifact push --deps all <element>
+               config: buildstream-push.conf  (artifacts push: true, no storage-service)
                (runs after build completes successfully)
 ```
 
@@ -169,14 +171,25 @@ When `enable-push: false` (local-first mode):
 ```yaml
 - name: Push OCI artifact to remote CAS
   env:
-    BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+    BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-push.conf
   run: |
-    just bst artifact push --deps none ${{ matrix.element }}
+    just bst artifact push --deps all ${{ matrix.element }}
 ```
 
-`--deps none` pushes only the top-level OCI element. BST artifact push is idempotent —
-already-cached elements are skipped. This step runs after a successful build and populates
-the cache with exactly what the next build needs to start warm.
+`generate-bst-ci-config` writes TWO configs:
+- `buildstream-ci.conf` — used during the build phase: `push: false`, no `storage-service`. BST reads from CAS but never writes during the build.
+- `buildstream-push.conf` — used for the post-build push only: `push: true`, no `storage-service`, no `source-caches`. Only the artifacts server block — `bst artifact push` does not use source-caches.
+
+`--deps all` pushes the entire locally-built artifact tree, not just the top-level OCI element.
+This is critical for cold starts: after a build that rebuilt many elements (e.g. after the cache
+went cold), `--deps none` would leave all intermediate artifacts un-pushed and the next build
+would be cold again. BST artifact push is idempotent — elements already in the remote CAS are
+skipped, so `--deps all` is safe and fast on a warm cache.
+
+**Why `push: false` in buildstream-ci.conf does NOT mean the push step is a noop:**
+They use different config files. The build phase uses `buildstream-ci.conf` (`push: false`) so
+BST never streams writes during a 4-6 hour build. The push step uses `buildstream-push.conf`
+(`push: true`) so `bst artifact push` can actually write to the server.
 
 **What "warm cache" means in practice:** A warm build skips the element graph entirely for
 unchanged upstream refs and only rebuilds elements whose inputs changed since the last push.
@@ -194,7 +207,7 @@ during the build phase. Reads are fine. Streaming writes during the build phase 
 | `CASD_CLIENT_CERT` | Repository **variable** | PEM-encoded client certificate (public) |
 | `CASD_CLIENT_KEY` | Repository **secret** | PEM-encoded private key |
 
-**Push is conditional:** Remote cache section is only added to `buildstream-ci.conf` if **both** are set. Without credentials, BST builds from source using local disk cache only — slower but functional. This is normal for external contributors' forks.
+**Push is conditional:** Both `buildstream-ci.conf` and `buildstream-push.conf` are only written if **both** `CASD_CLIENT_CERT` and `CASD_CLIENT_KEY` are set. Without credentials, BST builds from source using local disk cache only — slower but functional. This is normal for external contributors' forks.
 
 ### CAS drops connections mid-build — disable remote-execution + push
 
@@ -2377,9 +2390,10 @@ green light. Agents read these comments and re-enable `enable-remote-execution` 
 corruption. This has happened multiple times.
 
 **Rule:** `enable-remote-execution: 'false'` and `enable-push: 'false'` are the permanent
-correct values. The explicit `bst artifact push --deps none` step after the build handles
-cache writes atomically. Do not change these flags. The comment in build.yml must never
-suggest it is safe to re-enable them — if such a comment exists, delete it.
+correct values. The explicit `bst artifact push --deps all` step after the build (using
+`buildstream-push.conf` with `push: true`) handles cache writes atomically. Do not change
+these flags. The comment in build.yml must never suggest it is safe to re-enable them —
+if such a comment exists, delete it.
 
 **What happened:** Commit `d59a04a` added "Re-enabled 2026-06-24 after
 cache.projectbluefin.io:11002 confirmed back up" as justification. An agent read it,
