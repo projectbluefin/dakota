@@ -46,12 +46,9 @@ PR touching image paths
   └─ e2e (testsuite wrapper; change-detected)
 
 Merge queue → testing or next
-  └─ build.yml
-       └─ publish.yml (workflow_run from build)
-            ├─ publish-image
-            ├─ boot-check   [hard gate]
-            ├─ publish-sbom [parallel]
-            └─ promote to :testing / :next / :btw
+  └─ validate only (full build excluded — merge queue only requires validate;
+     merge_group builds were always cancelled by PR merge before completion,
+     wasting the CAS slot and starving the scheduled build)
 
 Daily 13:00 UTC / manual
   └─ build.yml (schedule trigger)
@@ -82,7 +79,7 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 
 | Workflow | Owns | Normal trigger |
 |---|---|---|
-| `.github/workflows/build.yml` | BST build into remote CAS | `merge_group`, `workflow_dispatch`, `schedule: daily 13:00 UTC`. `validate` job runs on `pull_request` only; `build` job skips `pull_request`. Note: `push:` triggers were removed to avoid CAS contention; we rely entirely on the daily schedule to publish streams. |
+| `.github/workflows/build.yml` | BST build into remote CAS | `schedule: daily 13:00 UTC`, `workflow_dispatch`. `validate` job runs on `pull_request` and `merge_group`; `build` job runs on `schedule` and `workflow_dispatch` only — merge_group builds were always cancelled by PR merge before completion. |
 | `.github/workflows/build-aarch64.yml` | aarch64 OCI build + GHCR push | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch`. Fully decoupled — never in `needs:` of publish/promote/release. |
 | `.github/workflows/publish.yml` | export, sign, boot-check, promote tags | `workflow_run` from build |
 | `.github/workflows/publish-smoke.yml` | observational smoke only | `workflow_run` from publish |
@@ -98,7 +95,7 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 
 | Branch | Trigger | Published tag(s) | Notes |
 |---|---|---|---|
-| `testing` | `schedule: 13:00 UTC` | `:testing` | **Development trunk. Primary `:testing` publish path.** Builds on schedule using CAS warmed by merge queue. |
+| `testing` | `schedule: 13:00 UTC` | `:testing` | **Development trunk. Primary `:testing` publish path.** Builds daily; `bst artifact push --deps all` after each successful build warms the CAS for the next run. |
 | `main` | fast-forward from `execute-release.yml` | `:stable` | **Release bookmark only.** Only `execute-release.yml` writes here after a successful SHA freshness check + cosign verify + boot-check. No PRs target `main`. |
 | `next` | `schedule: 03:00 UTC` (via `nightly-next-build.yml`) | `:next`, `:btw` | Rolling GNOME master; never stable. No PR requirement on branch protection. |
 | `gh-readonly-queue/testing/*` | merge-queue | (build only, no tag) | Gate before merge to `testing`. |

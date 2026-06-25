@@ -35,7 +35,7 @@ jobs:
   # default branch is not 'testing', the daily build silently targets the
   # wrong ref. Fail fast and loudly when that invariant is violated.
   verify-default-branch:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -107,12 +107,14 @@ jobs:
         run: just bst show --deps all oci/bluefin-nvidia.bst
 
   # ── Full OCI build ────────────────────────────────────────────────────────
-  # Fires on merge_group, schedule, and workflow_dispatch — NOT on pull_request.
-  # PRs are validated by the validate job above; the full build is the
-  # merge-queue gate. This keeps cache.projectbluefin.io free from PR traffic.
+  # Fires on schedule (daily 13:00 UTC) and workflow_dispatch only.
+  # merge_group is intentionally excluded: the merge queue requires only
+  # `validate` to pass; a full BST build triggered by merge_group is always
+  # cancelled when the PR merges (before the 5h build can finish), which
+  # wastes the CAS slot and starves the scheduled build.
   build:
     needs: [verify-default-branch]
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     # Global BST concurrency: only one BuildStream build may run across
