@@ -29,7 +29,7 @@ jobs:
           tool: just
 
       - name: Restore BST cache
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/buildstream
           key: bst-show-${{ github.base_ref || github.ref_name }}-${{ hashFiles('elements/gnome-build-meta.bst', 'elements/freedesktop-sdk.bst', 'Justfile') }}

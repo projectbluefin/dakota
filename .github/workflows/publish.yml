@@ -585,7 +585,7 @@ jobs:
       # The wheel lives at ~/.cache/pip on the host; mounted into the bst2
       # container via -v in just sbom so pip finds it without a network fetch.
       - name: Restore pip cache for buildstream-sbom
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/pip
           key: pip-sbom-0706fec3bedf6f73bd9d2fed32c2aed585feef8d
