@@ -28,7 +28,7 @@ sources:
 - kind: git_repo
   url: github:memorysafety/sudo-rs.git
   track: 'v[0-9]*.[0-9]*.[0-9]*'
-  ref: 965cd7b99b04faf55819606178a5e8233cfd8b9e  # v0.2.13
+  ref: v0.2.14-0-gbc4be2fd85be3063e7cd789c6843a5512f09ceee # v0.2.13
 - kind: cargo2
   url: crates:crates
   ref:
@@ -38,5 +38,5 @@ sources:
     sha: 0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280
   - kind: registry
     name: libc
-    version: 0.2.183
-    sha: b5b646652bf6661599e1da8901b3b9522896f01e736bad5f723fe7a3a27f899d
+    version: 0.2.186
+    sha: 68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66
