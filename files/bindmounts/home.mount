@@ -1,0 +1,8 @@
+[Unit]
+Description=Bind mount of /home
+
+[Mount]
+What=/var/home
+Where=/home
+Type=none
+Options=bind

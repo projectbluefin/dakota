@@ -1,0 +1,8 @@
+[Unit]
+Description=Bind mount of /snap
+
+[Mount]
+What=/var/lib/snapd/snap
+Where=/snap
+Type=none
+Options=bind

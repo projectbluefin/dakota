@@ -10,7 +10,7 @@ depends:
 
   - gnome-build-meta.bst:gnomeos-deps/bootc.bst
   - gnome-build-meta.bst:oci/integration/bootc-config.bst
-  - freedesktop-sdk.bst:vm/config/useradd-ostree.bst
+  - freedesktop-sdk.bst:vm/config/useradd-default.bst
   - freedesktop-sdk.bst:vm/config/sudo.bst
 
 public:
@@ -30,9 +30,9 @@ public:
       # Relative symlinks (var/home not /var/home) match zirconium-hawaii and
       # are safer in chroot/deploy tooling flows.
       - rm -rfv /home /root /opt /mnt /srv /var
+      # Mount points for bind mounts
+      - mkdir /home /root /snap
       - mkdir -p /var/home /var/roothome /var/opt /var/mnt /var/srv /var/tmp
-      - ln -s var/home /home
-      - ln -s var/roothome /root
       - ln -s var/opt /opt
       - ln -s var/mnt /mnt
       - ln -s var/srv /srv

@@ -1,0 +1,8 @@
+[Unit]
+Description=Bind mount of /root
+
+[Mount]
+What=/var/roothome
+Where=/root
+Type=none
+Options=bind
