@@ -397,6 +397,14 @@ but does not prevent graph-validation failure on undeclared inputs.
 
 **Verification:** Dispatch the fixed workflow and confirm jobs appear (not `startup_failure` with 0 jobs).
 
+### 16) Automerge workflow must follow the PR validation workflow, not the build workflow
+
+If a reusable automerge workflow matches PRs by `head_sha`, it must listen to the workflow that runs on the PR commit itself. `build.yml` on Dakota only runs on schedule/dispatch/merge queue, so its `workflow_run.head_sha` is the trunk SHA, not the PR head SHA. That makes the reusable automerge step log "No open ... PR found for SHA ..." and silently skip.
+
+**Fix:** Trigger automerge from `Validate` (the PR workflow) instead of `Build Bluefin dakota`. Then `github.event.workflow_run.head_sha` is the PR commit SHA the reusable workflow expects.
+
+**Symptom:** open dependency PRs stay mergeable and green but never get `autoMergeRequest` set.
+
 ## Red Flags
 
 - `permissions: {}` on a reusable workflow caller
@@ -416,6 +424,7 @@ but does not prevent graph-validation failure on undeclared inputs.
 - `if: ${{ inputs.X }}` in a job condition on a workflow that can be triggered by `workflow_run`
 - `with:` block in a reusable workflow call passing inputs not declared in the target workflow
 - `startup_failure` that persists after fixing all `${{ }}` in `if:` conditions (check undeclared inputs)
+- automerge hooked to a non-PR workflow, so `head_sha` never matches the PR branch
 
 ## Verification
 

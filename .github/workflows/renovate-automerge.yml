@@ -2,7 +2,7 @@ name: Renovate Auto-merge
 
 on:
   workflow_run:
-    workflows: ["Build Bluefin dakota"]
+    workflows: ["Validate"]
     types: [completed]
 
 permissions:
