@@ -29,6 +29,8 @@ update-bluefin-cli:
     set -euo pipefail
     echo "Checking for bluefin-cli container updates..."
     systemd-sysupdate --component=bluefin-cli update
+    echo "Importing updated container image..."
+    importctl import-tar /var/lib/bluefin-cli/homebrew-env.tar.zst homebrew
     echo "Restarting container to apply update..."
     machinectl restart homebrew
 

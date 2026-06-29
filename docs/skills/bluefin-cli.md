@@ -218,6 +218,10 @@ Put these on a separate btrfs subvolume. Keep CoW on Cellar for snapshots.
 source type requires a `SHA256SUMS` file at the same path prefix. GitHub Releases
 does not generate this automatically — must be produced and uploaded in CI.
 
+**2026-06-29 — bluefin-cli updates must re-import the refreshed tarball.** `systemd-sysupdate`
+only stages the new release; `importctl import-tar` is what swaps `/var/lib/machines/homebrew`
+to the new subvolume. Restarting the machine without that import leaves the old image active.
+
 **2026-06-25 — `ResolvConf=bind-host` is the right directive.** Not `BindReadOnly=/etc/resolv.conf`.
 Context7-confirmed; this is a first-class nspawn directive.
 
