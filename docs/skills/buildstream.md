@@ -156,3 +156,19 @@ Do not cancel a build under 120 min just because it "seems slow." Historical ran
 ### Avoid /dev/stdin redirection in remote sandboxes (2026-07-25)
 
 BuildStream elements that write inline configuration files using `install -Dm644 /dev/stdin ... <<'EOF'` fail in remote execution sandboxes (like BuildBarn) where `/dev/stdin` is not available as a standard character device. Write inline files using a two-step pattern: create the destination file with `install -Dm644 /dev/null target`, then populate it with `cat > target <<'EOF'`.
+
+### overlap-whitelist required for base system file replacement
+
+When an element provides files that are also provided by an upstream junction component (for example, `/etc/subuid` and `/etc/subgid` provided by `freedesktop-sdk.bst:components/shadow.bst`), BuildStream will throw an overlap error during composition (e.g. in `bluefin-runtime.bst`).
+
+To explicitly overwrite these files, you must declare an overlap whitelist in the `public` block of the authoring element:
+
+```yaml
+public:
+  bst:
+    overlap-whitelist:
+    - '%{sysconfdir}/subuid'
+    - '%{sysconfdir}/subgid'
+```
+
+*Note: Replacing base system files destroys the base mappings. Whenever possible, prefer injecting changes dynamically via a hook (e.g., in `common.bst`) rather than completely replacing junction files.*
