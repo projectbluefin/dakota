@@ -1,0 +1,11 @@
+[Unit]
+Description=Incus - user UI socket
+Documentation=https://linuxcontainers.org/incus/docs/main/
+
+[Socket]
+ListenStream=/run/incus/unix.socket.user
+SocketMode=0666
+Service=incus-user.service
+
+[Install]
+WantedBy=sockets.target

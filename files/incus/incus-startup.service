@@ -1,0 +1,16 @@
+[Unit]
+Description=Incus - container startup/shutdown
+Documentation=https://linuxcontainers.org/incus/docs/main/
+After=network-online.target incus.socket
+Before=multi-user.target
+Requires=network-online.target incus.socket
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/usr/bin/incusd activateifneeded
+ExecStop=/usr/bin/incusd shutdown
+TimeoutStopSec=600s
+
+[Install]
+WantedBy=multi-user.target

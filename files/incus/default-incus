@@ -1,0 +1,5 @@
+# Environment for incus.service (sourced via EnvironmentFile=-/etc/default/incus).
+
+# OVMF/edk2 firmware for VMs. Dakota's ovmf element installs to /usr/share/ovmf
+# (OVMF_CODE.fd / OVMF_VARS.fd), which is not in Incus's default search list.
+INCUS_EDK2_PATH=/usr/share/ovmf

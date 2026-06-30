@@ -1,0 +1,8 @@
+# Socket-activated: enable the sockets and the startup/shutdown helper.
+# incus.service / incus-user.service start on first socket connection.
+enable incus.socket
+enable incus-startup.service
+enable incus-user.socket
+# lxcfs provides cgroup-aware /proc inside system containers (ships its own
+# unit via lxcfs.bst -Dinit-script=systemd).
+enable lxcfs.service

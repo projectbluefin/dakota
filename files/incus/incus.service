@@ -1,0 +1,24 @@
+[Unit]
+Description=Incus - Main daemon
+Documentation=https://linuxcontainers.org/incus/docs/main/
+After=network-online.target incus.socket incus-startup.service
+Requires=network-online.target incus.socket incus-startup.service
+
+[Service]
+Delegate=yes
+EnvironmentFile=-/etc/default/incus
+ExecStart=/usr/bin/incusd --group incus-admin
+ExecStartPost=/usr/bin/incusd waitready --timeout=600
+KillMode=process
+TimeoutStartSec=600s
+TimeoutStopSec=30s
+Restart=on-failure
+LimitNOFILE=1048576
+LimitNPROC=infinity
+TasksMax=infinity
+# Incus must never be OOM-killed; it owns running instances.
+OOMScoreAdjust=-1000
+
+[Install]
+Also=incus.socket
+WantedBy=multi-user.target
