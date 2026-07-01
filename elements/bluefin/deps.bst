@@ -23,6 +23,7 @@ depends:
 
   - bluefin/common.bst
   - bluefin/just-overrides.bst
+  - bluefin/zswap-config.bst
   - bluefin/firstboot-date.bst
   - bluefin/firstboot-services.bst
   - bluefin/wallpaper-month.bst
