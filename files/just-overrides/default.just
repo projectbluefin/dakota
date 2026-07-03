@@ -159,20 +159,35 @@ confirm issue_number:
     #!/usr/bin/bash
     set -euo pipefail
 
-    ISSUE="{{issue_number}}"
+    ISSUE={{ quote(issue_number) }}
     REPO="projectbluefin/dakota"
+
+    if [[ ! "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
+        echo "❌ '${ISSUE}' is not a valid issue number (expected a positive integer)." >&2
+        echo "Usage: ujust confirm <issue-number>   e.g. ujust confirm 531" >&2
+        exit 1
+    fi
+
+    INTERACTIVE=0
+    [[ -t 0 ]] && INTERACTIVE=1
 
     echo "📋 Confirming you also experience issue #${ISSUE}..."
     echo ""
 
     # Collect lightweight system fingerprint
-    BOOTC_JSON=$(sudo bootc status --json 2>/dev/null || echo '{}')
+    if (( INTERACTIVE )); then
+        BOOTC_JSON=$(sudo bootc status --json 2>/dev/null || echo '{}')
+    else
+        # Never hang on a sudo password prompt when scripted
+        BOOTC_JSON=$(sudo -n bootc status --json 2>/dev/null || bootc status --json 2>/dev/null || echo '{}')
+    fi
     BOOTED_IMAGE=$(echo "$BOOTC_JSON" | jq -r '.status.booted.image.image.image // "unknown"')
-    BOOTED_DIGEST=$(echo "$BOOTC_JSON" | jq -r '.status.booted.imageDigest // "unknown"')
+    BOOTED_VERSION=$(echo "$BOOTC_JSON" | jq -r '.status.booted.image.version // "unknown"')
+    BOOTED_DIGEST=$(echo "$BOOTC_JSON" | jq -r '.status.booted.image.imageDigest // "unknown"')
     KERNEL_VER=$(uname -r)
     ARCH=$(uname -m)
     FAILED_UNITS=$(systemctl list-units --state=failed --no-legend --plain 2>/dev/null \
-                   | awk '{print $1}' | head -10 || echo "")
+                   | awk 'NR<=10 {print $1}' || echo "")
 
     if [[ -r /etc/machine-id ]]; then
         HOST_ID=$(printf 'ujust-confirm:%s' "$(cat /etc/machine-id)" | sha256sum | cut -c1-8)
@@ -180,37 +195,44 @@ confirm issue_number:
         HOST_ID="unknown"
     fi
 
-    # Build the comment
-    COMMENT=$(printf '### ✋ I also experience this issue\n\n')
-    COMMENT+=$(printf '| Field | Value |\n|-------|-------|\n')
-    COMMENT+=$(printf '| Image | `%s` |\n' "$BOOTED_IMAGE")
-    COMMENT+=$(printf '| Digest | `%s` |\n' "$BOOTED_DIGEST")
-    COMMENT+=$(printf '| Kernel | `%s` |\n' "$KERNEL_VER")
-    COMMENT+=$(printf '| Arch | `%s` |\n' "$ARCH")
-    COMMENT+=$(printf '| Device ID | `%s` |\n' "$HOST_ID")
+    # Build the comment. $(...) strips trailing newlines, so each row's
+    # newline is appended outside the substitution or the table collapses.
+    COMMENT=$'### ✋ I also experience this issue\n\n'
+    COMMENT+=$'| Field | Value |\n|-------|-------|\n'
+    COMMENT+=$(printf '| Image | `%s` |' "$BOOTED_IMAGE")$'\n'
+    COMMENT+=$(printf '| Version | `%s` |' "$BOOTED_VERSION")$'\n'
+    COMMENT+=$(printf '| Digest | `%s` |' "$BOOTED_DIGEST")$'\n'
+    COMMENT+=$(printf '| Kernel | `%s` |' "$KERNEL_VER")$'\n'
+    COMMENT+=$(printf '| Arch | `%s` |' "$ARCH")$'\n'
+    COMMENT+=$(printf '| Device ID | `%s` |' "$HOST_ID")$'\n'
     if [[ -n "$FAILED_UNITS" ]]; then
-        COMMENT+=$(printf '\n**Failed units:** ')
-        COMMENT+=$(echo "$FAILED_UNITS" | tr '\n' ',' | sed 's/,$//')
-        COMMENT+=$(printf '\n')
+        COMMENT+=$'\n**Failed units:** '
+        COMMENT+=$(echo "$FAILED_UNITS" | tr '\n' ',' | sed 's/,$//')$'\n'
     fi
-    COMMENT+=$(printf '\n_Submitted via `ujust confirm %s`_\n' "$ISSUE")
+    COMMENT+=$(printf '\n_Submitted via `ujust confirm %s`_' "$ISSUE")$'\n'
 
-    # Show user what will be posted
+    # Show user what will be posted (always — no silent uploads)
     echo "$COMMENT"
     echo ""
 
-    if ! gum confirm "Post this as a comment on issue #${ISSUE}?"; then
-        echo "Cancelled."
-        exit 0
+    if (( INTERACTIVE )); then
+        if ! gum confirm "Post this as a comment on issue #${ISSUE}?"; then
+            echo "Cancelled."
+            exit 0
+        fi
+    else
+        echo "ℹ️  Non-interactive session — posting without confirmation prompt."
     fi
 
     if gh auth status --active &>/dev/null; then
-        gh issue comment "$ISSUE" --repo "$REPO" --body "$COMMENT"
+        COMMENT_URL=$(gh issue comment "$ISSUE" --repo "$REPO" --body "$COMMENT")
         echo ""
-        echo "✅ Confirmation posted on issue #${ISSUE}"
+        echo "✅ Confirmation posted: ${COMMENT_URL:-https://github.com/${REPO}/issues/${ISSUE}}"
     else
         echo ""
-        if command -v wl-copy &>/dev/null; then
+        # Clipboard only makes sense interactively; wl-copy also lingers to
+        # serve the clipboard, which would hang scripted callers.
+        if (( INTERACTIVE )) && command -v wl-copy &>/dev/null; then
             printf '%s' "$COMMENT" | wl-copy
             echo "📋 Copied to clipboard! Paste it as a comment on:"
         else
@@ -227,8 +249,14 @@ verify issue_number:
     #!/usr/bin/bash
     set -euo pipefail
 
-    ISSUE="{{issue_number}}"
+    ISSUE={{ quote(issue_number) }}
     REPO="projectbluefin/dakota"
+
+    if [[ ! "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
+        echo "❌ '${ISSUE}' is not a valid issue number (expected a positive integer)." >&2
+        echo "Usage: ujust verify <issue-number>   e.g. ujust verify 531" >&2
+        exit 1
+    fi
 
     echo "🔍 Verifying fix for issue #${ISSUE}..."
     echo ""
