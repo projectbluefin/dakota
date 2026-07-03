@@ -154,17 +154,24 @@ file-issue:
     xdg-open "$URL" 2>/dev/null || echo "Could not open browser. Visit: $URL"
 
 # Confirm you also experience an issue ("me too" with system context).
-# Usage: ujust confirm 531
-confirm issue_number:
+# Usage: ujust confirm 531        (prompts before posting)
+#        ujust confirm 531 yes    (scripted use: posts without prompting)
+confirm issue_number yes="":
     #!/usr/bin/bash
     set -euo pipefail
 
     ISSUE={{ quote(issue_number) }}
+    ASSUME_YES={{ quote(yes) }}
     REPO="projectbluefin/dakota"
 
     if [[ ! "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
         echo "❌ '${ISSUE}' is not a valid issue number (expected a positive integer)." >&2
-        echo "Usage: ujust confirm <issue-number>   e.g. ujust confirm 531" >&2
+        echo "Usage: ujust confirm <issue-number> [yes]   e.g. ujust confirm 531" >&2
+        exit 1
+    fi
+    if [[ -n "$ASSUME_YES" && "$ASSUME_YES" != "yes" ]]; then
+        echo "❌ Unrecognized argument '${ASSUME_YES}' (only 'yes' is accepted)." >&2
+        echo "Usage: ujust confirm <issue-number> [yes]   e.g. ujust confirm 531 yes" >&2
         exit 1
     fi
 
@@ -215,19 +222,30 @@ confirm issue_number:
     echo "$COMMENT"
     echo ""
 
-    if (( INTERACTIVE )); then
-        if ! gum confirm "Post this as a comment on issue #${ISSUE}?"; then
-            echo "Cancelled."
-            exit 0
+    if [[ "$ASSUME_YES" != "yes" ]]; then
+        if (( INTERACTIVE )); then
+            if ! gum confirm "Post this as a comment on issue #${ISSUE}?"; then
+                echo "Cancelled."
+                exit 0
+            fi
+        else
+            # Fail closed: never publish without explicit consent.
+            echo "ℹ️  Not posting: stdin is not a terminal and 'yes' was not passed." >&2
+            echo "    To post from a script: ujust confirm ${ISSUE} yes" >&2
+            exit 1
         fi
-    else
-        echo "ℹ️  Non-interactive session — posting without confirmation prompt."
     fi
 
     if gh auth status --active &>/dev/null; then
-        COMMENT_URL=$(gh issue comment "$ISSUE" --repo "$REPO" --body "$COMMENT")
-        echo ""
-        echo "✅ Confirmation posted: ${COMMENT_URL:-https://github.com/${REPO}/issues/${ISSUE}}"
+        if COMMENT_URL=$(gh issue comment "$ISSUE" --repo "$REPO" --body "$COMMENT"); then
+            echo ""
+            echo "✅ Confirmation posted: ${COMMENT_URL:-https://github.com/${REPO}/issues/${ISSUE}}"
+        else
+            echo "" >&2
+            echo "❌ Posting failed. Copy the text above and paste it as a comment on:" >&2
+            echo "  https://github.com/${REPO}/issues/${ISSUE}" >&2
+            exit 1
+        fi
     else
         echo ""
         # Clipboard only makes sense interactively; wl-copy also lingers to
@@ -241,6 +259,8 @@ confirm issue_number:
         echo "  https://github.com/${REPO}/issues/${ISSUE}"
         echo ""
         echo "Or authenticate gh first: gh auth login"
+        # Scripted callers must be able to detect that nothing was posted.
+        (( INTERACTIVE )) || exit 1
     fi
 
 # Verify that a fix works on your hardware after upgrading.
