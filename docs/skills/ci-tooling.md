@@ -377,6 +377,19 @@ If a reusable automerge workflow matches PRs by `head_sha`, it must listen to th
 
 **Symptom:** open dependency PRs stay mergeable and green but never get `autoMergeRequest` set.
 
+## Lessons Learned
+
+### Scorecard push trigger must target the actual default branch (2026-07-03)
+
+`ossf/scorecard-action` validates default-branch-only behavior for checks like
+`Branch-Protection` and fails with `validating options: only default branch is
+supported` if the workflow's `push.branches` points at a non-default branch.
+Dakota's GitHub default branch is `testing`, not `main`, so
+`.github/workflows/scorecard.yml` must use `push.branches: [testing]`.
+
+Keep the weekly `schedule` trigger (`17 9 * * 1`) intact for the `Maintained`
+check; only retarget the push branch filter to the actual default branch.
+
 ## Red Flags
 
 - `permissions: {}` on a reusable workflow caller
