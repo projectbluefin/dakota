@@ -140,7 +140,7 @@ The digest lives under `.image`, not on the boot entry (the old
 `.status.booted.imageDigest` path never existed — it always rendered
 "unknown" through jq's `// "unknown"` fallback):
 
-```
+```text
 .status.booted.image.image.image    # image ref
 .status.booted.image.version        # version (may be null)
 .status.booted.image.imageDigest    # digest
