@@ -258,6 +258,13 @@ verify issue_number:
         exit 1
     fi
 
+    # Verify asks for a verdict, so it cannot run scripted; fail fast instead
+    # of dying at the gum prompt or hanging on a sudo password read.
+    if [[ ! -t 0 ]]; then
+        echo "❌ ujust verify is interactive and requires a terminal." >&2
+        exit 1
+    fi
+
     echo "🔍 Verifying fix for issue #${ISSUE}..."
     echo ""
 
@@ -302,7 +309,8 @@ verify issue_number:
     # Collect system context
     BOOTC_JSON=$(sudo bootc status --json 2>/dev/null || echo '{}')
     BOOTED_IMAGE=$(echo "$BOOTC_JSON" | jq -r '.status.booted.image.image.image // "unknown"')
-    BOOTED_DIGEST=$(echo "$BOOTC_JSON" | jq -r '.status.booted.imageDigest // "unknown"')
+    BOOTED_VERSION=$(echo "$BOOTC_JSON" | jq -r '.status.booted.image.version // "unknown"')
+    BOOTED_DIGEST=$(echo "$BOOTC_JSON" | jq -r '.status.booted.image.imageDigest // "unknown"')
     KERNEL_VER=$(uname -r)
     ARCH=$(uname -m)
 
@@ -322,18 +330,21 @@ verify issue_number:
         fi
     fi
 
-    # Build the verification comment
-    COMMENT=$(printf '### %s Verification: **%s**\n\n' "$EMOJI" "$RESULT")
-    COMMENT+=$(printf '| Field | Value |\n|-------|-------|\n')
-    COMMENT+=$(printf '| Image | `%s` |\n' "$BOOTED_IMAGE")
-    COMMENT+=$(printf '| Digest | `%s` |\n' "$BOOTED_DIGEST")
-    COMMENT+=$(printf '| Kernel | `%s` |\n' "$KERNEL_VER")
-    COMMENT+=$(printf '| Arch | `%s` |\n' "$ARCH")
-    COMMENT+=$(printf '| Device ID | `%s` |\n' "$HOST_ID")
+    # Build the verification comment. $(...) strips trailing newlines, so
+    # each row's newline is appended outside the substitution or the table
+    # collapses.
+    COMMENT=$(printf '### %s Verification: **%s**' "$EMOJI" "$RESULT")$'\n\n'
+    COMMENT+=$'| Field | Value |\n|-------|-------|\n'
+    COMMENT+=$(printf '| Image | `%s` |' "$BOOTED_IMAGE")$'\n'
+    COMMENT+=$(printf '| Version | `%s` |' "$BOOTED_VERSION")$'\n'
+    COMMENT+=$(printf '| Digest | `%s` |' "$BOOTED_DIGEST")$'\n'
+    COMMENT+=$(printf '| Kernel | `%s` |' "$KERNEL_VER")$'\n'
+    COMMENT+=$(printf '| Arch | `%s` |' "$ARCH")$'\n'
+    COMMENT+=$(printf '| Device ID | `%s` |' "$HOST_ID")$'\n'
     if [[ -n "$JOURNAL_SNIPPET" ]]; then
-        COMMENT+=$(printf '\n<details><summary>Journal (errors, last 50 lines)</summary>\n\n```\n%s\n```\n</details>\n' "$JOURNAL_SNIPPET")
+        COMMENT+=$(printf '\n<details><summary>Journal (errors, last 50 lines)</summary>\n\n```\n%s\n```\n</details>' "$JOURNAL_SNIPPET")$'\n'
     fi
-    COMMENT+=$(printf '\n_Submitted via `ujust verify %s`_\n' "$ISSUE")
+    COMMENT+=$(printf '\n_Submitted via `ujust verify %s`_' "$ISSUE")$'\n'
 
     # Show user what will be posted
     echo ""
@@ -346,11 +357,17 @@ verify issue_number:
     fi
 
     if gh auth status --active &>/dev/null; then
-        gh issue comment "$ISSUE" --repo "$REPO" --body "$COMMENT"
-        echo ""
-        echo "✅ Verification posted on issue #${ISSUE}"
-        echo ""
-        echo "Thank you for helping confirm whether this fix works!"
+        if COMMENT_URL=$(gh issue comment "$ISSUE" --repo "$REPO" --body "$COMMENT"); then
+            echo ""
+            echo "✅ Verification posted: ${COMMENT_URL:-https://github.com/${REPO}/issues/${ISSUE}}"
+            echo ""
+            echo "Thank you for helping confirm whether this fix works!"
+        else
+            echo "" >&2
+            echo "❌ Posting failed. Copy the text above and paste it as a comment on:" >&2
+            echo "  https://github.com/${REPO}/issues/${ISSUE}" >&2
+            exit 1
+        fi
     else
         echo ""
         if command -v wl-copy &>/dev/null; then
