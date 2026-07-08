@@ -7,14 +7,29 @@ runs:
     - name: Check bst2 image pin consistency
       shell: bash
       run: |
-        just_sha="$(grep -oE 'bst2:[a-f0-9]{40}' Justfile | cut -d: -f2)"
-        track_sha="$(grep -oE 'bst2:[a-f0-9]{40}' .github/workflows/track-bst-sources.yml | cut -d: -f2)"
+        extract_sha() {
+          local file="$1"
+          if [[ ! -f "$file" ]]; then
+            echo ""
+            return 0
+          fi
+
+          grep -oE '([[:alnum:]_.-]+/)?bst2:[a-f0-9]{40}' "$file" \
+            | sed -E 's/.*bst2:([a-f0-9]{40})/\1/' \
+            | head -n1 || true
+        }
+
+        just_sha="$(extract_sha Justfile)"
+        track_sha="$(extract_sha .github/workflows/track-bst-sources.yml)"
+
         if [[ -z "$just_sha" || -z "$track_sha" ]]; then
           echo "ERROR: could not find bst2 SHA (Justfile: '${just_sha:-missing}', track-bst-sources.yml: '${track_sha:-missing}')" >&2
           exit 1
         fi
+
         if [[ "$just_sha" != "$track_sha" ]]; then
           echo "ERROR: bst2 pin drift — Justfile: $just_sha  track-bst-sources.yml: $track_sha" >&2
           exit 1
         fi
+
         echo "OK: bst2 pins consistent: $just_sha"

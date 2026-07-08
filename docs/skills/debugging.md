@@ -175,9 +175,9 @@ The 2026-07-07 ghost-lab failure in `bootstrap/gcc.bst` was not a compiler regre
 
 The more reliable lab fallback is to keep the build local to the cluster runner, use the shared project caches for read-only artifact/source pulls, and avoid remote execution for this path. That preserves the speed advantage of the persistent hostPath BST cache while removing the broken buildbarn execution/storage hop from the hot path.
 
-### Align freedesktop-sdk patch queue 100% with upstream GNOME OS (2026-07-07)
+### Prefer upstream alignment over local compiler workarounds (2026-07-08)
 
-Carrying custom local patches or build flag overrides in the `freedesktop-sdk` junction (such as hacking Pipewire versions or adding custom GCC 15 compiler workarounds) alters the sub-project config and invalidates the cache keys for every single element in that junction. This forces the runners to build the entire base OS—including compiler toolchains, glibc, and systemd—from source, causing extremely long compile times, compiler crashes, and OOMs.
+Carrying custom local patches or build flag overrides in the `freedesktop-sdk` junction (such as hacking Pipewire versions or adding local GCC 15 compiler workarounds) alters the sub-project config and invalidates the cache keys for every single element in that junction. This forces the runners to build the entire base OS—including compiler toolchains, glibc, and systemd—from source, causing extremely long compile times, compiler crashes, and OOMs.
 
-By synchronizing our local `patches/freedesktop-sdk/` directory to be exactly identical to upstream `gnome-build-meta`'s patch queue, our cache keys match GNOME OS's exactly. BuildStream can then pull the entire base toolchain and OS pre-built from the `gbm.gnome.org` cache, eliminating local compile steps and toolchain failure modes entirely.
+The correct fix is to align Dakota with the upstream GNOME OS / `gnome-build-meta` / `freedesktop-sdk` ref that already works, then keep the patch queue clean. Do not compile our own GCC, ship a local GCC bootstrap toolchain, or add compiler-specific hacks under any circumstance. If an upstream-aligned ref is available, use that path first; only use a local override when there is no upstream path and it has a documented exit condition.
 

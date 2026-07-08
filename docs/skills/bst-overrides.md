@@ -1,7 +1,7 @@
 ---
 
 name: bst-overrides
-description: Governs when and how to create junction overrides in dakota. Upstream-first principle — local overrides are last resort. Covers patch_queue overrides, exit conditions, and how to evaluate whether an override is justified. Use when deciding whether to override gnome-build-meta or freedesktop-sdk content, adding temporary local overrides, or removing override debt after upstream catches up.
+description: Governs when and how to create junction overrides in dakota. Upstream-first principle — local overrides are last resort. Covers patch_queue overrides, exit conditions, and how to evaluate whether an override is justified. Use when deciding whether to override gnome-build-meta or freedesktop-sdk content, adding temporary local overrides, or removing override debt after upstream catches up. Dakota must never compile its own GCC or carry local GCC toolchain workarounds; we align with GNOME OS and upstream refs instead.
 metadata:
   context7-sources:
     - /apache/buildstream
@@ -28,6 +28,19 @@ Use when you need to decide whether a local override is justified, add a tempora
 3. Use a local override only as a last resort.
 4. Record the exit condition so the override can die.
 5. Revisit overrides whenever junction refs move.
+
+## Hard Policy: No Local GCC Toolchain Workarounds
+
+Dakota will not compile its own GCC, ship a local GCC bootstrap toolchain, or introduce local compiler-package hacks to work around upstream build failures.
+
+If a dependency fails to build under the baseline toolchain, the correct action is:
+
+1. Check the upstream GNOME OS / `gnome-build-meta` / `freedesktop-sdk` baseline.
+2. Match the upstream junction ref instead of inventing a local toolchain.
+3. Use an upstream patch or a junction bump when possible.
+4. Only use a local override if there is no upstream-aligned path and it has a documented exit condition.
+
+This policy is explicit and non-negotiable: do not build a custom GCC under any circumstance.
 
 ## Core Principle: Upstream-First
 
@@ -159,9 +172,14 @@ git -C ~/.cache/buildstream/sources/git_repo/<gbm-mirror>.git \
 Adding a patch for something already upstream wastes maintenance cycles — junction bump is
 cheaper.
 
-### Use junction overrides to bypass upstream compile regressions without patch-queue drift (2026-07-07)
+### Prefer upstream alignment over local compiler workarounds (2026-07-08)
 
-When an upstream dependency fails to compile from source under newer compilers (like GCC 15 SSE type-safety errors in `components/frei0r.bst`), carrying a patch in the `freedesktop-sdk` patch queue invalidates cache keys globally and forces a slow, heavy base recompilation of the whole OS. 
+When an upstream dependency fails under the baseline toolchain, do not invent a local GCC toolchain, local compiler flags, or a custom element to bypass the issue. That approach creates maintenance debt and diverges Dakota from the upstream GNOME OS baseline.
 
-Instead, leverage the `overrides:` block inside `elements/freedesktop-sdk.bst` to map the troubled upstream element to a local `bluefin/<element>.bst` file. Inside our local element, we can inject targeted compilation flags (such as `local_flags: "-mno-sse4.1"`) to bypass the compiler issue. This keeps the junction's patch queue 100% clean and pristine, preserving full upstream binary cache hits for all other base elements.
+The correct approach is to match the upstream GNOME OS / `gnome-build-meta` / `freedesktop-sdk` ref that already works, then keep Dakota on that baseline until upstream catches up. In practice, this means:
+
+- Remove local override elements that exist only to work around toolchain behavior.
+- Prefer an upstream-aligned junction ref over a local compatibility shim.
+- Keep the patch queue clean and avoid introducing compiler-specific hacks.
+- Never compile our own GCC under any circumstance.
 
