@@ -197,7 +197,7 @@ jobs:
           echo "digest=$(cat /tmp/digest.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Install oras
-        uses: oras-project/setup-oras@38de303aac69abb66f3e6255b7198bff35f323e3 # v2.0.0
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
 
       - name: Sign image and create attestation
         # generate-sbom: false — dakota uses just sbom (BST-native provenance via
@@ -616,7 +616,7 @@ jobs:
             --compat-auth-file ~/.docker/config.json
 
       - name: Install oras
-        uses: oras-project/setup-oras@38de303aac69abb66f3e6255b7198bff35f323e3 # v2.0.0
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
 
       # Re-derive the image digest via skopeo so this job has no runtime
       # dependency on publish-image job outputs (avoids matrix output wiring).
