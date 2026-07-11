@@ -1,0 +1,20 @@
+diff --git a/shell/cc-panel-loader.c b/shell/cc-panel-loader.c
+index 28a1671..ccb56a7 100644
+--- a/shell/cc-panel-loader.c
++++ b/shell/cc-panel-loader.c
+@@ -32,6 +32,7 @@
+ 
+ /* Extension points */
+ extern GType cc_applications_panel_get_type (void);
++extern GType cc_updates_panel_get_type (void);
+ extern GType cc_background_panel_get_type (void);
+ #ifdef BUILD_BLUETOOTH
+ extern GType cc_bluetooth_panel_get_type (void);
+@@ -117,6 +118,7 @@ static CcPanelLoaderVtable default_panels[] =
+ #ifdef BUILD_WWAN
+   PANEL_TYPE("wwan",             cc_wwan_panel_get_type,                 cc_wwan_panel_static_init_func),
+ #endif
++  PANEL_TYPE("updates",         cc_updates_panel_get_type,              NULL),
+ };
+ 
+ /* Override for the panel vtable. When NULL, the default_panels will

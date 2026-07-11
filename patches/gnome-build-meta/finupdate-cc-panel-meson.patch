@@ -1,0 +1,10 @@
+diff --git a/panels/meson.build b/panels/meson.build
+index 07c7733..06b0e6c 100644
+--- a/panels/meson.build
++++ b/panels/meson.build
+@@ -46,3 +46,5 @@ foreach cappletname: dependent_panels + panels
+ 
+   subdir(cappletname)
+ endforeach
++
++subdir('updates')

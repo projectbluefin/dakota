@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 Project Bluefin Contributors
+     SPDX-License-Identifier: GPL-2.0-or-later -->
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="Adw" version="1.0"/>
+
+  <template class="CcUpdatesPanel" parent="CcPanel">
+    <child>
+      <object class="AdwBin" id="content_bin"/>
+    </child>
+  </template>
+</interface>

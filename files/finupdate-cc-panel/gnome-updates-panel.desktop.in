@@ -1,0 +1,17 @@
+[Desktop Entry]
+Name=Software Updates
+Comment=Manage system image updates
+Exec=gnome-control-center updates
+Icon=org.gnome.Settings-system-symbolic
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=GNOME;GTK;Settings;X-GNOME-Settings-Panel;X-GNOME-SystemSettings;
+OnlyShowIn=GNOME;Unity;
+NoDisplay=true
+X-GNOME-Bugzilla-Bugzilla=GNOME
+X-GNOME-Bugzilla-Product=gnome-control-center
+X-GNOME-Bugzilla-Component=Updates
+X-GNOME-Bugzilla-Version=@VERSION@
+# Translators: Search keywords for the Updates panel
+Keywords=update;upgrade;bootc;image;switch;pin;rollback;
