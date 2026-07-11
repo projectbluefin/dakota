@@ -196,7 +196,7 @@ jobs:
       # fallback keys, which can silently restore a stale cache and push
       # nothing. download-artifact fails the job if the artifact is missing.
       - name: Download BST cache transport artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: bst-warm-transport-${{ matrix.shard }}-${{ github.run_id }}
           path: ${{ runner.temp }}
