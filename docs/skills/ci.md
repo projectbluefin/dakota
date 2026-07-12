@@ -117,15 +117,15 @@ This is the fast path for stale-image complaints: the image date is usually wron
 
 ## Trigger Behavior
 
-| Job | pull_request | push testing/next | merge_group | workflow_dispatch | schedule |
+| Job | pull_request | push testing | merge_group | workflow_dispatch | schedule |
 |---|---|---|---|---|---|
 | `validate` | Yes | No | No | No | No |
 | `e2e` | Yes (change-detected) | No | No | Yes | No |
-| `build` | No | testing only (key-busting paths) | No | Yes | Daily 13:00 UTC |
+| `build` | No | testing (BST + CI-build-path changes) | No | Yes | Daily 13:00 UTC |
 | `execute-release` | No | No | No | Yes | Via workflow_run from publish |
 | Push to GHCR? | No | Via publish.yml | No | Via publish.yml | Via publish.yml |
 
-**push paths:** `build.yml` triggers on `testing` only when `elements/**`, `patches/**`, `project.conf`, or `include/**` changes. Doc/workflow-only pushes do NOT trigger a build. This is intentional; it means a CI-only commit advancing the branch HEAD will leave no build artifact for that SHA.
+**push paths:** `build.yml` triggers on `testing` when `elements/**`, `patches/**`, `project.conf`, `include/**`, `.github/workflows/build.yml`, or `.github/actions/generate-bst-ci-config/**` changes. This ensures CI-path hotfixes trigger a fresh `:testing` assembly without waiting for the daily schedule.
 
 **Branch → tag mapping** (verified from publish.yml source):
 - `testing` or `gh-readonly-queue/testing/*` → `:testing`
@@ -292,6 +292,29 @@ gh run list --repo projectbluefin/dakota --limit 5
 ## Lessons Learned
 
 > **Note:** Lessons are ordered newest-first. Deleted CI paths are historical evidence only; do not recreate them.
+
+### Composite action CI-config script must close all if blocks (2026-07-12)
+
+`Generate BuildStream CI config` failed immediately with
+`syntax error: unexpected end of file` when a refactor removed a closing `fi`
+after the cert/key-gated cache heredoc block in
+`.github/actions/generate-bst-ci-config/action.yml`.
+This failure mode aborts both default and NVIDIA matrix legs before build starts.
+When editing composite-action shell heredocs, verify every opened `if` is closed
+in the same scope before pushing CI recovery changes.
+
+### Never restrict CI timeouts arbitrarily without analyzing cache state and build requirements (2026-07-12)
+
+Shortening job or step timeouts (e.g., to 25/50 minutes) to force cache-only assembly causes immediate failures if there are any cache misses or necessary source builds. Caches can be cold due to upstream changes or transient network/CAS issues, and the pipeline must be allowed enough budget (e.g., 360/330 minutes) to perform clean builds when needed. Restricting timeouts does not fix build failures; it only guarantees timeouts under normal compilation fallback. First analyze CAS hit rate and correct the underlying missing artifacts rather than introducing artificial execution gates.
+
+### Build step timeout floor for assembly-only jobs (2026-07-12)
+
+A hard 30-minute timeout on `Build OCI image with BuildStream` caused false
+failures even in assembly-only mode: run `29195429409` hit
+`The action 'Build OCI image with BuildStream' has timed out after 30 minutes`
+while still fetching/building the final OCI element graph. Keep the build-step
+timeout at 45 minutes and the job budget at 70 minutes so normal cache-backed
+runs complete and still fail far below multi-hour ranges.
 
 ### Cache-only assembly prevents source rebuilds (2026-07-12)
 
