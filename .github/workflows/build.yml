@@ -8,6 +8,8 @@ on:
       - "patches/**"
       - "project.conf"
       - "include/**"
+      - ".github/workflows/build.yml"
+      - ".github/actions/generate-bst-ci-config/**"
   # Fires daily at 13:00 UTC — 5 hours after the gnome-build-meta nightly
   # (~08:00 UTC) to absorb nightly deltas before building.
   # NOTE: schedule triggers run on the default branch; set testing as the
@@ -49,6 +51,10 @@ jobs:
             echo "::error::default branch is '$db', expected 'testing'. Daily schedule will silently target wrong branch. Fix repo settings."
             exit 1
           fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.ref_name }}" != "testing" ]; then
+            echo "::error::workflow_dispatch ref is '${{ github.ref_name }}', expected 'testing' for :testing publication."
+            exit 1
+          fi
 
   # ── Full OCI build ────────────────────────────────────────────────────────
   # Fires on schedule, workflow_dispatch, and key-busting pushes to testing.
@@ -60,7 +66,7 @@ jobs:
     needs: [verify-default-branch]
     if: (!cancelled()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 360
     # Variants build serially so the final OCI artifact pushes never overlap.
     strategy:
       fail-fast: false
@@ -139,6 +145,15 @@ jobs:
             echo "total=0" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Cache-only dependency gate (fail fast on cache misses)
+        env:
+          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+        run: |
+          # Pull runtime dependencies only from remote artifact caches.
+          # If anything is missing, fail immediately instead of falling into
+          # source compilation paths.
+          just bst artifact pull --deps run ${{ matrix.element }}
+
       - name: Build OCI image with BuildStream
         env:
           BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
@@ -147,7 +162,7 @@ jobs:
           set -o pipefail
           just bst build --deps none ${{ matrix.element }} 2>&1 \
             | python3 files/scripts/bst-progress.py
-        timeout-minutes: 30
+        timeout-minutes: 330
 
       # Push the built OCI artifact to remote CAS so publish.yml can export it.
       - name: Push OCI artifact to remote CAS

@@ -307,14 +307,9 @@ in the same scope before pushing CI recovery changes.
 
 Shortening job or step timeouts (e.g., to 25/50 minutes) to force cache-only assembly causes immediate failures if there are any cache misses or necessary source builds. Caches can be cold due to upstream changes or transient network/CAS issues, and the pipeline must be allowed enough budget (e.g., 360/330 minutes) to perform clean builds when needed. Restricting timeouts does not fix build failures; it only guarantees timeouts under normal compilation fallback. First analyze CAS hit rate and correct the underlying missing artifacts rather than introducing artificial execution gates.
 
-### Build step timeout floor for assembly-only jobs (2026-07-12)
+### Revert build timeouts to generous bounds to allow compilation fallback (2026-07-12)
 
-A hard 30-minute timeout on `Build OCI image with BuildStream` caused false
-failures even in assembly-only mode: run `29195429409` hit
-`The action 'Build OCI image with BuildStream' has timed out after 30 minutes`
-while still fetching/building the final OCI element graph. Keep the build-step
-timeout at 45 minutes and the job budget at 70 minutes so normal cache-backed
-runs complete and still fail far below multi-hour ranges.
+Do not arbitrarily or inappropriately truncate CI timeout limits (such as to 25/50 minutes) to force cache-only assembly. While cache-backed runs are fast, any transient CAS miss, cold start, or upstream drift requires substantial compilation time (up to 330 minutes). Timeout thresholds must remain generous (360 minutes for the job, 330 minutes for the build step) to prevent false failures and allow robust recovery.
 
 ### Cache-only assembly prevents source rebuilds (2026-07-12)
 
