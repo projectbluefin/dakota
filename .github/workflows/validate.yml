@@ -50,10 +50,10 @@ jobs:
 
       - name: Validate BST element graph (default)
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive
+          BST_FLAGS: -o x86_64_v3 false --no-interactive
         run: just bst show --deps all oci/bluefin.bst
 
       - name: Validate BST element graph (nvidia)
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive
+          BST_FLAGS: -o x86_64_v3 false --no-interactive
         run: just bst show --deps all oci/bluefin-nvidia.bst

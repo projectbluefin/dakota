@@ -305,6 +305,24 @@ gh run list --repo projectbluefin/dakota --limit 5
 
 > **Note:** Lessons are ordered newest-first. Deleted CI paths are historical evidence only; do not recreate them.
 
+### Architecture options must match upstream artifact producers (2026-07-13)
+
+BuildStream project options participate in artifact cache keys. Passing
+`-o x86_64_v3 true` to an otherwise upstream-aligned graph therefore cannot
+reuse baseline x86-64 artifacts published by GNOME Build Meta or
+freedesktop-sdk. Historical Dakota v3 successes depended on warm artifacts in
+`cache.projectbluefin.io`, not the upstream caches: the June 30 default build
+pulled 810 artifacts from the project cache, while identical sampled v3 keys
+were absent from every remote by July 13. Direct probes of `gettext`, `expat`,
+and `startup-notification` found each v3 key missing and each baseline key
+available. A full baseline pull produced 978 cached elements out of the 1,077
+element default graph, compared with 73 remote hits in the failed v3 CI run.
+
+Keep the standard local, build, validation, export, push, and SBOM paths on
+`-o x86_64_v3 false`. The project option remains available for an explicit
+local opt-in, but an opt-in v3 build must expect to compile and maintain its own
+architecture-specific artifacts rather than relying on upstream cache reuse.
+
 ### Breaking Cold-Cache Starvation Loops via Temporary Timeout Extension (2026-07-13)
 
 **The Failure Pattern (Cold-Cache Starvation):** When local patches or junction modifications (such as necessary changes to `freedesktop-sdk.bst`) intentionally alter build configuration or bootstrap elements, they inevitably change the cache keys for downstream elements. On the next CI run, a massive cache miss is triggered. Because strict protective step/job timeouts (like 30m/45m) are in place, the GHA runner begins compiling the uncached elements from source but gets aborted before completion. Because the step is cancelled, the `Push OCI artifact to remote CAS` step is never reached. Consequently, the remote CAS remains cold, and every subsequent CI run is doomed to hit the exact same timeout, resulting in a permanent cold-cache starvation loop.

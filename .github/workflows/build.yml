@@ -92,7 +92,7 @@ jobs:
 
       - name: Pull prebuilt artifacts from remote CAS
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
         run: |
           just bst artifact pull --deps all ${{ matrix.element }}
         timeout-minutes: 15
@@ -100,7 +100,7 @@ jobs:
       - name: Count elements for progress tracking
         id: count
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
         run: |
           set +e
           BST_SHOW_OUT=$(just bst show --deps all --format "%{name}" \
@@ -119,7 +119,7 @@ jobs:
 
       - name: Build OCI image with BuildStream
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
           ELEMENT_TOTAL: ${{ steps.count.outputs.total }}
         run: |
           set -o pipefail
@@ -129,7 +129,7 @@ jobs:
 
       - name: Push OCI artifact to remote CAS
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-push.conf
+          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-push.conf
         run: |
           just bst artifact push --deps run ${{ matrix.element }}
         timeout-minutes: 30

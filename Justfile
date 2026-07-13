@@ -24,7 +24,8 @@ export OCI_IMAGE_VERSION := env("OCI_IMAGE_VERSION", "latest")
 
 # ── BuildStream wrapper ──────────────────────────────────────────────
 # Runs any bst command inside the bst2 container via podman.
-# Defaults to `-o x86_64_v3 true --no-interactive` so local runs match CI.
+# Defaults to baseline x86_64 (`-o x86_64_v3 false`) so local runs match CI
+# and reuse artifacts published by gnome-build-meta and freedesktop-sdk.
 # Set BST_FLAGS to append flags (e.g. --config ...).
 # Set BST_FLAGS_OVERRIDE to replace all default/appended flags.
 # Usage: just bst build oci/bluefin.bst
@@ -35,12 +36,12 @@ bst *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p "${HOME}/.cache/buildstream"
-    DEFAULT_BST_FLAGS="-o x86_64_v3 true --no-interactive"
+    DEFAULT_BST_FLAGS="-o x86_64_v3 false --no-interactive"
     if [ -n "${BST_FLAGS_OVERRIDE:-}" ]; then
         EFFECTIVE_BST_FLAGS="${BST_FLAGS_OVERRIDE}"
     else
         EFFECTIVE_BST_FLAGS="${BST_FLAGS:-}"
-        if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]-o[[:space:]]+x86_64_v3[[:space:]]+true([[:space:]]|$) ]]; then
+        if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]-o[[:space:]]+x86_64_v3[[:space:]]+(true|false)([[:space:]]|$) ]]; then
             EFFECTIVE_BST_FLAGS="${DEFAULT_BST_FLAGS} ${EFFECTIVE_BST_FLAGS}"
         fi
         if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]--no-interactive([[:space:]]|$) ]]; then

@@ -140,7 +140,7 @@ jobs:
       - name: Export OCI image from BuildStream
         id: export
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
           OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}
           OCI_IMAGE_REVISION: ${{ needs.setup.outputs.sha }}
@@ -277,7 +277,7 @@ jobs:
 
       - name: Generate SBOM
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
         run: just sbom ${{ matrix.variant }}
 
       - name: Upload SBOM artifact for release workflow
