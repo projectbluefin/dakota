@@ -164,20 +164,31 @@ Elements that install non-ELF payloads (plain text files, shell scripts, fonts, 
 
 When a remote BST build is slow or hits the workflow timeout, the first question is not "should we change the timeout again?" The first question is whether the generated BuildStream config is actually enabling remote execution and whether the run is progressing with remote cache activity. The 2026-07-06 investigation showed that a workflow can appear to be using the remote cache while still not dispatching expensive build actions to the remote execution service.
 
+**Current state:** The tracked workflow explicitly disables remote execution (`enable-remote-execution: "false"`), so a slow build today is expected to fail the RE-active checks below. The diagnosis first confirms the noncompliance, then drives the implementation fix; do not assume RE is present just because the job is running.
+
 Good evidence to gather before changing anything else:
 
 1. Confirm the workflow passes `enable-remote-execution: 'true'` to the generator.
 2. Confirm the generated `buildstream-ci.conf` contains a `remote-execution:` block.
-3. Inspect the build logs for remote cache activity (`Pulled artifact`, `Pulled source`, `does not have artifact/source cached`) and for evidence that the build is continuing past the initial fetch phase.
-4. If the build still stalls, inspect the active element graph and the latest upstream nightly delta rather than making another workflow-only change.
+3. Confirm BuildStream startup reports "Remote Execution Configuration" in the build log.
+4. Confirm live BuildBarn worker actions are observed on scheduler-selected workers (`Waiting for the remote build to complete` in BuildStream logs, or `Action:` lines in BuildBarn worker logs).
+5. Inspect the build logs for remote cache activity (`Pulled artifact`, `Pulled source`, `does not have artifact/source cached`) and for evidence that the build is continuing past the initial fetch phase.
+6. If the build still stalls, inspect the active element graph and the latest upstream nightly delta rather than making another workflow-only change.
 
-This matters because repeat toggles of the same flag can create the false impression that the problem is solved while the build stays in the same state. A real fix must show up in the generated config and in the BuildStream logs. If the config is correct and the logs show remote action cache activity, the next bottleneck is likely an actual element / upstream-cache issue rather than a workflow bug.
+A run that satisfies checks 1–2 but not 3–4 is in cache-only / runner-local mode and is an unacceptable operational state. Do not extend timeouts or merge until RE is actually executing actions on BuildBarn workers. A real fix must show up in the generated config and in the BuildStream logs as worker-executed actions.
 
-### Ghost-lab BST builds should avoid the broken buildbarn execution path when input-root staging fails (2026-07-07)
+### Ghost-lab input-root staging failure is a diagnosed RE failure, not a reason to disable RE (2026-07-07)
+
+> **Superseded by the RE-first policy.** The original lesson recommended keeping ghost-lab builds local to the runner. Dakota now requires verified RE; use the facts below to diagnose the specific failure and restore RE.
 
 The 2026-07-07 ghost-lab failure in `bootstrap/gcc.bst` was not a compiler regression; it was a BuildStream remote-execution input-root staging failure (`Failed to obtain input directory ".": Shard 1: Object not found`). The cluster workflow was routing both the remote execution and the artifact/source-cache path through the local buildbarn frontend, and that path failed before the compiler ever got a clean input tree.
 
-The more reliable lab fallback is to keep the build local to the cluster runner, use the shared project caches for read-only artifact/source pulls, and avoid remote execution for this path. That preserves the speed advantage of the persistent hostPath BST cache while removing the broken buildbarn execution/storage hop from the hot path.
+**Diagnosis steps to retain:**
+- Confirm the failure is an input-root staging error, not a compile error.
+- Check BuildBarn scheduler/worker health: `kubectl get pods -n buildbarn` and worker logs.
+- Verify whether routing RE and cache through the same frontend is contributing to the failure.
+
+**Recovery rule:** A temporary runner-local build with read-only cache pulls may be used as an explicit, diagnosed failure investigation, but it is not a new operating model. The follow-up work must restore verified RE before merging. A permanent local-execution fallback violates the Dakota build model.
 
 ### Prefer upstream alignment over local compiler workarounds (2026-07-08)
 
