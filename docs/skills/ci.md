@@ -18,17 +18,26 @@ Load this file, identify the failure class, then load only the next skill you ne
 
 ## Dakota build model
 
-The supported Dakota path is a single BuildStream build per target executed on the GitHub runner, using the remote cache at `cache.projectbluefin.io:11002` for artifacts and source caches.
-The build workflow should run the BuildStream build on the runner, push the built artifact to the remote CAS, and let the publish workflow export, lint, and tag the resulting images.
+**Target contract:** Dakota builds must use a single BuildStream build per target executed through **verified remote execution (RE) on the BuildBarn grid** at `cache.projectbluefin.io:11002`.
+The runner drives the build and pushes results to the remote CAS; expensive compile actions must run on BuildBarn workers, not on the GitHub runner.
 For Dakota, that means:
 - one build job per target (`dakota` and `dakota-nvidia`)
-- BuildStream config that uses the remote cache for artifacts/source caches while the runner performs the actual build
+- BuildStream config that contains a `remote-execution:` block routed through `cache.projectbluefin.io:11002`
 - no seed/warmup shards and no VM boot-check path in the default workflow
-- verification via `just lint` and the existing image export/publish path before `:testing` is moved
+- verification via the RE fail-fast evidence checks below and the existing image export/publish path before `:testing` is moved
+
+**Current verified state:** The tracked workflow is **not compliant** with this contract. `build.yml` calls the config generator with `enable-remote-execution: "false"`, the generator action errors if `enable-remote-execution` is set to `"true"`, and the generated `buildstream-ci.conf` contains no `remote-execution:` block. The current CI path is therefore runner-local / cache-only and is unacceptable under this policy. Restoring RE requires an implementation fix in the workflow and generator.
+
+The following operational states are **unacceptable** for normal Dakota builds:
+- remote artifact/source cache with local driver execution (runner-local builds)
+- cache-only mode where the runner performs the build work
+- any config that omits the `remote-execution:` block while still claiming to use remote cache
+
+The only acceptable exception is an **explicit, diagnosed failure investigation** where a known RE failure mode has been identified and documented for that run. A fallback to runner-local or cache-only execution is itself a failure state that must be recovered from, not a normal operating mode.
 
 When the workflow uses a composite action to generate BuildStream config, write the config files into `${GITHUB_WORKSPACE}` (the checkout root) rather than the action directory. The `just bst` wrapper mounts the checkout at `/src` inside the bst2 container, so the files must be visible there as `/src/buildstream-ci.conf` and `/src/buildstream-push.conf`.
 
-For runner-based Dakota builds, the generated config must explicitly contain `build.max-jobs: 1`. If that cap is missing, the job can drift into a long, resource-heavy run that looks like a hung BuildStream step. Treat a missing `max-jobs: 1` in the generated config as a workflow bug and fail fast rather than letting the build start.
+The generated config must contain a `remote-execution:` block. See the RE fail-fast evidence checks below.
 
 ## When to Use
 
@@ -153,11 +162,13 @@ This is the fast path for stale-image complaints: the image date is usually wron
 
 **Daily build schedule:** `build.yml` fires at 13:00 UTC daily (after `nightly-next-build` completes). This keeps the remote CAS warm and ensures a fresh `:testing` tag even without a code push. `cache-warm.yml` was deleted — the daily build replaces it.
 
-**Assembly-only model:** `build.yml` performs one final BST assembly per target and writes the artifact to the remote CAS. The default workflow does not run warmup shards, seed jobs, remote execution, or a VM boot-check path.
+**RE-backed assembly model (target):** `build.yml` must perform one final BST assembly per target through the BuildBarn RE service at `cache.projectbluefin.io:11002` and write the artifact to the remote CAS. The workflow must not run warmup shards, seed jobs, or a VM boot-check path. Remote execution is required, not optional.
+
+**Current state:** The tracked `build.yml` and `.github/actions/generate-bst-ci-config/action.yml` do not implement this model. They explicitly set `enable-remote-execution: "false"`, error if it is set to `"true"`, and generate a config with `artifacts:` / `source-caches:` but no `remote-execution:` block. This is a cache-only / runner-local build and is noncompliant.
 
 ## Remote Cache Architecture
 
-`cache.projectbluefin.io:11002` is the Dakota remote cache endpoint for artifact cache, source cache, and CAS storage. The default workflow uses it for final assembly and export; remote execution is explicitly disabled in the CI config.
+`cache.projectbluefin.io:11002` is the Dakota remote cache endpoint for artifact cache, source cache, CAS storage, and the BuildBarn remote-execution frontend. The default workflow routes build actions to the BuildBarn grid through this endpoint; the runner must not perform the actual build work.
 
 ### mTLS Authentication
 
@@ -166,9 +177,54 @@ This is the fast path for stale-image complaints: the image date is usually wron
 | `CASD_CLIENT_CERT` | Repository **variable** | PEM-encoded client certificate (public) |
 | `CASD_CLIENT_KEY` | Repository **secret** | PEM-encoded private key |
 
-**Push is conditional:** Remote cache section is only added to `buildstream-ci.conf` if **both** are set. Without credentials, BST builds from source using local disk cache only — slower but functional. This is normal for external contributors' forks.
+**Push is conditional:** Remote cache section is only added to `buildstream-ci.conf` if **both** are set. Without credentials, BST cannot push to the remote CAS. External contributors' forks may fall back to local-only builds, but this is a degraded local-development path and is not the Dakota CI contract.
 
-**Remote-cache sanity check:** the generated `buildstream-ci.conf` must include the `artifacts:` and `source-caches:` sections for `cache.projectbluefin.io:11002`, and the workflow stores the generated config in the `logs/` artifact for inspection. The default Dakota workflow intentionally leaves remote execution disabled so the GitHub runner performs the BuildStream build locally while the remote cache supplies artifact and source cache data.
+**RE sanity check:** the generated `buildstream-ci.conf` must contain a `remote-execution:` block and the `artifacts:` / `source-caches:` sections for `cache.projectbluefin.io:11002`. The workflow stores the generated config in the `logs/` artifact for inspection. A config that contains cache sections but no `remote-execution:` block is a misconfiguration and must fail fast.
+
+## ⚠️ RE Fail-Fast Evidence
+
+A Dakota build is not considered to be using remote execution until all three of the following pieces of evidence are present. Any run missing one of them must be treated as runner-local/cache-only and failed or fixed before it is allowed to continue.
+
+**Current state:** The tracked `build.yml` / `generate-bst-ci-config` action does not satisfy these checks. It generates a config with `artifacts:` / `source-caches:` but no `remote-execution:` block, so the current CI path is cache-only / runner-local and noncompliant. The checks below are the target contract; they will only pass after the workflow and generator are fixed.
+
+1. **Generated config contains `remote-execution:`**
+
+   Inspect the uploaded `buildstream-ci.conf`:
+
+   ```bash
+   grep -n "remote-execution:" buildstream-ci.conf
+   ```
+
+   A valid config must contain a `remote-execution:` block (not only `artifacts:` / `source-caches:`). If this block is absent, the build is not using RE.
+
+2. **BuildStream startup reports "Remote Execution Configuration"**
+
+   BuildStream prints a `Remote Execution Configuration` section in the startup banner when a `remote-execution:` block is loaded. Verify it in the BuildStream log:
+
+   ```bash
+   grep -A5 "Remote Execution Configuration" logs/*/*.log
+   ```
+
+   The section should list the execution, storage, and action-cache services. If the log shows only `User Configuration` and no `Remote Execution Configuration` section, the build is running locally on the runner.
+
+3. **Live BuildBarn worker actions are observed on scheduler-selected workers**
+
+   RE is only proven when actions are being dispatched to and executed by BuildBarn workers. Verify this from the BuildStream logs:
+
+   ```bash
+   grep -E "Waiting for the remote build to complete" logs/*/*.log | tail -50
+   ```
+
+   The scheduler assigns work to workers; seeing cache pulls or frontend connectivity is not enough. For deeper verification, inspect the BuildBarn namespace directly. The existing RE backend lesson notes worker log lines of the form `Action: ... with timeout ...`:
+
+   ```bash
+   kubectl get pods -n buildbarn
+   kubectl logs -n buildbarn deploy/worker | grep "Action:"
+   ```
+
+   A run that shows cache pulls but no worker-executed actions is in cache-only / local-driver mode and is unacceptable for production Dakota builds.
+
+**Do not claim a healthy production RE path without these three checks.** Cache hits, fast step times, or a green job status are not substitutes for the evidence above. If RE cannot be verified, treat the run as a diagnosed RE failure investigation and restore RE before merging.
 
 ## ⚠️ Pre-Commit BST Syntax Gate
 
@@ -209,24 +265,26 @@ git push --force-with-lease origin <branch-name>
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Build OOM or hangs | Memory pressure with 4 builders | Check element build resource usage; for GCC/bootstrap ICEs or OOM crashes, do not introduce local GCC toolchain workarounds or compiler-flag hacks. Prefer matching the upstream GNOME OS / `gnome-build-meta` / `freedesktop-sdk` ref that already works, and only use a local override if there is no upstream-aligned path and it has a documented exit condition. If the issue is purely resource pressure, set `build.max-jobs: 1` in the CI config to prevent memory exhaustion while allowing `scheduler.builders: 2` for parallel element scheduling. |
+| Build OOM or hangs | Worker memory pressure under RE; or runner-local fallback running too many jobs | First verify RE is actually enabled with the fail-fast evidence checks above. If RE is healthy, check element build resource usage and BuildBarn worker capacity. For GCC/bootstrap ICEs or OOM crashes, do not introduce local GCC toolchain workarounds or compiler-flag hacks. Prefer matching the upstream GNOME OS / `gnome-build-meta` / `freedesktop-sdk` ref that already works, and only use a local override if there is no upstream-aligned path and it has a documented exit condition. If the runner has fallen back to local execution, restore RE; runner-local builds are not a supported operating mode. |
 | "No space left on device" during **Chunkify** | Overlay copy-ups from `inject-xattrs.py` exhaust the ~1 GB root FS left by `setup-runner`'s BTRFS loopback | Fixed centrally in `chunka@v1` — auto-selects `/var/lib/containers` (BTRFS, ~49 GB) over `/var/tmp` (~1 GB) |
-| "No space left on device" during **Build** | BST cache fills runner disk | Check if any element generates large buildtrees |
+| "No space left on device" during **Build** | BST cache fills runner disk | Check if any element generates large buildtrees. With RE enabled, the runner should not be building elements locally; if it is, see the semi-cold RE cascade lesson below. |
 | `bootc container lint` fails | Image structure issues | Check OCI assembly, `/usr/etc` merge |
-| Build succeeds locally, fails in CI | Different cached versions | Compare `bst show` output; check remote CAS |
+| Build succeeds locally, fails in CI | Different cached versions or RE not enabled in CI | Compare `bst show` output; check remote CAS; confirm the CI generated config contains a `remote-execution:` block |
 | GHCR push fails | Token permissions | Check `packages: write` permission |
-| Remote cache not used | Cert/key not configured | Check repo Variables and Secrets |
+| Remote cache not used | Cert/key not configured or RE block missing | Check repo Variables and Secrets. Also verify the generated config contains both `remote-execution:` and the cache sections; cache credentials alone do not prove RE. |
+| Cache-only / runner-local build | `enable-remote-execution: false` (the current tracked default), missing `remote-execution:` block, or RE backend unreachable | This is an unacceptable operational state. The current `build.yml` / generator default is in this state. Collect the RE fail-fast evidence above, diagnose the specific RE failure (see the BuildBarn lessons below), and restore RE before merging. |
 
 ### Debugging Workflow
 
-1. **Check config step output** — confirms whether `artifacts:` / `source-caches:` sections are present
+1. **Check config step output** — confirm the generated `buildstream-ci.conf` contains a `remote-execution:` block, not only `artifacts:` / `source-caches:` sections
 2. **Search build log** — look for `[FAILURE]` lines; `on-error: continue` collects all failures
-3. **Check if remote cache was hit** — look for `[get artifact]` lines showing `cache.projectbluefin.io:11002`
-4. **Reproduce locally** — `just bst build oci/bluefin.bst` uses the same bst2 container
+3. **Verify RE is active** — confirm BuildStream startup reports "Remote Execution Configuration" and logs show actions completing on BuildBarn workers (see RE fail-fast evidence above)
+4. **Check if remote cache was hit** — look for `[get artifact]` lines showing `cache.projectbluefin.io:11002`
+5. **Reproduce locally only as a failure investigation** — `just bst build oci/bluefin.bst` uses the same bst2 container, but a local runner-only reproduction is for diagnosing a specific RE failure, not for bypassing RE in CI
 
 ## Generated Files (Pre-Commit Required)
 
-Some files are generated locally and committed — they cannot be regenerated in CI because generation requires `bst artifact list-contents`, which only reads the **local** BST artifact cache (not remote execution cache).
+Some files are generated locally and committed. Generation requires `bst artifact list-contents`, which can read from a configured remote artifact cache, but running the generator is still a local pre-commit step. Do not treat CI's ability to read remote artifacts as a reason to defer regeneration.
 
 | File | Generator | When to Regenerate |
 |---|---|---|
@@ -322,40 +380,64 @@ Keep the standard local, build, validation, export, push, and SBOM paths on
 `-o x86_64_v3 false`. The project option remains available for an explicit
 local opt-in, but an opt-in v3 build must expect to compile and maintain its own
 architecture-specific artifacts rather than relying on upstream cache reuse.
+### Verified BuildBarn remote execution is required — runner-local/cache-only are unacceptable operational states (2026-07-19)
+
+**Policy:** Dakota builds must use verified BuildStream remote execution through the BuildBarn grid at `cache.projectbluefin.io:11002`. The runner drives the build and handles CAS push/pull; compile actions must execute on BuildBarn workers so that cluster hardware is maximally utilized.
+
+The following are unacceptable operational states for a normal Dakota build:
+- remote artifact/source cache with local driver execution (runner-local builds);
+- cache-only mode where the runner performs the build work;
+- any generated config that omits the `remote-execution:` block while still claiming to use remote cache.
+
+The only acceptable exception is an **explicit, diagnosed failure investigation** where a known RE failure mode has been identified and documented for that specific run. Any such fallback must be followed by work to restore verified RE before merge.
+
+**Current verified state:** The tracked workflow is noncompliant. `build.yml` calls `.github/actions/generate-bst-ci-config` with `enable-remote-execution: "false"`, the action errors if `enable-remote-execution` is `"true"`, and the generated `buildstream-ci.conf` contains no `remote-execution:` block. The current CI path is therefore runner-local / cache-only. An implementation fix is required before Dakota builds satisfy this policy.
+
+**Fail-fast evidence:** A build is not proven to be using RE until all three checks from the RE Fail-Fast Evidence section above are satisfied:
+1. generated `buildstream-ci.conf` contains `remote-execution:`;
+2. BuildStream startup reports "Remote Execution Configuration";
+3. live BuildBarn worker actions are observed on scheduler-selected workers.
+
+Do not claim a healthy production RE path, extend timeouts, or merge without this evidence. Cache hits and green job status are not substitutes.
 
 ### Breaking Cold-Cache Starvation Loops via Temporary Timeout Extension (2026-07-13)
 
-**The Failure Pattern (Cold-Cache Starvation):** When local patches or junction modifications (such as necessary changes to `freedesktop-sdk.bst`) intentionally alter build configuration or bootstrap elements, they inevitably change the cache keys for downstream elements. On the next CI run, a massive cache miss is triggered. Because strict protective step/job timeouts (like 30m/45m) are in place, the GHA runner begins compiling the uncached elements from source but gets aborted before completion. Because the step is cancelled, the `Push OCI artifact to remote CAS` step is never reached. Consequently, the remote CAS remains cold, and every subsequent CI run is doomed to hit the exact same timeout, resulting in a permanent cold-cache starvation loop.
+**The Failure Pattern (Cold-Cache Starvation):** When local patches or junction modifications (such as necessary changes to `freedesktop-sdk.bst`) intentionally alter build configuration or bootstrap elements, they inevitably change the cache keys for downstream elements. On the next CI run, a massive cache miss is triggered. With RE enabled, BuildBarn workers compile the uncached elements. If RE is broken and the runner falls back to local compilation, strict step/job timeouts (like 30m/45m) can abort the runner before it finishes, the `Push OCI artifact` step is never reached, and the remote CAS remains cold. Every subsequent CI run then hits the same timeout, resulting in a permanent cold-cache starvation loop.
 
-**Why it happens:** The remote CAS can only be warmed up when a build successfully completes its compilation and reaches the `Push OCI artifact` step. Protective timeouts, while vital to prevent wasteful multi-hour runner hangs during accidental key drifts, actively block recovery when a change is legitimate and the cold cache *must* be compiled.
+**Why it happens:** The remote CAS can only be warmed up when a build successfully completes its compilation and reaches the `Push OCI artifact` step. Protective timeouts prevent wasteful multi-hour runner hangs, but they also block recovery if the runner is forced to compile locally because RE is unavailable.
 
 **The Recovery Rule:**
-1. **Differentiate intentional drift from accidental drift:** If the cache miss is due to a legitimate, intentional modification (like necessary junction patch alignment or gcc workarounds), expect a compilation and do not panic.
-2. **Temporarily extend the workflow timeouts:** Raise the GHA build step timeout (e.g., to 90 minutes) and the job timeout (e.g., to 150 minutes) to allow the compilation to finish.
-3. **Allow the push step to run:** Let the build complete, assemble the OCI image, and execute the `Push OCI artifact` step. This warms the remote CAS with the new cache keys.
-4. **Revert back to protective defaults:** Once the remote CAS is warm and subsequent builds are confirmed to finish in under 5 minutes, immediately revert the workflow timeouts back to the safe 30m/45m defaults to maintain active protection against future accidental drift.
+1. **Differentiate intentional drift from accidental drift:** If the cache miss is due to a legitimate, intentional modification, expect BuildBarn workers to compile the changed elements. Do not panic.
+2. **Verify RE is actually active first:** Use the RE fail-fast evidence checks above. A run that is compiling locally on the runner is in a failure state regardless of timeouts.
+3. **If RE is verified healthy but the build still times out:** temporarily extend workflow timeouts to let BuildBarn finish the cold compile and the push step. Raise the GHA build step timeout (e.g., to 90 minutes) and the job timeout (e.g., to 150 minutes).
+4. **If RE is not healthy, this is a diagnosed failure investigation:** a temporary runner-local compile with extended timeouts may be used to warm the CAS, but the resulting PR must also restore RE before it is merged. Runner-local builds are not an acceptable steady state.
+5. **Revert back to protective defaults:** Once RE is restored and subsequent builds are confirmed to finish in under 5 minutes, immediately revert the workflow timeouts back to the safe 30m/45m defaults.
 
 ### Cache-Only Assembly and the Build-From-Source Trap (2026-07-12)
 
+> **Superseded by the RE-first policy.** The original lesson described a cache-only / runner-local assembly model. Dakota now requires verified remote execution. Retain the core principle (align to warm caches, do not let the runner compile the world) but route compile work to BuildBarn, not the runner.
+
 **The Repetitive Failure Pattern:** When encountering a dependency cache miss during final OCI assembly, agents are prone to panic, remove the `--deps none` constraint from `build.yml`, and increase the workflow step timeouts to 330+ minutes. This triggers the *Build-From-Source Trap* where the GHA runner attempts to compile heavy bootstrap packages (like `gcc` and `glibc`) from source, resulting in extremely slow multi-hour builds that ultimately fail or time out.
 
-**Why it happens:** The cache miss is typically caused by local element, patch, or junction modifications that deviate from the known-good cache keys stored on the remote CAS. Allowing source compilation or raising timeouts merely papers over the key drift.
+**Why it happens:** The cache miss is typically caused by local element, patch, or junction modifications that deviate from the known-good cache keys stored on the remote CAS. Allowing source compilation on the runner or raising timeouts merely papers over the key drift and violates the RE-first operating model.
 
 **The Self-Improvement Fix:** 
-1. **Never build from source:** Always keep strict `--deps none` in `just bst build --deps none ${{ matrix.element }}`.
-2. **Pre-warm cold caches to prevent network timeout stalls:** Running `just bst artifact pull --deps all ${{ matrix.element }}` right before `bst build` pre-pulls all prebuilt artifacts from the remote CAS into the cold local GHA runner cache in ~2 minutes, preventing network-bound source-fetching stalls during subsequent sandbox staging.
-3. **Keep timeouts tight:** Enforce a strict 30-minute step timeout and 45-minute job timeout. If a cache miss occurs, the build must fail fast and loudly.
-4. **Align, do not compile:** When a build fails due to a cache miss, the only correct fix is to align the elements, patches, and files to the exact `d10b2b1057b7cfab87d9f10340f7002b81c2bffd` baseline to restore 100% warm-cache keys. Do not touch workflow timeouts or dependency flags.
+1. **Never build from source on the runner:** With RE enabled, BuildBarn compiles uncached elements. The runner must not be the compile host. If the runner is compiling heavy packages, RE has failed; diagnose and restore RE.
+2. **Keep `--deps none` for the final OCI assembly step:** `just bst build --deps none ${{ matrix.element }}` still keeps the runner from pulling the full dependency graph, but the RE config must still be present so any missing artifacts are built remotely, not locally.
+3. **Pre-warm cold caches only as a local aid:** Running `just bst artifact pull --deps all ${{ matrix.element }}` can pre-pull prebuilt artifacts into the local GHA runner cache in ~2 minutes, but this is an optimization, not a substitute for RE. A run that only pre-pulls and then builds locally is cache-only and unacceptable.
+4. **Keep timeouts tight:** Enforce a strict 30-minute step timeout and 45-minute job timeout. If a cache miss occurs, the build must fail fast and loudly unless RE is verified active and the cold compile is genuinely progressing on BuildBarn workers.
+5. **Align, do not compile locally:** When a build fails due to a cache miss, the primary fix is still to align the elements, patches, and files to the known-good baseline to restore 100% warm-cache keys. Do not touch workflow timeouts or dependency flags to hide a runner-local compile. If alignment is impossible, use verified RE to compile the cold elements; runner-local compilation is a diagnosed-failure fallback only.
 
 ### Runner cache configuration must preserve upstream fallbacks (2026-07-11)
 
-The normal path is one serial runner-side BuildStream assembly for each top-level
-OCI element. `cache.projectbluefin.io:11002` is the authenticated writable cache;
-`gbm.gnome.org:11003` and `cache.freedesktop-sdk.io:11001` must remain read-only
-artifact and source-cache fallbacks. Replacing that server list forces a cold SDK
-and GNOME compilation, causing multi-hour runs. The generated files must be
-written under `${GITHUB_WORKSPACE}` because the `just bst` container maps it to
-`/src`. The known-good serial pair completes in about 20 minutes; each assembly
+The normal path is a BuildStream build per target routed through the BuildBarn RE
+service at `cache.projectbluefin.io:11002`. `cache.projectbluefin.io:11002` is the
+authenticated writable cache; `gbm.gnome.org:11003` and
+`cache.freedesktop-sdk.io:11001` must remain read-only artifact and source-cache
+fallbacks. Replacing that server list forces a cold SDK and GNOME compile,
+causing multi-hour runs even on BuildBarn. The generated files must be written
+under `${GITHUB_WORKSPACE}` because the `just bst` container maps it to `/src`.
+A known-good warm run completes the assembly in about 20 minutes; each assembly
 is capped at 30 minutes with a 15-minute artifact-push tail. Do not recreate seed
 shards, retry chains, or local publish fallbacks.
 
@@ -371,41 +453,51 @@ The pre-flight rule (cancel all active runs before any CI action) has a failure 
 
 Applying any patches to the `gnome-build-meta` junction (e.g., local patch queues) invalidates cache keys for downstream elements and forces hours of WebKit compilation from source. In July 2026, the local patch queue was completely removed from `elements/gnome-build-meta.bst` (commit `dbb9f6d6`). This restores 100% cache alignment with `gbm.gnome.org:11003`. WebKit and other platform elements are now fetched as cached artifacts. DO NOT introduce any local patches to gnome-build-meta or freedesktop-sdk junctions, as this forces WebKit recompilation. DO NOT run any WebKit compilation or seed shards in CI workflows, as they are completely unnecessary and slow down the publish pipeline.
 
-### Runner-based BST builds stay on the GitHub runner (2026-07-11)
+### RE-backed BST builds route compile work to BuildBarn (2026-07-11)
 
-The supported Dakota path is a single `just bst build ...` invocation on the GitHub runner, with the remote cache providing artifact and source-cache access for the build. This keeps the build on the runner hardware that was previously working while still using `cache.projectbluefin.io:11002` for the cache services the build needs.
+> **Superseded by the RE-first policy.** The original lesson kept the build on the GitHub runner and used the remote cache only for artifact/source pulls. Dakota now requires verified remote execution.
 
-The CI config generator must write `buildstream-ci.conf` and `buildstream-push.conf` to `/src/` so the workflow's `BST_FLAGS: --config /src/buildstream-ci.conf` path stays correct. Writing the files into the repository checkout instead of `/src/` breaks the runner-based build path even when the YAML itself is otherwise valid.
+**Target contract:** The supported Dakota path is a single `just bst build ...` invocation on the GitHub runner **with a `remote-execution:` block** that dispatches build actions to the BuildBarn grid. The runner must not perform the compile work; `cache.projectbluefin.io:11002` provides both the RE frontend and the artifact/source-cache services the build needs.
 
-For runner-based CI, keep `scheduler.builders: 2` but cap each element build with `build.max-jobs: 1` in the generated config. That preserves the fast runner build model while avoiding memory pressure and hung build steps on the GitHub runner. The current workflow does not rely on a `remote-execution:` block and should not be changed to add one unless a future investigation proves that the runner-only path is no longer sufficient.
+**Current state:** The tracked generator is hard-coded to reject `enable-remote-execution: "true"` and emits a runner-local config with `build.max-jobs: 1`. This is noncompliant and must be fixed before the target contract is met.
 
-### Cache access and local execution are separate; do not toggle blindly (2026-07-11)
+The CI config generator must write `buildstream-ci.conf` and `buildstream-push.conf` to `/src/` so the workflow's `BST_FLAGS: --config /src/buildstream-ci.conf` path stays correct. Writing the files into the repository checkout instead of `/src/` breaks the build path even when the YAML itself is otherwise valid.
 
-The investigation showed that cache access and local execution are distinct concerns in BuildStream:
+For RE-backed CI, keep `scheduler.builders: 2` and set `build.max-jobs` to a value the BuildBarn workers can sustain. Historical tuning on this project reached a ceiling of `max-jobs: 8` after `max-jobs: 16` correlated with server-side instability (see the 2026-07-09 lessons below). Do not cap the whole build to `max-jobs: 1` to protect the runner; with RE, the runner is not the compile host. A missing or disabled `remote-execution:` block is a misconfiguration, not a supported local-execution mode.
+
+### Cache access and RE are separate; verify both (2026-07-11)
+
+> **Superseded by the RE-first policy.** The original lesson treated runner-local execution as the working path and remote cache as a separate service. Dakota now requires remote execution; cache access alone is insufficient.
+
+Cache access and remote execution are distinct concerns in BuildStream:
 
 - `artifacts:` / `source-caches:` make the runner talk to `cache.projectbluefin.io:11002` for pulls and pushes.
-- The runner itself is still responsible for the actual `just bst build ...` work.
+- `remote-execution:` routes actual build actions to the BuildBarn grid so the runner does not perform the compile work.
 
-The working evidence for the current path is:
+**Current state:** The tracked generator produces `artifacts:` / `source-caches:` but no `remote-execution:` block. This is cache-only / runner-local and is noncompliant.
 
-1. `build.yml` passes `enable-remote-execution: 'false'` to the config generator.
-2. The generated `buildstream-ci.conf` contains the expected `artifacts:` / `source-caches:` sections for the remote cache.
-3. The BuildStream logs show the build advancing on the runner while the remote cache services satisfy pulls and pushes.
+The required evidence once the workflow is fixed is the RE fail-fast evidence above:
 
-Next-run checklist for any future runner-build investigation:
+1. The generated `buildstream-ci.conf` contains a `remote-execution:` block.
+2. BuildStream startup reports "Remote Execution Configuration".
+3. BuildStream logs show actions completing on BuildBarn workers.
+
+A config with cache sections but no `remote-execution:` block puts the build into cache-only / runner-local mode. That is an unacceptable operational state and must be treated as a bug, not a working fallback.
+
+Next-run checklist for any future build-path investigation:
 
 ```bash
-# 1. Confirm the workflow still uses the runner for the build
-#    (build.yml)
-grep -n "just bst build" .github/workflows/build.yml
+# 1. Confirm the generated config contains remote execution
+grep -n "remote-execution:" buildstream-ci.conf
 
 # 2. Confirm the generated config includes the remote cache sections
-#    (artifacts/source-caches)
 grep -n "cache.projectbluefin.io:11002" buildstream-ci.conf
 
-# 3. Check the build logs for remote cache activity and advancing build state
-#    (uploaded buildstream logs artifact)
-grep -E "Pulled artifact|Pulled source|does not have artifact|does not have source|Built" logs/*/*.log | tail -50
+# 3. Check BuildStream startup for the RE configuration banner
+grep -A5 "Remote Execution Configuration" logs/*/*.log
+
+# 4. Check the build logs for worker-executed actions
+grep "Waiting for the remote build to complete" logs/*/*.log | tail -50
 ```
 
 ### ARM warm-cache must be a parallel job with its own concurrency group (2026-06-22)
@@ -421,8 +513,7 @@ ARM failures. The correct pattern:
 - Use `BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf --option arch aarch64`
   — the `--config` flag is required for the generated BST CI config (and the
   remote CAS push) to actually take effect.
-- Use `enable-remote-execution: false`, `enable-push: true` — no RE service for
-  ARM yet, but artifacts should still be pushed to the remote CAS.
+- Use the same RE-first config as x86_64 (`enable-remote-execution: 'true'`) — any ARM build must also route compile actions to BuildBarn. If ARM RE is genuinely not available, that is a diagnosed infrastructure gap to fix, not a reason to default ARM to runner-local/cache-only execution.
 - Use a distinct BST workspace cache key: `bst-warm-aarch64-${{ hashFiles(...) }}`
   — sharing a key with x86 will cause cross-arch cache pollution.
 
@@ -2560,10 +2651,12 @@ line chunks and build-phase output is sparse — hours of flat line-count is nor
    The workflow no longer uses the RE NOT_FOUND hotfix, the retry loop, or the
    output-stall watchdog added during the 2026-07-10 outage. The supported Dakota
    path is a single direct `just bst build ...` invocation with the generated CI
-   config and the regular BuildStream container.
+   config that contains a `remote-execution:` block, using the regular BuildStream
+   container.
 
-   If a run appears stuck, do not layer on more ad hoc workflow retries or podman
-   hooks. Capture the run ID and monitor the build/publish pair from the CLI:
+   If a run appears stuck, verify RE first with the fail-fast evidence checks above
+   before layering on ad hoc workflow retries or podman hooks. Capture the run ID
+   and monitor the build/publish pair from the CLI:
 
    ```bash
    just monitor-pipeline BUILD_RUN_ID=29125255417
@@ -2578,6 +2671,6 @@ line chunks and build-phase output is sparse — hours of flat line-count is nor
 
 When generating a custom `buildstream-ci.conf` in CI and specifying custom `artifacts` or `source-caches` blocks, BuildStream completely overrides the project-level cache servers defined in `project.conf` rather than appending to them.
 
-**The Failure Pattern:** On core junction bumps (e.g. freedesktop-sdk or gnome-build-meta updates), if remote execution is disabled and the generated config overrides the server list to contain only the projectbluefin CAS, there is a cache miss on almost the entire universe. Because the upstream read-only caches (`gbm.gnome.org:11003` and `cache.freedesktop-sdk.io:11001`) are absent from the overridden configuration, the local runner is forced to download the sources and compile the entire SDK/GNOME desktop from source. On 2-core GHA runners, this causes multi-hour compiles that trigger OOM (exit code 137) or timeouts.
+**The Failure Pattern:** On core junction bumps (e.g. freedesktop-sdk or gnome-build-meta updates), if the generated config overrides the server list to contain only the projectbluefin CAS, there is a cache miss on almost the entire universe. Because the upstream read-only caches (`gbm.gnome.org:11003` and `cache.freedesktop-sdk.io:11001`) are absent from the overridden configuration, BuildBarn (or the runner, if RE is also broken) is forced to download sources and compile the entire SDK/GNOME desktop. This causes multi-hour compiles that trigger OOM, worker timeouts, or runner timeouts.
 
-**The Fix:** Always include the upstream read-only caches as fallback servers in any overridden `artifacts` and `source-caches` blocks within the generated `buildstream-ci.conf`. This preserves 100% cache alignment with upstream SDK/GNOME builds and allows the local runner to pull pre-built SDK/GNOME artifacts instantly, ensuring that only the lightweight, project-specific elements are assembled locally.
+**The Fix:** Always include a `remote-execution:` block routed through `cache.projectbluefin.io:11002` and include the upstream read-only caches as fallback servers in any overridden `artifacts` and `source-caches` blocks within the generated `buildstream-ci.conf`. This preserves 100% cache alignment with upstream SDK/GNOME builds and allows BuildBarn to pull pre-built SDK/GNOME artifacts instantly. With RE enabled, project-specific elements are built remotely, not assembled locally on the runner.
