@@ -54,8 +54,22 @@ jobs:
             BUILD_SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/testing" --jq '.object.sha')
           fi
 
-          # Verify the SHA-tagged image exists in GHCR (proves this SHA was published)
-          skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:${BUILD_SHA}" > /dev/null
+          # Verify the SHA-tagged image exists in GHCR (proves this SHA was published).
+          # GHCR can briefly lag after publish.yml completes, so retry before
+          # declaring the release broken.
+          for attempt in $(seq 1 12); do
+            if skopeo inspect --no-tags \
+                "docker://ghcr.io/projectbluefin/dakota:${BUILD_SHA}" > /dev/null 2>&1; then
+              echo "Verified :${BUILD_SHA} is readable in GHCR (attempt ${attempt})"
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "ERROR: :${BUILD_SHA} is still unavailable in GHCR after publish"
+              exit 1
+            fi
+            echo "Waiting for GHCR to expose :${BUILD_SHA} (attempt ${attempt}/12)..."
+            sleep 10
+          done
 
           # Guard: if testing advanced since the build, the reusable fast-forward would
           # point main to a newer commit than the image we're promoting. Skip promotion.

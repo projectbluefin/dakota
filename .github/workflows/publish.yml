@@ -194,6 +194,23 @@ jobs:
           done
           $PUSH_OK || { echo "ERROR: all push attempts failed for :${BUILD_SHA}"; exit 1; }
 
+          # GHCR can briefly return manifest unknown immediately after a push.
+          # Do not let downstream smoke/release workflows race that visibility lag.
+          for attempt in $(seq 1 12); do
+            if skopeo inspect --no-tags \
+                --creds "$GH_ACTOR:$GH_TOKEN" \
+                "docker://${IMAGE}:${BUILD_SHA}" > /dev/null 2>&1; then
+              echo "Verified immutable tag :${BUILD_SHA} is readable (attempt ${attempt})"
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "ERROR: GHCR never exposed :${BUILD_SHA} after push"
+              exit 1
+            fi
+            echo "Waiting for GHCR to expose :${BUILD_SHA} (attempt ${attempt}/12)..."
+            sleep 10
+          done
+
           echo "digest=$(cat /tmp/digest.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Install oras
@@ -378,6 +395,22 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
+          # Check the immutable source before copying. This also absorbs a short
+          # GHCR manifest-visibility delay without moving a broken stream tag.
+          for attempt in $(seq 1 12); do
+            if skopeo inspect --no-tags \
+                --creds "$GH_ACTOR:$GH_TOKEN" \
+                "docker://${IMAGE}:${BUILD_SHA}" > /dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "ERROR: source tag :${BUILD_SHA} is not readable in GHCR"
+              exit 1
+            fi
+            echo "Waiting for source tag :${BUILD_SHA} (attempt ${attempt}/12)..."
+            sleep 10
+          done
+
           PUSH_OK=false
           for attempt in 1 2 3; do
             skopeo copy \
@@ -390,6 +423,13 @@ jobs:
             [ "$attempt" -lt 3 ] && sleep 5
           done
           $PUSH_OK || { echo "ERROR: all copy attempts failed for :${TESTING_TAG}"; exit 1; }
+
+          if ! skopeo inspect --no-tags \
+              --creds "$GH_ACTOR:$GH_TOKEN" \
+              "docker://${IMAGE}:${TESTING_TAG}" > /dev/null 2>&1; then
+            echo "ERROR: promoted tag :${TESTING_TAG} is not readable in GHCR"
+            exit 1
+          fi
 
       - name: Push :btw alias (next stream only)
         if: needs.setup.outputs.testing_tag == 'next'

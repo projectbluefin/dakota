@@ -421,7 +421,7 @@ Do not claim a healthy production RE path, extend timeouts, or merge without thi
 
 **Why it happens:** The cache miss is typically caused by local element, patch, or junction modifications that deviate from the known-good cache keys stored on the remote CAS. Allowing source compilation on the runner or raising timeouts merely papers over the key drift and violates the RE-first operating model.
 
-**The Self-Improvement Fix:** 
+**The Self-Improvement Fix:**
 1. **Never build from source on the runner:** With RE enabled, BuildBarn compiles uncached elements. The runner must not be the compile host. If the runner is compiling heavy packages, RE has failed; diagnose and restore RE.
 2. **Keep `--deps none` for the final OCI assembly step:** `just bst build --deps none ${{ matrix.element }}` still keeps the runner from pulling the full dependency graph, but the RE config must still be present so any missing artifacts are built remotely, not locally.
 3. **Pre-warm cold caches only as a local aid:** Running `just bst artifact pull --deps all ${{ matrix.element }}` can pre-pull prebuilt artifacts into the local GHA runner cache in ~2 minutes, but this is an optimization, not a substitute for RE. A run that only pre-pulls and then builds locally is cache-only and unacceptable.
@@ -2674,3 +2674,14 @@ When generating a custom `buildstream-ci.conf` in CI and specifying custom `arti
 **The Failure Pattern:** On core junction bumps (e.g. freedesktop-sdk or gnome-build-meta updates), if the generated config overrides the server list to contain only the projectbluefin CAS, there is a cache miss on almost the entire universe. Because the upstream read-only caches (`gbm.gnome.org:11003` and `cache.freedesktop-sdk.io:11001`) are absent from the overridden configuration, BuildBarn (or the runner, if RE is also broken) is forced to download sources and compile the entire SDK/GNOME desktop. This causes multi-hour compiles that trigger OOM, worker timeouts, or runner timeouts.
 
 **The Fix:** Always include a `remote-execution:` block routed through `cache.projectbluefin.io:11002` and include the upstream read-only caches as fallback servers in any overridden `artifacts` and `source-caches` blocks within the generated `buildstream-ci.conf`. This preserves 100% cache alignment with upstream SDK/GNOME builds and allows BuildBarn to pull pre-built SDK/GNOME artifacts instantly. With RE enabled, project-specific elements are built remotely, not assembled locally on the runner.
+
+### GHCR tag visibility needs an explicit verification barrier
+
+A successful `podman push` is not sufficient evidence that a newly pushed immutable
+SHA tag is immediately readable by other GitHub-hosted runners. The 2026-07-20
+publish completed its default push, but the follow-on smoke and release jobs saw
+`manifest unknown` for the same SHA. Treat GHCR visibility as a separate readiness
+condition: retry `skopeo inspect` after the push, before moving `:testing`, and again
+in any `workflow_run` consumer before pulling the image. This keeps eventual
+registry consistency from producing false smoke failures or a release job that
+races a tag that is not yet readable.

@@ -52,6 +52,7 @@ jobs:
       - name: Generate BuildStream CI config
         uses: ./.github/actions/generate-bst-ci-config
         with:
+          enable-remote-execution: 'false'
           enable-push: 'false'
         env:
           CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
