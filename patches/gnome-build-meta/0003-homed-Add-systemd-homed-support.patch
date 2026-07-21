@@ -1,3 +1,27 @@
+From efd777d188d7c40b7d920a87728b8e7c60b23f20 Mon Sep 17 00:00:00 2001
+From: Adrian Vovk <avovk@gnome.org>
+Date: Wed, 17 Jun 2026 22:01:35 -0400
+Subject: [PATCH] Add support for systemd-homed
+
+Enable homed unconditionally: switch gnome-initial-setup to Adrian
+Vovk's homed fork for proper user creation; drop malcontent from
+gnome-control-center, gnome-initial-setup, and gnome-software;
+disable parental controls flags; enable -Dcreate_homed=true in
+accountsservice; configure the live generator to set
+DefaultStorage=subvolume for homed home directories.
+
+Port of gnome-build-meta!2681.
+
+Upstream-Status: Submitted https://gitlab.gnome.org/GNOME/gnome-build-meta/-/merge_requests/2681
+Exit condition: Drop after gnome-build-meta gnome-50 merges MR !2681
+---
+ elements/core-deps/accountsservice.bst | 4 ++++
+ elements/core/gnome-control-center.bst | 2 --
+ elements/core/gnome-initial-setup.bst  | 9 ++++-----
+ elements/core/gnome-software.bst       | 2 +-
+ files/gnomeos/live/generator.c         | 5 +++++
+ 5 files changed, 21 insertions(+), 8 deletions(-)
+
 diff --git a/elements/core-deps/accountsservice.bst b/elements/core-deps/accountsservice.bst
 index dabcfa8..73f280f 100644
 --- a/elements/core-deps/accountsservice.bst
@@ -76,26 +100,28 @@ index 29e7c47..5c46b2b 100644
      -Dsystemd-sysupdate=true
 +    -Dmalcontent=false
 diff --git a/files/gnomeos/live/generator.c b/files/gnomeos/live/generator.c
-index 8fe5b0f..86633b0 100644
+index 8fe5b0f..bf92377 100644
 --- a/files/gnomeos/live/generator.c
 +++ b/files/gnomeos/live/generator.c
-@@ -131,6 +131,7 @@ static bool mark_live() {
- 
- static bool handle_live(const char *generator_path, bool in_initrd) {
-         _cleanup_(fclosep) FILE* file = NULL;
-+        _cleanup_(fclosep) FILE* file2 = NULL;
- 
-         if (in_initrd) {
-                 mkdir("/run/systemd/zram-generator.conf.d", 0777);
-@@ -154,6 +155,11 @@ static bool handle_live(const char *generator_path, bool in_initrd) {
+@@ -154,6 +154,18 @@ static bool handle_live(const char *generator_path, bool in_initrd) {
                  fprintf(file, "[zram1]\nmount-point=/\nfs-type=btrfs\n");
                  fclosep(&file);
  
-+                mkdir("/run/systemd/homed.conf.d", 0777);
-+                file2 = fopen("/run/systemd/homed.conf.d/00-force-subvolume.conf", "w");
-+                fprintf(file2, "[Home]\nDefaultStorage=subvolume\n");
-+                fclosep(&file2);
++                if (mkdir("/run/systemd/homed.conf.d", 0755) < 0 && errno != EEXIST) {
++                        kmsg_printf(LOG_WARNING, "Failed to create homed.conf.d directory: %m\n");
++                } else {
++                        file = fopen("/run/systemd/homed.conf.d/00-force-subvolume.conf", "w");
++                        if (file) {
++                                fprintf(file, "[Home]\nDefaultStorage=subvolume\n");
++                                fclosep(&file);
++                        } else {
++                                kmsg_printf(LOG_WARNING, "Failed to create homed configuration: %m\n");
++                        }
++                }
 +
                  if (!mark_live())
                          return false;
  
+-- 
+2.54.0
+
