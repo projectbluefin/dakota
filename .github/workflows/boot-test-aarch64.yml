@@ -26,8 +26,8 @@ on:
   workflow_dispatch:
     inputs:
       image:
-        description: "Image ref to boot-test"
-        default: "ghcr.io/projectbluefin/dakota:aarch64"
+        description: "Image ref to boot-test (empty = this repo owner's :aarch64 tag)"
+        default: ""
         type: string
 
 permissions:
