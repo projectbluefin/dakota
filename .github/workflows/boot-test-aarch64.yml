@@ -121,6 +121,13 @@ jobs:
           SSH_TIMEOUT: "600"
         run: |
           set -uo pipefail
+          # bcvk is KVM-only (no TCG mode). GitHub-hosted arm64 runners expose
+          # no /dev/kvm (verified 2026-07-23) — skip rather than fail. This job
+          # does real work on KVM-capable (self-hosted) runners.
+          if [ ! -e /dev/kvm ]; then
+            echo "SKIP: no /dev/kvm on this runner — bcvk requires KVM."
+            exit 0
+          fi
           export PATH="$HOME/.cargo/bin:$PATH"
           VM_NAME="dakota-m0-boot"
           ART_DIR="${RUNNER_TEMP}/boot-artifacts"
