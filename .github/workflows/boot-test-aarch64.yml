@@ -134,7 +134,10 @@ jobs:
           trap cleanup EXIT
 
           echo "==> Launching ephemeral VM from ${IMAGE}..."
-          sudo "$HOME/.cargo/bin/bcvk" ephemeral run -d --rm -K --console \
+          # No --rm: if the VM exits early (the exact failure we want to
+          # diagnose), autoremoval would race away the container before
+          # cleanup() captures serial.log. cleanup() does the rm -f.
+          sudo "$HOME/.cargo/bin/bcvk" ephemeral run -d -K --console \
             --memory 8192M --vcpus 4 --name "$VM_NAME" "${IMAGE}"
 
           echo "==> Waiting for SSH (timeout ${SSH_TIMEOUT}s)..."
