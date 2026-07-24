@@ -81,5 +81,5 @@ config:
 
     # Dakota uses its own ublue-motd (from motd.bst) with a double-display guard.
     # Remove common's umotd.sh hook to prevent dual MOTD on every login.
-    rm -f "%{install-root}%{sysconfdir}/profile.d/umotd.sh"
+    rm -f "%{install-root}%{sysconfdir}/profile.d/umotd.sh" || true
   - "%{install-extra}"
