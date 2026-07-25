@@ -43,7 +43,8 @@ config:
     cp -r bluefin-branding/system_files/etc/./ "%{install-root}%{sysconfdir}/"
 
     # Default Bluefin shell MOTD to disabled, while allowing user overrides.
-    install -Dm644 /dev/stdin "%{install-root}%{sysconfdir}/profile.d/bluefin-shell-defaults.sh" <<'EOF'
+    install -Dm644 /dev/null "%{install-root}%{sysconfdir}/profile.d/bluefin-shell-defaults.sh"
+    cat > "%{install-root}%{sysconfdir}/profile.d/bluefin-shell-defaults.sh" <<'EOF'
     : "${BLUEFIN_SHELL_ENABLE_MOTD:=0}"
     export BLUEFIN_SHELL_ENABLE_MOTD
     EOF

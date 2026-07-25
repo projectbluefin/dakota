@@ -31,7 +31,8 @@ config:
     mv "%{install-root}%{indep-libdir}/systemd/system/tailscaled.service.patched" \
        "%{install-root}%{indep-libdir}/systemd/system/tailscaled.service"
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system-preset/80-tailscale.preset" <<'PRESET'
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system-preset/80-tailscale.preset"
+    cat > "%{install-root}%{indep-libdir}/systemd/system-preset/80-tailscale.preset" <<'PRESET'
     enable tailscaled.service
     PRESET
   - |

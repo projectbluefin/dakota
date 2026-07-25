@@ -26,7 +26,8 @@ config:
   - install -Dm644 template.md "%{install-root}/usr/share/ublue-os/motd/template.md"
   - install -Dm644 tips/10-tips.md "%{install-root}/usr/share/ublue-os/motd/tips/10-tips.md"
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{sysconfdir}/profile.d/bluefin-shell-defaults.sh" <<'EOF'
+    install -Dm644 /dev/null "%{install-root}%{sysconfdir}/profile.d/bluefin-shell-defaults.sh"
+    cat > "%{install-root}%{sysconfdir}/profile.d/bluefin-shell-defaults.sh" <<'EOF'
     : "${BLUEFIN_SHELL_ENABLE_MOTD:=1}"
     export BLUEFIN_SHELL_ENABLE_MOTD
     EOF
