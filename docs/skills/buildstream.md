@@ -152,3 +152,7 @@ Do not cancel a build under 120 min just because it "seems slow." Historical ran
 ### 32 fetchers is the right setting for cache.projectbluefin.io (2026-06-23)
 
 `buildstream-ci.conf` uses `fetchers: 32` (BST default is 10). With default + nvidia running simultaneously = 64 concurrent gRPC streams. The CAS server is a Hetzner AX102-U (1 Gbit/s uplink, NVMe Gen4) and can serve 64 streams comfortably. The bottleneck is network bandwidth (~125 MB/s total), not server capacity. Do not reduce fetchers without evidence of server-side saturation.
+
+### Avoid /dev/stdin redirection in remote sandboxes (2026-07-25)
+
+BuildStream elements that write inline configuration files using `install -Dm644 /dev/stdin ... <<'EOF'` fail in remote execution sandboxes (like BuildBarn) where `/dev/stdin` is not available as a standard character device. Write inline files using a two-step pattern: create the destination file with `install -Dm644 /dev/null target`, then populate it with `cat > target <<'EOF'`.
