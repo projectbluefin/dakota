@@ -191,3 +191,7 @@ reads from the source), the Go vendor tarball must be generated offline and uplo
 separately. Factor in this extra maintenance step when deciding between Pattern 1 and
 Pattern 2 — Pattern 1 (go_module sources) is more maintainable long-term because refs
 can be updated in-place.
+### Dependent Go elements need an explicit GOROOT in remote sandboxes
+
+The freedesktop-sdk Go toolchain installs its standard library under `%{libdir}/go`, but dependent elements do not inherit the toolchain element’s `GOROOT_BOOTSTRAP`. Set `GOROOT: "%{libdir}/go"` in every Dakota element that invokes `go build`; otherwise BuildBarn remote actions can fail with `go: cannot find GOROOT directory` even though the Go binary is present.
+

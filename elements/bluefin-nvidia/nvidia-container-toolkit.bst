@@ -26,6 +26,9 @@ build-depends:
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 
+environment:
+  GOROOT: "%{libdir}/go"
+
 variables:
   local_ldflags: -Wl,-z,lazy
 
