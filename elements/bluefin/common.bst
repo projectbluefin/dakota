@@ -79,8 +79,4 @@ config:
     rm -f "%{install-root}%{prefix}/bin/rechunker-group-fix"
     rm -f "%{install-root}%{prefix}/lib/systemd/system/rechunker-group-fix.service"
     rm -f "%{install-root}%{prefix}/lib/systemd/system-preset/00-rechunker-group-fix.preset"
-
-    # Dakota uses its own ublue-motd (from motd.bst) with a double-display guard.
-    # Remove common's umotd.sh hook to prevent dual MOTD on every login.
-    rm -f "%{install-root}%{sysconfdir}/profile.d/umotd.sh"
   - "%{install-extra}"
