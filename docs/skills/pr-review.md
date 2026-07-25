@@ -150,4 +150,8 @@ corresponding `install -Dm644 ... "%{install-root}/..."` line is silently incomp
 PR 750 added `files/firstboot/keyring-unlock.service` with no install-commands
 entry — the service would never land in the image.
 
+### Sequential queueing for merge-queue ruleset branches (2026-07-25)
+
+When merging PRs into branches with GitHub merge queue enabled (`testing`), `gh pr merge --auto --squash` places clean PRs into the queue sequentially. Always run the mandatory CI pre-flight check (`gh run list`) to clear conflicting active runs before dispatching full image builds.
+
 ---
