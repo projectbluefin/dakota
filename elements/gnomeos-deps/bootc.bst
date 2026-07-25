@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:bootc-dev/bootc.git
   track: v*
-  ref: v1.16.4-0-g20d17fcd736177023dd44e73c3e82fbf1cae8a0f
+  ref: v1.16.5-0-ge7d701a8168e35acbdb867b764a86e1de1fe3881
 - kind: cargo2
   ref:
   - kind: registry
@@ -92,10 +92,10 @@ sources:
     version: 0.22.1
     sha: 72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6
   - kind: git
-    commit: bdf106c74c13a0a1a4b39f9ad0f52b238fe2d318
+    commit: 1126d6e334023c734b851adeffb6bab58020f11e
     repo: https://github.com/bootc-dev/bcvk
     query:
-      rev: bdf106c74c13a0a1a4b39f9ad0f52b238fe2d318
+      rev: 1126d6e334023c734b851adeffb6bab58020f11e
     name: bcvk-qemu
     version: 0.1.0
   - kind: registry
@@ -231,59 +231,59 @@ sources:
     version: 1.0.0
     sha: 55b672471b4e9f9e95499ea597ff64941a309b2cdbffcc46f2cc5e2d971fd335
   - kind: git
-    commit: a29622c53e4027901620dfe761b14b0310ce7edb
+    commit: 0a819c351951864071aa9ec23d6594710bf3173f
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: a29622c53e4027901620dfe761b14b0310ce7edb
+      rev: 0a819c351951864071aa9ec23d6594710bf3173f
     name: composefs
     version: 0.7.0
   - kind: git
-    commit: a29622c53e4027901620dfe761b14b0310ce7edb
+    commit: 0a819c351951864071aa9ec23d6594710bf3173f
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: a29622c53e4027901620dfe761b14b0310ce7edb
+      rev: 0a819c351951864071aa9ec23d6594710bf3173f
     name: composefs-boot
     version: 0.7.0
   - kind: git
-    commit: a29622c53e4027901620dfe761b14b0310ce7edb
+    commit: 0a819c351951864071aa9ec23d6594710bf3173f
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: a29622c53e4027901620dfe761b14b0310ce7edb
+      rev: 0a819c351951864071aa9ec23d6594710bf3173f
     name: composefs-ctl
     version: 0.7.0
   - kind: git
-    commit: a29622c53e4027901620dfe761b14b0310ce7edb
+    commit: 0a819c351951864071aa9ec23d6594710bf3173f
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: a29622c53e4027901620dfe761b14b0310ce7edb
+      rev: 0a819c351951864071aa9ec23d6594710bf3173f
     name: composefs-fuse
     version: 0.7.0
   - kind: git
-    commit: a29622c53e4027901620dfe761b14b0310ce7edb
+    commit: 0a819c351951864071aa9ec23d6594710bf3173f
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: a29622c53e4027901620dfe761b14b0310ce7edb
+      rev: 0a819c351951864071aa9ec23d6594710bf3173f
     name: composefs-ioctls
     version: 0.7.0
   - kind: git
-    commit: a29622c53e4027901620dfe761b14b0310ce7edb
+    commit: 0a819c351951864071aa9ec23d6594710bf3173f
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: a29622c53e4027901620dfe761b14b0310ce7edb
+      rev: 0a819c351951864071aa9ec23d6594710bf3173f
     name: composefs-oci
     version: 0.7.0
   - kind: git
-    commit: a29622c53e4027901620dfe761b14b0310ce7edb
+    commit: 0a819c351951864071aa9ec23d6594710bf3173f
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: a29622c53e4027901620dfe761b14b0310ce7edb
+      rev: 0a819c351951864071aa9ec23d6594710bf3173f
     name: composefs-splitdirfdstream
     version: 0.7.0
   - kind: git
-    commit: a29622c53e4027901620dfe761b14b0310ce7edb
+    commit: 0a819c351951864071aa9ec23d6594710bf3173f
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: a29622c53e4027901620dfe761b14b0310ce7edb
+      rev: 0a819c351951864071aa9ec23d6594710bf3173f
     name: composefs-storage
     version: 0.7.0
   - kind: registry
@@ -516,8 +516,8 @@ sources:
     sha: 07bbe89c50d7a535e539b8c17bc0b49bdb77747034daa8087407d655f3f7cc1d
   - kind: registry
     name: futures-core
-    version: 0.3.32
-    sha: 7e3450815272ef58cec6d564423f6e755e25379b217b0bc688e295ba24df6b1d
+    version: 0.3.33
+    sha: 2cd50c473c80f6d7c3670a752354b8e569b1a7cbfdc0419ec88e5edad85e0dc7
   - kind: registry
     name: futures-executor
     version: 0.3.32
@@ -532,20 +532,20 @@ sources:
     sha: f78e10609fe0e0b3f4157ffab1876319b5b0db102a2c60dc4626306dc46b44ad
   - kind: registry
     name: futures-macro
-    version: 0.3.32
-    sha: e835b70203e41293343137df5c0664546da5745f82ec9b84d40be8336958447b
+    version: 0.3.33
+    sha: 2d6d3cde68c518367be28956066ddfef33813991b77a55005a69dae04bf3b10b
   - kind: registry
     name: futures-sink
     version: 0.3.32
     sha: c39754e157331b013978ec91992bde1ac089843443c49cbc7f46150b0fad0893
   - kind: registry
     name: futures-task
-    version: 0.3.32
-    sha: 037711b3d59c33004d3856fbdc83b99d4ff37a24768fa1be9ce3538a1cde4393
+    version: 0.3.33
+    sha: b231ed28831efb4a61a08580c4bc233ec56bc009f4cd8f52da2c3cb97df0c109
   - kind: registry
     name: futures-util
-    version: 0.3.32
-    sha: 389ca41296e6190b48053de0321d02a77f32f8a5d2461dd38762c0593805c6d6
+    version: 0.3.33
+    sha: a77a90a256fce34da66415271e30f94ee91c57b04b8a2c042d9cf3220179deaa
   - kind: registry
     name: generic-array
     version: 0.14.7
@@ -768,12 +768,12 @@ sources:
     sha: fc3a226e576f50782b3305c5ccf458698f92798987f551c6a02efe8276721e22
   - kind: registry
     name: linkme
-    version: 0.3.36
-    sha: e83272d46373fb8decca684579ac3e7c8f3d71d4cc3aa693df8759e260ae41cf
+    version: 0.3.37
+    sha: 3045e122bd98aef8ec3ad58ce84f0791f64e70163d1a02710af4aa11a4d54cc5
   - kind: registry
     name: linkme-impl
-    version: 0.3.36
-    sha: 32d59e20403c7d08fe62b4376edfe5c7fb2ef1e6b1465379686d0f21c8df444b
+    version: 0.3.37
+    sha: 77060ebe535362c3da75682cd17b0431017b6e7c5661e714fc69a7ad017d1301
   - kind: registry
     name: linux-kernel-cmdline
     version: 0.1.1
@@ -1239,6 +1239,10 @@ sources:
     version: 2.0.117
     sha: e665b8803e7b1d2a727f4023456bbbbe74da67099c585258af0ad9c5013b9b99
   - kind: registry
+    name: syn
+    version: 3.0.2
+    sha: a207d6d6a2b7fc470b80443726053f18a2481b7e1eee970597051596567987a3
+  - kind: registry
     name: system-deps
     version: 7.0.8
     sha: 396a35feb67335377e0251fcbc1092fc85c484bd4e3a7a54319399da127796e7
@@ -1396,8 +1400,8 @@ sources:
     sha: 06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821
   - kind: registry
     name: uuid
-    version: 1.23.5
-    sha: ea5fab0d6c3c01ae70085a09cb03d4c7a1d6314e2b3e075392783396d724ca0a
+    version: 1.24.0
+    sha: bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239
   - kind: registry
     name: uzers
     version: 0.12.2
@@ -1472,8 +1476,8 @@ sources:
     sha: 5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb
   - kind: registry
     name: which
-    version: 8.0.4
-    sha: 48d7cd18d4acb58fb3cdfe9ea54e6cd96a4e7d4cc45c56338b236e82dad47248
+    version: 8.0.5
+    sha: 8f3ef584124b911bcc3875c2f1472e80f24361ceb789bd1c62b3e9a3df9ff43c
   - kind: registry
     name: winapi
     version: 0.3.9
@@ -1660,24 +1664,24 @@ sources:
     sha: b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0
   - kind: registry
     name: zlink
-    version: 0.5.0
-    sha: 9b895b99588dceb73f4d349b8323eabad9a97d48ce83698d475c7223727c6148
+    version: 0.6.0
+    sha: 0799145a2e15a8ea97e44771916f8630c870ee302c178a313269fc8e3b6f9736
   - kind: registry
     name: zlink-core
-    version: 0.5.0
-    sha: bd12701bd1d42a982b931f0159cf5054bf13d90e7828a8377dfc02ed4b00342d
+    version: 0.6.0
+    sha: d2526043182746855a331d62e03c19964c7e1a714259ebe4764d1f5ce330ef01
   - kind: registry
     name: zlink-macros
-    version: 0.5.0
-    sha: e6f2416a5f504dfd7e04fee49f31abafe3314a3f62b4ddaa8e9a5fd496d4dd50
+    version: 0.6.0
+    sha: 34cc16c0526f6721144e1cfeb37fec13e2058993f435015527ec27bf00c2234e
   - kind: registry
     name: zlink-smol
-    version: 0.5.0
-    sha: 4bc53cd0d636ad753f759aab0abb1f456e985c3938a279d11ebda92340ae37b1
+    version: 0.6.0
+    sha: ce083a1715cabf50e1af55e7444d7fe04c912cd2dc27cef0fe378e78d6158699
   - kind: registry
     name: zlink-tokio
-    version: 0.5.0
-    sha: 28cbf366ac77ab41bf9a8d43535d3d620a072f7957813e03355d3d010c16cc4f
+    version: 0.6.0
+    sha: 228414d41219fb9c8a02b6bd71a677ed8b585c461670101b5da09c06a0dd3f56
   - kind: registry
     name: zmij
     version: 1.0.21
