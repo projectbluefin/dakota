@@ -69,6 +69,7 @@ bst *ARGS:
 [group('dev')]
 check-publish-workflow:
     python3 scripts/check_publish_workflow.py
+    python3 scripts/test_icon_configuration.py
 
 [group('dev')]
 monitor-pipeline BUILD_RUN_ID="":

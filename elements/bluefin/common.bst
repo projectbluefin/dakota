@@ -65,6 +65,19 @@ config:
     cp "%{install-root}%{datadir}/pixmaps/fedora-logo-icon.png" "%{install-root}%{datadir}/pixmaps/img-logo-icon-dark.png"
     # Override GNOME OS boot logo with Bluefin branding
     cp "%{install-root}%{datadir}/pixmaps/fedora-gdm-logo.png" "%{install-root}%{datadir}/pixmaps/gnome-boot-logo.png"
+
+    # Ensure ublue-logo-symbolic is present across icon categories (status, apps, actions) and update icon cache
+    mkdir -p "%{install-root}%{datadir}/icons/hicolor/scalable/status"
+    mkdir -p "%{install-root}%{datadir}/icons/hicolor/scalable/apps"
+    if [ -f "%{install-root}%{datadir}/icons/hicolor/scalable/actions/ublue-logo-symbolic.svg" ]; then
+      cp -f "%{install-root}%{datadir}/icons/hicolor/scalable/actions/ublue-logo-symbolic.svg" "%{install-root}%{datadir}/icons/hicolor/scalable/status/ublue-logo-symbolic.svg"
+      cp -f "%{install-root}%{datadir}/icons/hicolor/scalable/actions/ublue-logo-symbolic.svg" "%{install-root}%{datadir}/icons/hicolor/scalable/apps/ublue-logo-symbolic.svg"
+    fi
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+      gtk-update-icon-cache -f -t "%{install-root}%{datadir}/icons/hicolor" || true
+    elif command -v gtk4-update-icon-cache >/dev/null 2>&1; then
+      gtk4-update-icon-cache -f -t "%{install-root}%{datadir}/icons/hicolor" || true
+    fi
     install -Dm755 bluefin-wallpaper-month-sync "%{install-root}%{prefix}/libexec/bluefin-wallpaper-month-sync"
     install -Dm644 bluefin-wallpaper-month.service "%{install-root}%{prefix}/lib/systemd/system/bluefin-wallpaper-month.service"
     mkdir -p "%{install-root}%{prefix}/lib/systemd/system/multi-user.target.wants"

@@ -186,5 +186,6 @@ install-commands:
 
 `[org/gnome/settings-daemon/plugins/media-keys] custom-keybindings` is a single dconf value — the last file alphabetically wins and overwrites earlier files. When adding a new keyfile that sets `custom-keybindings`, include ALL entries from lower-numbered files too.
 
-> Add further entries here when you discover a new pattern.
-> Format: `### <pattern name> (YYYY-MM-DD)`
+### Ensure custom symbolic icons are indexed in hicolor categories (2026-07-25)
+
+When extensions or dconf keyfiles specify custom panel icons (such as `menuicon-setting='ublue-logo-symbolic'`), the symbolic icon must be installed across relevant hicolor subdirectories (`scalable/actions`, `scalable/status`, `scalable/apps`) and `gtk-update-icon-cache` run on `%{install-root}%{datadir}/icons/hicolor`. Without updating `icon-theme.cache`, GTK and GNOME Shell will fail icon lookup and render a missing icon placeholder box.
