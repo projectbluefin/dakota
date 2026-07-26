@@ -14,7 +14,7 @@ metadata:
 > This file documents workflows and patterns from the pre-OCI-native era, including
 > deleted workflows (`promote-testing-to-main.yml`, `pr-release-gate.yml`,
 > `sync-main-to-testing.yml`, `cache-warm.yml`). Sections may describe workflows
-> that no longer exist, daily schedules that were replaced by `build.yml`'s 20:00 UTC
+> that no longer exist, daily schedules that were replaced by `build.yml`'s 21:00 UTC
 > trigger, or promotion flows that were replaced by `execute-release.yml`. For the
 > current workflow inventory, read `ci.md` and `workflow-map.md`. For current
 > promotion flow, read `release-promotion.md`.
@@ -55,8 +55,8 @@ Route through `ci.md` first, then come here only when the focused skills do not 
 | Published image | `ghcr.io/projectbluefin/dakota:{testing,stable,next,btw}` and `:$SHA` |
 | Build logs artifact | `buildstream-logs-x86_64-<variant>` (7-day retention) |
 | Trigger (validate) | `pull_request` — `bst show --deps all`, no CAS |
-| Trigger (build) | `schedule: daily 20:00 UTC`, `merge_group`, `workflow_dispatch` (no push trigger) |
-**Nightly schedule rationale** — builds on `testing` run once a day at 20:00 UTC (after GNOME nightlies and the `next` branch build) using the CAS cache pre-warmed by `merge_group` PR runs.
+| Trigger (build) | `schedule: daily 21:00 UTC`, `merge_group`, `workflow_dispatch` (no push trigger) |
+**Nightly schedule rationale** — builds on `testing` run once a day at 21:00 UTC (after GNOME nightlies and the `next` branch build) using the CAS cache pre-warmed by `merge_group` PR runs.
 
 **Merge queue path:** `build` fires on `merge_group` — full OCI build, real CI gate before merge. This warms the CAS cache but does not push a public stream tag. The daily schedule does the publishing.
 
@@ -394,7 +394,7 @@ podman run --rm --network=host --security-opt seccomp=unconfined ...
 The pipeline was redesigned so `:testing` publishes only once a day on schedule.
 PR merges warm the CAS via `merge_group`, but the push trigger was removed from
 `build.yml` to prevent global CAS concurrency starvation; builds now fire on
-schedule (`20:00 UTC`), `merge_group`, and `workflow_dispatch`.
+schedule (`21:00 UTC`), `merge_group`, and `workflow_dispatch`.
 
 **New flow:**
 ```

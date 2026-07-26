@@ -54,7 +54,7 @@ Merge queue → testing or next
             ├─ publish-sbom [parallel]
             └─ promote to :testing / :next / :btw
 
-Daily 20:00 UTC / push: testing (BST-affecting paths) / manual
+Daily 21:00 UTC / push: testing (BST-affecting paths) / manual
   └─ build.yml (schedule or push trigger)
        └─ publish.yml (workflow_run from build)
             ├─ boot-check gate [must boot before :testing]
@@ -83,7 +83,7 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 
 | Workflow | Owns | Normal trigger |
 |---|---|---|
-| `.github/workflows/build.yml` | BST build into remote CAS | `push: testing` (BST + CI-build-path files), `workflow_dispatch`, `schedule: daily 20:00 UTC`. `validate` lives in `validate.yml`; this workflow does not run on `pull_request` or `merge_group`. |
+| `.github/workflows/build.yml` | BST build into remote CAS | `push: testing` (BST + CI-build-path files), `workflow_dispatch`, `schedule: daily 21:00 UTC`. `validate` lives in `validate.yml`; this workflow does not run on `pull_request` or `merge_group`. |
 | `.github/workflows/build-aarch64.yml` | aarch64 OCI build + GHCR push | `push: testing/main` (BST-affecting paths), `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch`. Fully decoupled — never in `needs:` of publish/promote/release. |
 | `.github/workflows/publish.yml` | export, sign, boot-check, promote tags | `workflow_run` from build |
 | `.github/workflows/publish-smoke.yml` | observational smoke only | `workflow_run` from publish |
@@ -99,7 +99,7 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 
 | Branch | Trigger | Published tag(s) | Notes |
 |---|---|---|---|
-| `testing` | `push` (BST-affecting paths only) or `schedule: 20:00 UTC` | `:testing` | **Development trunk. Primary `:testing` publish path.** Every BST-affecting push builds → publishes → promotes. Doc/workflow-only pushes are ignored (paths-ignore). |
+| `testing` | `push` (BST-affecting paths only) or `schedule: 21:00 UTC` | `:testing` | **Development trunk. Primary `:testing` publish path.** Every BST-affecting push builds → publishes → promotes. Doc/workflow-only pushes are ignored (paths-ignore). |
 | `main` | fast-forward from `execute-release.yml` | `:stable` | **Release bookmark only.** Only `execute-release.yml` writes here after a successful SHA freshness check + cosign verify + boot-check. No PRs target `main`. |
 | `next` | `push` or `sync-next-from-main` dispatch | `:next`, `:btw` | Rolling GNOME master; never stable. No PR requirement on branch protection. |
 | `gh-readonly-queue/testing/*` | merge-queue | (build only, no tag) | Gate before merge to `testing`. |
@@ -108,7 +108,7 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 
 **What testing does (not just PRs):**
 ```
-push to testing (BST-affecting) or daily 20:00 UTC schedule
+push to testing (BST-affecting) or daily 21:00 UTC schedule
   → build.yml (build job)
   → publish.yml (workflow_run)
       → :testing tag published to GHCR

@@ -6,7 +6,7 @@
 |---|---|---|
 | `validate` | `pull_request` | `bst show` — graph + patch check (~15 min) |
 | `e2e` | `pull_request` when `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf` changed | Smoke test in QEMU via projectbluefin/testsuite |
-| `build` | `push: testing/next` (paths-ignore: `.github/workflows/**`, `docs/**`, `**.md`, `AGENTS.md`), `merge_group`, `workflow_dispatch`, `schedule: daily 20:00 UTC` — skips on `pull_request` | Full OCI build (~60–90 min) |
+| `build` | `push: testing/next` (paths-ignore: `.github/workflows/**`, `docs/**`, `**.md`, `AGENTS.md`), `merge_group`, `workflow_dispatch`, `schedule: daily 21:00 UTC` — skips on `pull_request` | Full OCI build (~60–90 min) |
 | `build-aarch64` | `push: testing/main` (BST-affecting paths only), `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch` | ARM64 — fully decoupled, never blocks release |
 
 ## Publish pipeline (publish.yml)
@@ -36,7 +36,7 @@ build.yml (testing|next) → [workflow_run] → publish.yml
 `execute-release.yml` fires via `workflow_run` from `publish.yml` on the `testing` branch — no commit message gate, no PR, no human approval.
 
 ```
-push to testing (BST-affecting) or daily 20:00 UTC schedule
+push to testing (BST-affecting) or daily 21:00 UTC schedule
   → build.yml → publish.yml → boot-check → :testing
   → execute-release.yml (workflow_run from publish on testing)
        → SHA freshness check (:testing SHA vs :stable SHA)
@@ -51,7 +51,7 @@ push to testing (BST-affecting) or daily 20:00 UTC schedule
 
 ## Schedule
 
-Build fires daily at 20:00 UTC (`schedule:` in `build.yml`), plus on every BST-affecting push to `testing` or `next`, `merge_group`, and `workflow_dispatch`.
+Build fires daily at 21:00 UTC (`schedule:` in `build.yml`), plus on every BST-affecting push to `testing` or `next`, `merge_group`, and `workflow_dispatch`.
 
 ## Remote cache
 

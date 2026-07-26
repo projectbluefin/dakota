@@ -71,7 +71,7 @@ Use when the task mentions:
 
 ```text
 push to testing (BST-affecting paths)
-  → build.yml (build job, including daily 20:00 UTC schedule)
+  → build.yml (build job, including daily 21:00 UTC schedule)
   → publish.yml (workflow_run)
       → boot-check gate (must boot before :testing is promoted)
       → :testing tag published to GHCR
@@ -272,8 +272,8 @@ flow (issue 1073). The key differences:
 - **`testing` is the development trunk.** All contributor, Renovate, and BST source
   bump PRs target `testing`. The `testing-merge-queue-no-review` ruleset requires
   `validate` + `e2e` and enables the merge queue.
-- **Daily build schedule:** `build.yml` has a `schedule: '0 20 * * *'` trigger that
-  fires at 20:00 UTC daily, keeping CAS warm and ensuring a fresh `:testing` each
+- **Daily build schedule:** `build.yml` has a `schedule: '0 21 * * *'` trigger that
+  fires at 21:00 UTC daily, keeping CAS warm and ensuring a fresh `:testing` each
   day even without a code push.
 - **ARM trigger change:** `build-aarch64.yml` now fires via `workflow_run` from
   `publish.yml` — not a Tuesday cron. This serializes ARM after x86 CAS writes
