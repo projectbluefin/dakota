@@ -230,6 +230,8 @@ variables:
 
 This prevents the stripper pass from overwriting the binary and clearing setuid permissions.
 
+### Fat LTO + codegen-units=1 causes SIGABRT in BST btrfs overlay on ghost (2026-06-07)
+
 Upstream Rust crates that set `lto = true` + `codegen-units = 1` in their `[profile.release]`
 emit `-C linker-plugin-lto -C codegen-units=1` to each `rustc` invocation. Inside BST's
 btrfs overlay sandbox on ghost (Podman container + btrfs), LLVM's fat LTO codegen pass

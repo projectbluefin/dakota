@@ -26,6 +26,7 @@ config:
   install-commands:
   - install -Dm4755 target/release/sudo "%{install-root}/usr/bin/sudo"
   - ln -sr "%{install-root}/usr/bin/sudo" "%{install-root}/usr/bin/sudoedit"
+  - '%{install-extra}'
 
 sources:
 - kind: git_repo
