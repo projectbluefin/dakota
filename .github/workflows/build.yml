@@ -63,7 +63,21 @@ jobs:
             image_suffix: "-nvidia"
             publish: true
             continue: true
+          - variant: gaming
+            element: oci/bluefin.bst
+            image_suffix: "-gaming"
+            publish: true
+            continue: true
+            gaming: "true"
+          - variant: nvidia-gaming
+            element: oci/bluefin-nvidia.bst
+            image_suffix: "-nvidia-gaming"
+            publish: true
+            continue: true
+            gaming: "true"
     continue-on-error: ${{ matrix.continue }}
+    env:
+      BUILD_GAMING: ${{ matrix.gaming || 'false' }}
     permissions:
       contents: read
     steps:

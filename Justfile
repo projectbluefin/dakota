@@ -6,6 +6,11 @@ default:
 # ── Configuration ─────────────────────────────────────────────────────
 export image_name := env("BUILD_IMAGE_NAME", "dakota")
 export image_tag := env("BUILD_IMAGE_TAG", "latest")
+
+# Gaming variant: adds the gaming/ stack (the OGC kernel ships in ALL
+# variants regardless). Applies to every bst invocation here; exported
+# podman refs get a -gaming suffix so builds don't collide.
+export gaming := env("BUILD_GAMING", "false")
 export base_dir := env("BUILD_BASE_DIR", ".")
 export filesystem := env("BUILD_FILESYSTEM", "btrfs")
 
@@ -46,6 +51,9 @@ bst *ARGS:
         fi
         if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]--no-interactive([[:space:]]|$) ]]; then
             EFFECTIVE_BST_FLAGS="${EFFECTIVE_BST_FLAGS} --no-interactive"
+        fi
+        if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]-o[[:space:]]+gaming[[:space:]]+(true|false)([[:space:]]|$) ]]; then
+            EFFECTIVE_BST_FLAGS="${EFFECTIVE_BST_FLAGS} -o gaming {{gaming}}"
         fi
     fi
 
@@ -218,6 +226,9 @@ export variant="default":
         nvidia)  ELEMENT="oci/bluefin-nvidia.bst"; FINAL_NAME="{{image_name}}-nvidia" ;;
         *) echo "ERROR: unknown variant '{{variant}}' (expected: default | nvidia)" >&2; exit 1 ;;
     esac
+    if [ "{{gaming}}" = "true" ]; then
+        FINAL_NAME="${FINAL_NAME}-gaming"
+    fi
     FINAL_TAG="{{image_tag}}"
 
     # Use sudo unless already root (CI runners are root)
@@ -332,6 +343,9 @@ generate-bootable-image variant="default" $base_dir=base_dir $filesystem=filesys
         nvidia)  FINAL_NAME="{{image_name}}-nvidia" ;;
         *) echo "ERROR: unknown variant '{{variant}}' (expected: default | nvidia)" >&2; exit 1 ;;
     esac
+    if [ "{{gaming}}" = "true" ]; then
+        FINAL_NAME="${FINAL_NAME}-gaming"
+    fi
 
     REF="${FINAL_NAME}:{{image_tag}}"
     if ! sudo podman image exists "$REF"; then

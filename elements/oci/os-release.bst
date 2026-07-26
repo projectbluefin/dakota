@@ -1,71 +1,12 @@
+# Base os-release (see include/os-release.yml); the nvidia variant
+# shadows these files with its own repo names.
 kind: manual
 
-depends:
-  - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
+(@):
+  - include/os-release.yml
 
 variables:
-  strip-binaries: ""
-
-environment:
-  # FIXME: configurable
-  # IMAGE_REF="ostree-image-signed:docker://ghcr.io/${IMAGE_VENDOR}/${IMAGE_NAME}"
-  IMAGE_NAME: "dakota"
-  IMAGE_VENDOR: "projectbluefin"
-  IMAGE_REF: "ostree-image-signed:docker://ghcr.io/projectbluefin/dakota"
-  IMAGE_FLAVOR: "main"
-  IMAGE_TAG: "latest"
-  VERSION_ID: "0"
-  IMAGE_VERSION: "0"
-
-  IMAGE_PRETTY_NAME: "Bluefin"
-  HOME_URL: "https://projectbluefin.io"
-  DOCUMENTATION_URL: "https://docs.projectbluefin.io"
-  SUPPORT_URL: "https://github.com/projectbluefin/dakota/issues"
-  BUG_SUPPORT_URL: "https://github.com/projectbluefin/dakota/issues"
-  CODE_NAME: "Dakotaraptor"
-  ID: "bluefin-dakota"
-  # Fedora platform ID — update alongside the gnome-build-meta junction when
-  # the Fedora base bumps. The countme script reads this at runtime to build
-  # the Fedora metalink URL (repo=fedora-NN).
-  PLATFORM_ID: "platform:f42"
-
-config:
-  build-commands:
-    - mkdir -p %{install-root}%{indep-libdir}/
-    - |
-      cat >"%{install-root}%{indep-libdir}/os-release" <<EOF
-      NAME="${IMAGE_PRETTY_NAME}"
-      ID="${ID}"
-      ID_LIKE="org.gnome.os"
-      VERSION="${IMAGE_TAG}"
-      VERSION_CODENAME="${CODE_NAME}"
-      PRETTY_NAME="${IMAGE_PRETTY_NAME}"
-      BUG_REPORT_URL="${BUG_SUPPORT_URL}"
-      HOME_URL="${HOME_URL}"
-      DOCUMENTATION_URL="${DOCUMENTATION_URL}"
-      SUPPORT_URL="${SUPPORT_URL}"
-      LOGO=img-logo-icon
-      DEFAULT_HOSTNAME="bluefin"
-      IMAGE_NAME="${IMAGE_NAME}"
-      IMAGE_VENDOR="${IMAGE_VENDOR}"
-      IMAGE_REF="${IMAGE_REF}"
-      IMAGE_FLAVOR="${IMAGE_FLAVOR}"
-      IMAGE_TAG="${IMAGE_TAG}"
-      VERSION_ID="${VERSION_ID}"
-      IMAGE_VERSION="${IMAGE_VERSION}"
-      PLATFORM_ID="${PLATFORM_ID}"
-      EOF
-      mkdir -p %{install-root}%{sysconfdir}/
-      ln -sf ../usr/lib/os-release %{install-root}%{sysconfdir}/os-release
-
-    - mkdir -p "%{install-root}%{datadir}/ublue-os"
-    - |
-      cat >"%{install-root}%{datadir}/ublue-os/image-info.json" <<EOF
-      {
-        "image-name": "${IMAGE_NAME}",
-        "image-ref": "${IMAGE_REF}",
-        "image-flavor": "${IMAGE_FLAVOR}",
-        "image-vendor": "${IMAGE_VENDOR}",
-        "image-tag": "${IMAGE_TAG}"
-      }
-      EOF
+  os-release-repo: dakota
+  (?):
+  - gaming == true:
+      os-release-repo: dakota-gaming

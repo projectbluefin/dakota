@@ -100,6 +100,20 @@ jobs:
             image_suffix: '-nvidia'
             sbom_filename: dakota-nvidia.spdx.json
             continue: true
+          # Gaming variants: same elements built with `-o gaming true`
+          # (BUILD_GAMING). No SBOM entries yet; publish-sbom stays two-variant.
+          - variant: gaming
+            export_variant: default
+            element: oci/bluefin.bst
+            image_suffix: '-gaming'
+            gaming: 'true'
+            continue: true
+          - variant: nvidia-gaming
+            export_variant: nvidia
+            element: oci/bluefin-nvidia.bst
+            image_suffix: '-nvidia-gaming'
+            gaming: 'true'
+            continue: true
     continue-on-error: ${{ matrix.continue }}
     permissions:
       contents: read
@@ -142,10 +156,11 @@ jobs:
         env:
           BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          BUILD_GAMING: ${{ matrix.gaming || 'false' }}
           OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}
           OCI_IMAGE_REVISION: ${{ needs.setup.outputs.sha }}
           OCI_IMAGE_VERSION: latest
-        run: just export ${{ matrix.variant }}
+        run: just export ${{ matrix.export_variant || matrix.variant }}
 
       - name: Chunkify image layers
         # BST images need physical xattr injection before chunkah runs — BST strips
@@ -381,6 +396,10 @@ jobs:
           - image_suffix: ''
             continue: false
           - image_suffix: '-nvidia'
+            continue: true
+          - image_suffix: '-gaming'
+            continue: true
+          - image_suffix: '-nvidia-gaming'
             continue: true
     continue-on-error: ${{ matrix.continue }}
     permissions:

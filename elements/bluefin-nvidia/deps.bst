@@ -1,6 +1,7 @@
 kind: stack
 
 depends:
+  - bluefin-nvidia/os-release.bst
   - bluefin-nvidia/nvidia-drivers.bst
   - bluefin-nvidia/nvidia-vaapi-driver.bst
   - bluefin-nvidia/nvidia-kargs.bst
