@@ -130,14 +130,14 @@ This is the fast path for stale-image complaints: the image date is usually wron
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `build.yml` | `push: testing` for key-busting paths, `workflow_dispatch`, `schedule: daily 13:00 UTC` — NOT `pull_request` or `merge_group` | Run a single BuildStream assembly build per target (`oci/bluefin.bst` and `oci/bluefin-nvidia.bst`), push the resulting artifacts to `cache.projectbluefin.io`, and upload logs. Does not push to GHCR. |
+| `build.yml` | `push: testing` for key-busting paths, `workflow_dispatch`, `schedule: daily 20:00 UTC` — NOT `pull_request` or `merge_group` | Run a single BuildStream assembly build per target (`oci/bluefin.bst` and `oci/bluefin-nvidia.bst`), push the resulting artifacts to `cache.projectbluefin.io`, and upload logs. Does not push to GHCR. |
 | `publish.yml` | `workflow_run` from `build.yml` (branches: testing, next, + their gh-readonly-queue/* paths) | Fetch the remote-CAS artifact, export to OCI, run `just lint`, push `:$sha`, sign/attest, and promote `:testing`/`:next` tags. No build happens here. |
 | `execute-release.yml` | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch` | SHA freshness check (:testing vs :stable). If different: cosign verify → skopeo copy `:testing` → `:stable` → fast-forward main → create GitHub Release. Skips if equal. |
 | `boot-test-aarch64.yml` | `workflow_run` from `build-aarch64.yml` on `testing`, `workflow_dispatch` (image input) | M0 aarch64 boot gate: verifies the `:aarch64` tag exists on GHCR (skopeo — does not trust build-aarch64's masked conclusion), boots it on `ubuntu-24.04-arm` via bcvk ephemeral (qemu/virtiofs, cargo-built — no upstream aarch64 binaries), gates on `multi-user.target`, reports graphical/gdm/bootc informationally, always uploads serial + journal artifacts. Never blocks x86_64. Tests direct kernel boot, not the bootc install-to-disk bootloader path. |
 | ~~`promote-testing-to-main.yml`~~ | DELETED | Was: `push: testing`, schedule Tue 04:00 UTC, manual. |
 | ~~`pr-release-gate.yml`~~ | DELETED | Was: `pull_request` to `main`. |
 | ~~`sync-main-to-testing.yml`~~ | DELETED | Was: `push: main`. |
-| ~~`cache-warm.yml`~~ | DELETED | Was: Mon/Thu 06:00 UTC schedule. Daily 13:00 UTC builds keep CAS warm. |
+| ~~`cache-warm.yml`~~ | DELETED | Was: Mon/Thu 06:00 UTC schedule. Daily 20:00 UTC builds keep CAS warm. |
 
 ## Trigger Behavior
 
@@ -145,7 +145,7 @@ This is the fast path for stale-image complaints: the image date is usually wron
 |---|---|---|---|---|---|
 | `validate` | Yes | No | No | No | No |
 | `e2e` | Yes (change-detected) | No | No | Yes | No |
-| `build` | No | testing only (key-busting paths) | No | Yes | Daily 13:00 UTC |
+| `build` | No | testing only (key-busting paths) | No | Yes | Daily 20:00 UTC |
 | `execute-release` | No | No | No | Yes | Via workflow_run from publish |
 | Push to GHCR? | No | Via publish.yml | No | Via publish.yml | Via publish.yml |
 
@@ -161,7 +161,7 @@ This is the fast path for stale-image complaints: the image date is usually wron
 
 **Merge queue path:** `build` is intentionally excluded from `merge_group`; queued PRs rely on the required validation/e2e checks, and the post-merge push to `testing` starts the real BuildStream path when key-busting files changed.
 
-**Daily build schedule:** `build.yml` fires at 13:00 UTC daily (after `nightly-next-build` completes). This keeps the remote CAS warm and ensures a fresh `:testing` tag even without a code push. `cache-warm.yml` was deleted — the daily build replaces it.
+**Daily build schedule:** `build.yml` fires at 20:00 UTC daily (after `nightly-next-build` completes). This keeps the remote CAS warm and ensures a fresh `:testing` tag even without a code push. `cache-warm.yml` was deleted — the daily build replaces it.
 
 **RE-backed assembly model (target):** `build.yml` must perform one final BST assembly per target through the BuildBarn RE service at `cache.projectbluefin.io:11002` and write the artifact to the remote CAS. The workflow must not run warmup shards, seed jobs, or a VM boot-check path. Remote execution is required, not optional.
 
@@ -2521,14 +2521,14 @@ flow (issue 1073). Key operational facts for CI debugging:
 **Daily BST build windows (serialized for CAS):**
 ```
 03:00 UTC  nightly-next-build → next branch (x86, 90-210 min)
-13:00 UTC  build.yml schedule → testing x86 default+nvidia serial (max-parallel:1, 90-390 min)
+20:00 UTC  build.yml schedule → testing x86 default+nvidia serial (max-parallel:1, 90-390 min)
 ~18:00     publish.yml fires → :testing + :testing-nvidia published
 ~18:00     build-aarch64.yml fires (workflow_run from publish) → ARM default (~90-210 min)
 ~18:00     execute-release.yml fires (workflow_run from publish) → freshness check → promote
 20:00      track-next-junctions → may trigger next junction build
 ```
 
-**`cache-warm.yml` is deleted.** The daily 13:00 UTC `build.yml` schedule replaces it. CAS stays warm as long as the daily build runs. If the daily build is absent for >48 hours, expect cold-start non-determinism.
+**`cache-warm.yml` is deleted.** The daily 20:00 UTC `build.yml` schedule replaces it. CAS stays warm as long as the daily build runs. If the daily build is absent for >48 hours, expect cold-start non-determinism.
 
 **ARM build trigger changed.** `build-aarch64.yml` now fires via `workflow_run` from `publish.yml` on `testing` — not a Tuesday cron. This ensures ARM starts only after x86 CAS writes complete, preventing write contention that was causing `Cached elements after warm: 0`.
 

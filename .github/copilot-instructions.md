@@ -190,7 +190,7 @@ lesson (2026-07-09).
 
 ## CI overview
 
-- **Schedule:** nightly at 13:00 UTC (after gnome-build-meta nightly ~08:00 UTC finish)
+- **Schedule:** nightly at 20:00 UTC (after gnome-build-meta nightly ~08:00 UTC finish)
 - **Publish triggers:** `merge_group`, `schedule`, `workflow_dispatch` (not `pull_request`)
 - **Remote cache:** `cache.projectbluefin.io:11002` (mTLS — `CASD_CLIENT_CERT` + `CASD_CLIENT_KEY`)
 - **Image:** `ghcr.io/projectbluefin/dakota:{testing,stable,next,btw}` and `:<sha>` (`:latest` is never published)

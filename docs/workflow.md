@@ -165,7 +165,7 @@ Dakota uses trunk-based development. `testing` is the development trunk; `main` 
 ```
 testing (development trunk — all PRs land here)
   │
-  └─► build.yml (daily 13:00 UTC + merge_group + workflow_dispatch)
+  └─► build.yml (daily 20:00 UTC + merge_group + workflow_dispatch)
           │
           └─► publish.yml (workflow_run on build success)
                   │
@@ -182,7 +182,7 @@ testing (development trunk — all PRs land here)
 | Stream | Tag | Cadence | Gate |
 |---|---|---|---|
 | Development | `:sha` | Every merge to `testing` | None |
-| Testing | `:testing` | Daily (13:00 UTC build) | boot-check |
+| Testing | `:testing` | Daily (20:00 UTC build) | boot-check |
 | Stable | `:stable` | Daily (if :testing != :stable) | SHA freshness check + cosign verify + boot-check |
 
 **All PRs target `testing`.** This includes contributor PRs, Renovate PRs, and BST source bump PRs. The `main` git branch is a release bookmark only — it is fast-forwarded by `execute-release.yml` after each successful promotion and must not be used as a PR base.

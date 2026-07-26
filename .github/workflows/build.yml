@@ -8,12 +8,12 @@ on:
       - "patches/**"
       - "project.conf"
       - "include/**"
-  # Fires daily at 13:00 UTC — 5 hours after the gnome-build-meta nightly
-  # (~08:00 UTC) to absorb nightly deltas before building.
+  # Fires daily at 20:00 UTC, after the gnome-build-meta nightly, to absorb
+  # nightly deltas before building and publishing :testing.
   # NOTE: schedule triggers run on the default branch; set testing as the
   # default branch in repo settings for this to target testing.
   schedule:
-    - cron: "0 13 * * *"
+    - cron: "0 20 * * *"
   workflow_dispatch:
 
 permissions: read-all
