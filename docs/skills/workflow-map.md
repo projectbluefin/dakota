@@ -88,6 +88,7 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 | `.github/workflows/publish.yml` | export, sign, boot-check, promote tags | `workflow_run` from build |
 | `.github/workflows/publish-smoke.yml` | observational smoke only | `workflow_run` from publish |
 | `.github/workflows/e2e.yml` | PR-facing testsuite check | `pull_request` |
+| `.github/workflows/lab-check.yml` | MergeRaptor-owned `testing-lab / dakota` Check Run for the Kubernetes lab | `repository_dispatch: lab-check` |
 | `.github/workflows/execute-release.yml` | SHA freshness check → cosign verify → stable release | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch`. Skips if `:testing` digest equals `:stable` digest. |
 | `.github/workflows/sync-next-from-main.yml` | merge main into next (preserve junction refs) | `push: main`, `workflow_dispatch` |
 | ~~`promote-testing-to-main.yml`~~ | DELETED | Was: `push: testing`, schedule, manual |

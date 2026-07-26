@@ -4,6 +4,7 @@ description: CI entry point for Dakota. Routes agents to the right CI skill fast
 metadata:
   context7-sources:
     - /websites/github_en_actions
+    - /websites/github_en_rest
     - /actions/cache
     - /bootc-dev/bootc
     - /apache/buildstream
@@ -133,6 +134,7 @@ This is the fast path for stale-image complaints: the image date is usually wron
 | `build.yml` | `push: testing` for key-busting paths, `workflow_dispatch`, `schedule: daily 13:00 UTC` — NOT `pull_request` or `merge_group` | Run a single BuildStream assembly build per target (`oci/bluefin.bst` and `oci/bluefin-nvidia.bst`), push the resulting artifacts to `cache.projectbluefin.io`, and upload logs. Does not push to GHCR. |
 | `publish.yml` | `workflow_run` from `build.yml` (branches: testing, next, + their gh-readonly-queue/* paths) | Fetch the remote-CAS artifact, export to OCI, run `just lint`, push `:$sha`, sign/attest, and promote `:testing`/`:next` tags. No build happens here. |
 | `execute-release.yml` | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch` | SHA freshness check (:testing vs :stable). If different: cosign verify → skopeo copy `:testing` → `:stable` → fast-forward main → create GitHub Release. Skips if equal. |
+| `lab-check.yml` | `repository_dispatch: lab-check` from the Kubernetes lab | Uses a short-lived MergeRaptor installation token to create or update one `testing-lab / dakota` Check Run for the PR head SHA. It reports queued, running, and final BuildStream/QA details without posting PR comments. |
 | `boot-test-aarch64.yml` | `workflow_run` from `build-aarch64.yml` on `testing`, `workflow_dispatch` (image input) | M0 aarch64 boot gate: verifies the `:aarch64` tag exists on GHCR (skopeo — does not trust build-aarch64's masked conclusion), boots it on `ubuntu-24.04-arm` via bcvk ephemeral (qemu/virtiofs, cargo-built — no upstream aarch64 binaries), gates on `multi-user.target`, reports graphical/gdm/bootc informationally, always uploads serial + journal artifacts. Never blocks x86_64. Tests direct kernel boot, not the bootc install-to-disk bootloader path. |
 | ~~`promote-testing-to-main.yml`~~ | DELETED | Was: `push: testing`, schedule Tue 04:00 UTC, manual. |
 | ~~`pr-release-gate.yml`~~ | DELETED | Was: `pull_request` to `main`. |
@@ -156,6 +158,33 @@ This is the fast path for stale-image complaints: the image date is usually wron
 - `next` or `gh-readonly-queue/next/*` → `:next`
 
 **PR path:** `validate` + `e2e` (change-detected) — no extra BuildStream warmup path. The default Dakota pipeline stays on a single assembly pass per target.
+
+### Lab Check Run bridge
+
+The lab reports Dakota PR validation through GitHub's Checks API, not PR
+comments:
+
+1. The lab creates the Argo workflow and dispatches a `lab-check` event with a
+   nested, bounded payload.
+2. `.github/workflows/lab-check.yml` mints a short-lived MergeRaptor
+   installation token from the existing org secrets.
+3. The workflow finds the latest `testing-lab / dakota` check owned by the
+   `mergeraptor` app for that exact commit and updates it; it creates the check
+   only when none exists.
+4. Argo sends `queued`, `in_progress`, and `completed` updates. The final output
+   includes the workflow parameters, pod/node placement, every workflow node,
+   phase counts, timings, and failure messages.
+
+Do not put the MergeRaptor private key in Kubernetes. The lab's existing GitHub
+credential is used only to call `repository_dispatch`; GitHub Actions owns the
+app-token exchange. Do not post a duplicate PR comment or commit status.
+
+MergeRaptor must have repository `checks: write` and `contents: read`
+permissions. The workflow uses contents access to validate the target commit
+before updating its Check Run. GitHub's Checks endpoints require GitHub App
+authentication; classic PATs and OAuth apps cannot update check runs.
+
+> Source: `/websites/github_en_rest` — Checks runs and repository dispatch.
 
 **e2e change detection:** `e2e` uses a `should-run` job that diffs the PR branch against its base. It runs when `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf` change; otherwise the `e2e` job is skipped. Skipped satisfies the required status check.
 
