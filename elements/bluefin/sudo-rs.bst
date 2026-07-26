@@ -16,6 +16,9 @@ depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 - freedesktop-sdk.bst:components/linux-pam.bst
 
+variables:
+  strip-binaries: ""
+
 config:
   build-commands:
   - cargo build --release
