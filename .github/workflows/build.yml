@@ -104,12 +104,14 @@ jobs:
           enable-remote-execution: "false"
           enable-push: "false"
 
+      # Warm-up only; the build step pulls missing artifacts on demand.
       - name: Pull prebuilt artifacts from remote CAS
+        continue-on-error: true
         env:
           BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
         run: |
           just bst artifact pull --deps all ${{ matrix.element }}
-        timeout-minutes: 15
+        timeout-minutes: 60
 
       - name: Count elements for progress tracking
         id: count
