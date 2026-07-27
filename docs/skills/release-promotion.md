@@ -154,6 +154,10 @@ Do not substitute `github.event.workflow_run.head_sha` with a `skopeo inspect` l
 - The SHA freshness check compares the `:testing` SHA with the current `:stable` SHA. Equal → skip. Different → promote.
 - cosign `--certificate-identity-regexp` must be anchored with `^...$` and restricted to the publishing workflow file.
 - `execute-release.yml` `workflow_dispatch` bypass is allowed for manual recovery only.
+- `skip_release_gate` defaults to `false`; use it only when the exact candidate
+  images are already published and the testsuite cannot exercise a variant
+  (for example, an Nvidia image on a runner without an Nvidia device). The
+  post-release digest verification remains mandatory.
 
 ## Manual Recovery Shortcuts
 
@@ -164,8 +168,12 @@ gh run list --repo projectbluefin/dakota --workflow 'Execute Release' --limit 10
 # check recent publish runs (execute-release fires after these)
 gh run list --repo projectbluefin/dakota --workflow 'Publish Bluefin dakota' --limit 10
 
-# dispatch execute-release manually (bypasses freshness check — use only for recovery)
+# dispatch execute-release manually (use only for recovery)
 gh workflow run execute-release.yml --repo projectbluefin/dakota --ref testing
+
+# emergency recovery when testsuite cannot boot a variant-specific image
+gh workflow run execute-release.yml --repo projectbluefin/dakota --ref testing \
+  -f skip_release_gate=true
 
 # verify ruleset state
 gh api repos/projectbluefin/dakota/rulesets | jq '[.[] | {id, name}]'

@@ -11,6 +11,10 @@ on:
         description: 'Dry run — verify gates but do not promote'
         type: boolean
         default: false
+      skip_release_gate:
+        description: 'Emergency recovery only — skip testsuite release gates'
+        type: boolean
+        default: false
 
 permissions:
   actions: read
@@ -126,6 +130,7 @@ jobs:
       cosign_identity_regexp: ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)$
       fast_forward_branch: main
       fast_forward_sha: ${{ needs.freshness-check.outputs.build_sha }}
+      run_release_gate: ${{ inputs.skip_release_gate != true }}
     secrets: inherit
 
   release-notes:
