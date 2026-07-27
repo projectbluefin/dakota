@@ -279,6 +279,13 @@ flow (issue 1073). The key differences:
   `publish.yml` — not a Tuesday cron. This serializes ARM after x86 CAS writes
   complete, preventing CAS contention.
 
+### Keep stable variant lists aligned
+
+When adding an image variant to stable promotion, update the reusable release
+matrix, release-note digest collection, post-release digest verification, and
+untagged package cleanup together. The release workflow can otherwise promote
+only part of the variant set or report success without verifying the new image.
+
 ## Rollback
 
 When a promoted `:stable` image regresses behaviour or ships a security issue
