@@ -120,7 +120,8 @@ jobs:
       variants: >-
         [
           {"image":"dakota","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"},
-          {"image":"dakota-nvidia","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"}
+          {"image":"dakota-nvidia","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"},
+          {"image":"dakota-gaming","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"}
         ]
       cosign_identity_regexp: ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)$
       fast_forward_branch: main
@@ -174,7 +175,7 @@ jobs:
         id: digests
         run: |
           set -euo pipefail
-          for image in dakota dakota-nvidia; do
+          for image in dakota dakota-nvidia dakota-gaming; do
             digest=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/${image}:stable" \
               | jq -r '.Digest' | cut -c1-19)
             echo "${image}=${digest}" >> "$GITHUB_OUTPUT"
@@ -184,6 +185,7 @@ jobs:
         env:
           DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota }}
           NVIDIA_DIGEST: ${{ steps.digests.outputs.dakota-nvidia }}
+          GAMING_DIGEST: ${{ steps.digests.outputs.dakota-gaming }}
         run: |
           set -euo pipefail
           TAG=$(gh release list --repo "${{ github.repository }}" --limit 1 --json tagName --jq '.[0].tagName')
@@ -196,6 +198,7 @@ jobs:
             '|---|---|---|' \
             "| \`dakota\` | \`:stable\` | \`${DAKOTA_DIGEST}\` |" \
             "| \`dakota-nvidia\` | \`:stable\` | \`${NVIDIA_DIGEST}\` |" \
+            "| \`dakota-gaming\` | \`:stable\` | \`${GAMING_DIGEST}\` |" \
             '' \
             '---' \
             '')
@@ -336,13 +339,17 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
-          promoted_digest=$(skopeo inspect --no-tags "docker://${IMAGE}:${BUILD_SHA}" | jq -r .Digest)
-          stable_digest=$(skopeo inspect --no-tags "docker://${IMAGE}:stable" | jq -r .Digest)
-          if [ "$stable_digest" != "$promoted_digest" ]; then
-            echo "::error::stable digest=$stable_digest, expected $promoted_digest"
-            exit 1
-          fi
-          echo "stable digest verified: $stable_digest"
+          for image in dakota dakota-nvidia dakota-gaming; do
+            promoted_digest=$(skopeo inspect --no-tags \
+              "docker://ghcr.io/projectbluefin/${image}:${BUILD_SHA}" | jq -r .Digest)
+            stable_digest=$(skopeo inspect --no-tags \
+              "docker://ghcr.io/projectbluefin/${image}:stable" | jq -r .Digest)
+            if [ "$stable_digest" != "$promoted_digest" ]; then
+              echo "::error::${image}:stable digest=$stable_digest, expected $promoted_digest"
+              exit 1
+            fi
+            echo "${image}:stable digest verified: $stable_digest"
+          done
 
       - name: Verify :stable-multiarch exists
         run: |
@@ -379,6 +386,15 @@ jobs:
         uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
         with:
           package-name: dakota-nvidia
+          package-type: container
+          min-versions-to-keep: 100
+          delete-only-untagged-versions: 'true'
+        continue-on-error: true
+
+      - name: Prune untagged GHCR versions for dakota-gaming
+        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+        with:
+          package-name: dakota-gaming
           package-type: container
           min-versions-to-keep: 100
           delete-only-untagged-versions: 'true'
