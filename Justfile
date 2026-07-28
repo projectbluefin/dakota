@@ -753,6 +753,12 @@ chunkify image_ref:
         $SUDO_CMD podman tag "$NEW_REF" "{{image_ref}}"
     fi
 
+    # Publish steps run as the unprivileged runner user after rootful chunkah.
+    # Copy the result into that user's podman store before returning.
+    if [ -n "$SUDO_CMD" ]; then
+        $SUDO_CMD podman save "{{image_ref}}" | podman load
+    fi
+
 # ── bcvk (fast VM testing) ───────────────────────────────────────────
 
 # Ensure bcvk is installed (auto-installs via cargo if missing)

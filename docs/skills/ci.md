@@ -1950,6 +1950,16 @@ automatically.
 **Do not add a `/var/tmp` bind-mount workaround to individual workflows.** The fix
 belongs in the action, not scattered across consumers.
 
+### Dakota BST chunkify must use the compiled fakecap helper (2026-07-27)
+
+The shared `chunka@v1` action's BST path injects every entry in
+`files/fakecap-manifest.tsv` with Python. Dakota's manifest is approximately one
+million entries, so the two `setxattr()` calls per entry make the publish stage
+unacceptably slow even when the overlay is on the correct BTRFS volume. Dakota's
+`Justfile` already has the equivalent compiled `fakecap-restore` helper; publish
+uses that recipe and then transfers the rootful result back to the runner user's
+podman store before lint and push.
+
 ### actions/cache does not create the cache directory on a cold miss — podman bind-mounts fail (2026-06-13)
 
 `actions/cache` only *restores* an existing archive; on a cache miss it does
