@@ -2,6 +2,12 @@ name: Publish Bluefin dakota
 
 on:
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: 'Existing BuildStream artifact SHA to republish (recovery only)'
+        required: false
+        type: string
+        default: ''
   workflow_run:
     workflows: ["Build Bluefin dakota"]
     types: [completed]
@@ -53,6 +59,10 @@ jobs:
             echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
             echo "event=${{ github.event.workflow_run.event }}" >> "$GITHUB_OUTPUT"
             BRANCH="${{ github.event.workflow_run.head_branch }}"
+          elif [[ -n "${{ inputs.source_sha }}" ]]; then
+            echo "sha=${{ inputs.source_sha }}" >> "$GITHUB_OUTPUT"
+            echo "event=${{ github.event_name }}" >> "$GITHUB_OUTPUT"
+            BRANCH="${{ github.ref_name }}"
           else
             echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
             echo "event=${{ github.event_name }}" >> "$GITHUB_OUTPUT"

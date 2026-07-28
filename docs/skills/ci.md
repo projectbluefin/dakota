@@ -113,6 +113,10 @@ reject the authenticated probe even while the public manifest is readable.
 Keeping credentials on that probe makes the job fail before signing and leaves
 an unsigned candidate that `execute-release.yml` correctly rejects.
 
+For recovery, `publish.yml` accepts a `source_sha` workflow-dispatch input so a
+fixed publisher can republish an existing remote-CAS artifact without starting
+a new BuildStream build.
+
 When the task is "publish a fresh testing image" or "why is the image date wrong", verify the live state before changing anything.
 
 1. Start with the GitHub CLI: `gh run list --repo projectbluefin/dakota --limit 10` and `gh run view <run-id> --repo projectbluefin/dakota`.
