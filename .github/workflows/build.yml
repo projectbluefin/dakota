@@ -48,9 +48,11 @@ jobs:
     if: (!cancelled()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
     runs-on: ubuntu-24.04
     timeout-minutes: 350
+    # The BuildBox backend has four action slots. Start every image variant
+    # together; the backend remains the global execution-capacity limit.
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 4
       matrix:
         include:
           - variant: default
@@ -101,17 +103,11 @@ jobs:
           CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
         uses: ./.github/actions/generate-bst-ci-config
         with:
-          enable-remote-execution: "false"
-          enable-push: "false"
-
-      # Warm-up only; the build step pulls missing artifacts on demand.
-      - name: Pull prebuilt artifacts from remote CAS
-        continue-on-error: true
-        env:
-          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
-        run: |
-          just bst artifact pull --deps all ${{ matrix.element }}
-        timeout-minutes: 60
+          enable-remote-execution: "true"
+          # BuildStream adds artifact/source push queues to the build when the
+          # configured remotes are writable. RE and the caches share one CAS,
+          # so payloads remain on the BuildBox host and are deduplicated there.
+          enable-push: "true"
 
       - name: Count elements for progress tracking
         id: count
@@ -139,16 +135,19 @@ jobs:
           ELEMENT_TOTAL: ${{ steps.count.outputs.total }}
         run: |
           set -o pipefail
+          CONSOLE_LOG="logs/bst-console-${{ matrix.variant }}.log"
           just bst build --deps none ${{ matrix.element }} 2>&1 \
+            | tee "$CONSOLE_LOG" \
             | python3 files/scripts/bst-progress.py
-        timeout-minutes: 330
 
-      - name: Push OCI artifact to remote CAS
-        env:
-          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-push.conf
-        run: |
-          just bst artifact push --deps run ${{ matrix.element }}
-        timeout-minutes: 120
+          # Fail closed: a green cache hit is not proof that BuildStream loaded
+          # the remote executor. The startup banner is emitted whenever the
+          # remote-execution block is active, even if no action needs rebuilding.
+          if ! grep -Fq "Remote Execution Configuration" "$CONSOLE_LOG"; then
+            echo "::error::BuildStream did not load the remote execution configuration"
+            exit 1
+          fi
+        timeout-minutes: 330
 
       - name: Upload build logs
         if: always()

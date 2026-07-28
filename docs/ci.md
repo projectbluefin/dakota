@@ -6,7 +6,7 @@
 |---|---|---|
 | `validate` | `pull_request` | `bst show` — graph + patch check (~15 min) |
 | `e2e` | `pull_request` when `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf` changed | Smoke test in QEMU via projectbluefin/testsuite |
-| `build` | `push: testing/next` (paths-ignore: `.github/workflows/**`, `docs/**`, `**.md`, `AGENTS.md`), `merge_group`, `workflow_dispatch`, `schedule: daily 13:00 UTC` — skips on `pull_request` | Full OCI build (~60–90 min) |
+| `build` | `push: testing` (BST-affecting paths), `workflow_dispatch`, `schedule: daily 13:00 UTC` — skips on `pull_request`/`merge_group` | Four x86 variants concurrently through remote BuildBox execution; artifacts land in the remote CAS |
 | `build-aarch64` | `push: testing/main` (BST-affecting paths only), `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch` | ARM64 — fully decoupled, never blocks release |
 
 ## Publish pipeline (publish.yml)
@@ -51,11 +51,11 @@ push to testing (BST-affecting) or daily 13:00 UTC schedule
 
 ## Schedule
 
-Build fires daily at 13:00 UTC (`schedule:` in `build.yml`), plus on every BST-affecting push to `testing` or `next`, `merge_group`, and `workflow_dispatch`.
+Build fires daily at 13:00 UTC, on BST-affecting pushes to `testing`, and through `workflow_dispatch`. The nightly-next dispatcher invokes the same workflow explicitly on `next`; PR and merge-queue events do not run it.
 
-## Remote cache
+## Remote execution and cache
 
-`cache.projectbluefin.io:11002` — mTLS via `CASD_CLIENT_CERT` + `CASD_CLIENT_KEY`.
+`cache.projectbluefin.io:11002` — BuildBox 1.4.11 execution, remote CAS, artifact/source caches, and action cache behind mTLS via `CASD_CLIENT_CERT` + `CASD_CLIENT_KEY`. Build jobs fail closed; publish uses a fetch-only configuration so it can materialize images locally.
 
 ## Published images
 

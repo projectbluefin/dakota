@@ -1,12 +1,12 @@
 name: Generate BuildStream CI config
-description: Write BuildStream CI config for the runner-based Dakota workflow.
+description: Write BuildStream CI config for remote builds and local artifact consumers.
 
 inputs:
   enable-remote-execution:
-    description: Retained for compatibility; Dakota uses the GitHub runner for builds and cache.projectbluefin.io for artifact/source caches.
+    description: Route build actions and CAS storage through cache.projectbluefin.io.
     required: true
   enable-push:
-    description: Push artifacts and sources to the remote cache. Set false for build jobs.
+    description: Publish built artifacts and fetched sources during the BuildStream build.
     required: false
     default: 'true'
 
@@ -23,13 +23,15 @@ runs:
         WORKSPACE_ROOT="${GITHUB_WORKSPACE:-$PWD}"
         mkdir -p "$WORKSPACE_ROOT/logs"
 
-        if [[ "${ENABLE_REMOTE_EXECUTION:-false}" == "true" ]]; then
-          echo "::error::Dakota CI uses the GitHub runner for the BuildStream build; remote execution is intentionally disabled."
+        if [[ "${ENABLE_REMOTE_EXECUTION:-false}" == "true" ]] &&
+           { [[ -z "${CASD_CLIENT_CERT:-}" ]] || [[ -z "${CASD_CLIENT_KEY:-}" ]]; }; then
+          echo "::error::remote execution was requested but CASD client credentials are missing"
           exit 1
         fi
 
         printf '%s\n' "${CASD_CLIENT_CERT:-}" > "$WORKSPACE_ROOT/client.crt"
         printf '%s\n' "${CASD_CLIENT_KEY:-}" > "$WORKSPACE_ROOT/client.key"
+        chmod 0600 "$WORKSPACE_ROOT/client.crt" "$WORKSPACE_ROOT/client.key"
 
         cat > "$WORKSPACE_ROOT/buildstream-ci.conf" <<'BSTCONF'
         scheduler:
@@ -46,11 +48,21 @@ runs:
         logdir: /src/logs
         BSTCONF
 
-        cat >> "$WORKSPACE_ROOT/buildstream-ci.conf" <<'BSTCONFBUILD'
+        if [[ "${ENABLE_REMOTE_EXECUTION:-false}" == "true" ]]; then
+          cat >> "$WORKSPACE_ROOT/buildstream-ci.conf" <<'BSTCONFBUILD'
+        build:
+          retry-failed: True
+          # Four BuildBox action slots × four jobs per action is the initial
+          # conservative ceiling on the 32-thread, 128 GiB executor.
+          max-jobs: 4
+        BSTCONFBUILD
+        else
+          cat >> "$WORKSPACE_ROOT/buildstream-ci.conf" <<'BSTCONFBUILD'
         build:
           retry-failed: True
           max-jobs: 1
         BSTCONFBUILD
+        fi
 
         if [[ -n "${CASD_CLIENT_CERT:-}" ]] && [[ -n "${CASD_CLIENT_KEY:-}" ]]; then
           PUSH_FLAG="true"
@@ -118,41 +130,46 @@ runs:
           cache-buildtrees: never
         BSTCONFCACHEBLOCK
 
-        if ! grep -Eq '^[[:space:]]*max-jobs:[[:space:]]*1[[:space:]]*$' "$WORKSPACE_ROOT/buildstream-ci.conf"; then
-          echo "::error::buildstream-ci.conf is missing build.max-jobs: 1; the runner-based Dakota build requires this cap."
-          exit 1
-        fi
+        if [[ "${ENABLE_REMOTE_EXECUTION:-false}" == "true" ]]; then
+          # The top-level storage service makes the runner's local casd a
+          # remote-backed cache, so artifact payloads stay on the BuildBox host.
+          # Keep this out of fetch-only publish configs: export must materialize
+          # the final artifact on the runner.
+          cat >> "$WORKSPACE_ROOT/buildstream-ci.conf" <<'BSTCONFREMOTE'
+          storage-service:
+            url: https://cache.projectbluefin.io:11002
+            connection-config:
+              keepalive-time: 180
+              retry-limit: 5
+              retry-delay: 1000
+              request-timeout: 180
+            auth:
+              client-key: /src/client.key
+              client-cert: /src/client.crt
 
-        cp "$WORKSPACE_ROOT/buildstream-ci.conf" "$WORKSPACE_ROOT/logs/buildstream-ci.conf"
-        echo "Remote execution enabled: no"
-        echo "=== BuildStream CI config ==="
-        cat "$WORKSPACE_ROOT/buildstream-ci.conf"
-
-        if [[ -n "${CASD_CLIENT_CERT:-}" ]] && [[ -n "${CASD_CLIENT_KEY:-}" ]]; then
-          cat > "$WORKSPACE_ROOT/buildstream-push.conf" <<'BSTCONFPUSH'
-        scheduler:
-          on-error: continue
-          fetchers: 16
-          builders: 2
-          network-retries: 3
-
-        logging:
-          message-format: '[%{wallclock}][%{elapsed}][%{key}][%{element}] %{action} %{message}'
-          error-lines: 80
-
-        cachedir: /root/.cache/buildstream
-        logdir: /src/logs
-
-        build:
-          retry-failed: True
-          max-jobs: 1
-
-        cache:
-          cache-buildtrees: never
-
-        artifacts:
-          servers:
-          - url: https://cache.projectbluefin.io:11002
+        remote-execution:
+          execution-service:
+            url: https://cache.projectbluefin.io:11002
+            connection-config:
+              keepalive-time: 180
+              retry-limit: 5
+              retry-delay: 1000
+              request-timeout: 180
+            auth:
+              client-key: /src/client.key
+              client-cert: /src/client.crt
+          storage-service:
+            url: https://cache.projectbluefin.io:11002
+            connection-config:
+              keepalive-time: 180
+              retry-limit: 5
+              retry-delay: 1000
+              request-timeout: 180
+            auth:
+              client-key: /src/client.key
+              client-cert: /src/client.crt
+          action-cache-service:
+            url: https://cache.projectbluefin.io:11002
             push: true
             connection-config:
               keepalive-time: 180
@@ -162,23 +179,35 @@ runs:
             auth:
               client-key: /src/client.key
               client-cert: /src/client.crt
-          - url: https://gbm.gnome.org:11003
-            push: false
-            connection-config:
-              keepalive-time: 180
-              retry-limit: 5
-              retry-delay: 1000
-              request-timeout: 180
-          - url: https://cache.freedesktop-sdk.io:11001
-            push: false
-            connection-config:
-              keepalive-time: 180
-              retry-limit: 5
-              retry-delay: 1000
-              request-timeout: 180
-
-        BSTCONFPUSH
-          cp "$WORKSPACE_ROOT/buildstream-push.conf" "$WORKSPACE_ROOT/logs/buildstream-push.conf"
-          echo "=== BuildStream push config ==="
-          cat "$WORKSPACE_ROOT/buildstream-push.conf"
+        BSTCONFREMOTE
         fi
+
+        if [[ "${ENABLE_REMOTE_EXECUTION:-false}" == "true" ]]; then
+          if ! grep -Eq '^[[:space:]]*max-jobs:[[:space:]]*4[[:space:]]*$' "$WORKSPACE_ROOT/buildstream-ci.conf"; then
+            echo "::error::remote build config is missing build.max-jobs: 4"
+            exit 1
+          fi
+          if ! grep -Fq 'remote-execution:' "$WORKSPACE_ROOT/buildstream-ci.conf"; then
+            echo "::error::remote-execution block missing from generated buildstream-ci.conf"
+            exit 1
+          fi
+          if [[ $(grep -c '^[[:space:]]*storage-service:' "$WORKSPACE_ROOT/buildstream-ci.conf") -ne 2 ]]; then
+            echo "::error::remote build config requires top-level and remote-execution storage services"
+            exit 1
+          fi
+          echo "Remote execution enabled: yes"
+        else
+          if ! grep -Eq '^[[:space:]]*max-jobs:[[:space:]]*1[[:space:]]*$' "$WORKSPACE_ROOT/buildstream-ci.conf"; then
+            echo "::error::local build config is missing build.max-jobs: 1"
+            exit 1
+          fi
+          if grep -Fq 'remote-execution:' "$WORKSPACE_ROOT/buildstream-ci.conf"; then
+            echo "::error::remote-execution block present in a local/fetch-only config"
+            exit 1
+          fi
+          echo "Remote execution enabled: no"
+        fi
+
+        cp "$WORKSPACE_ROOT/buildstream-ci.conf" "$WORKSPACE_ROOT/logs/buildstream-ci.conf"
+        echo "=== BuildStream CI config ==="
+        cat "$WORKSPACE_ROOT/buildstream-ci.conf"

@@ -53,8 +53,11 @@ jobs to fail before BuildStream started. `scripts/check_publish_workflow.py`
 extracts that block and passes it to `bash -n`; `validate.yml` runs the
 checker through `just check-publish-workflow`.
 
-Keep this check when changing the config generator. A generated cache
-configuration is not evidence that the composite shell itself is parseable.
+Keep this check when changing the config generator. The checker also executes
+the shell with dummy credentials in remote-build and fetch-only modes, verifies
+fail-closed credential handling, and inspects the resulting configs. Run its
+unit tests through `just check-publish-workflow`; a test file that is not wired
+into a Just recipe and CI is not protection.
 
 ### Composite-action shell structure
 

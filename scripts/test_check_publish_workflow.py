@@ -23,47 +23,62 @@ class CheckPublishWorkflowTests(unittest.TestCase):
 
     def copy_workspace(self, workspace: Path) -> None:
         shutil.copytree(REPOSITORY / ".github", workspace / ".github")
-        shutil.copytree(REPOSITORY / "files", workspace / "files")
+
+    def mutate(self, relative_path: str, old: str, new: str) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            self.copy_workspace(workspace)
+            path = workspace / relative_path
+            original = path.read_text()
+            self.assertIn(old, original)
+            path.write_text(original.replace(old, new, 1))
+            return self.run_checker(workspace)
+
+    def test_current_configuration_passes(self) -> None:
+        result = self.run_checker(REPOSITORY)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_rejects_unterminated_composite_action_shell(self) -> None:
-        with tempfile.TemporaryDirectory() as tempdir:
-            workspace = Path(tempdir)
-            self.copy_workspace(workspace)
+        result = self.mutate(
+            ".github/actions/generate-bst-ci-config/action.yml",
+            "        set -euo pipefail\n",
+            "        if true; then\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
-            action = workspace / ".github/actions/generate-bst-ci-config/action.yml"
-            action.write_text(
-                "runs:\n"
-                "  using: composite\n"
-                "  steps:\n"
-                "    - shell: bash\n"
-                "      run: |\n"
-                "        echo setup\n"
-                "\n"
-                "        if true; then\n"
-                "          echo broken\n"
-            )
+    def test_rejects_missing_remote_execution_block(self) -> None:
+        result = self.mutate(
+            ".github/actions/generate-bst-ci-config/action.yml",
+            "        remote-execution:\n",
+            "        disabled-executor:\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
-            result = self.run_checker(workspace)
+    def test_rejects_serial_build_matrix(self) -> None:
+        result = self.mutate(
+            ".github/workflows/build.yml",
+            "      max-parallel: 4\n",
+            "      max-parallel: 1\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
-            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+    def test_rejects_explicit_artifact_pull(self) -> None:
+        result = self.mutate(
+            ".github/workflows/build.yml",
+            "      - name: Count elements for progress tracking\n",
+            "      - name: Pull prebuilt artifacts from remote CAS\n"
+            "        run: true\n\n"
+            "      - name: Count elements for progress tracking\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_rejects_optional_nvidia_publication(self) -> None:
-        with tempfile.TemporaryDirectory() as tempdir:
-            workspace = Path(tempdir)
-            self.copy_workspace(workspace)
-
-            publish = workspace / ".github/workflows/publish.yml"
-            publish.write_text(
-                publish.read_text().replace(
-                    "sbom_filename: dakota-nvidia.spdx.json\n            continue: false",
-                    "sbom_filename: dakota-nvidia.spdx.json\n            continue: true",
-                    1,
-                )
-            )
-
-            result = self.run_checker(workspace)
-
-            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+    def test_rejects_remote_publish_export(self) -> None:
+        result = self.mutate(
+            ".github/workflows/publish.yml",
+            "          enable-remote-execution: 'false'\n",
+            "          enable-remote-execution: 'true'\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

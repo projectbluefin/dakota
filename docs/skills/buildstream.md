@@ -138,24 +138,25 @@ Changing a `kind: stack` dependency does not always invalidate downstream `compo
 
 Dakota's `patches/` directory is still carrying a small downstream patch queue for FSDK and GNOME Build Meta behavior that has not landed in the pinned upstream release yet. Every patch should carry an `Upstream-Status` header plus an `Exit` line so the next engineer can tell whether the workaround is still pending upstream or should be dropped. This is especially important when the patch is only needed because the junction is still older than the stock GNOME OS baseline.
 
-### Warm-cache builds still take 90-120 min — this is normal (2026-06-23)
+### Legacy runner-local warm-cache timing (2026-06-23)
 
-Even with a fully warm remote CAS, a full build takes 90-120 min. Common misconception: "cache is hot = fast build." Actual breakdown:
+> Superseded for x86 CI by remote-backed CAS and BuildBox execution on
+> 2026-07-28. The 90–150 minute range described the old explicit pre-pull and
+> runner-local assembly path; do not use it to justify reintroducing those steps.
 
-- **Pull volume:** ~1,400 elements × a few seconds each / 32 parallel fetchers = 15-30 min just for network pulls
-- **Two parallel jobs:** `default` and `nvidia` both run simultaneously, each hitting the same CAS endpoint, halving effective bandwidth per job
-- **OCI assembly is sequential:** After all elements pull/build, `oci/bluefin.bst` runs chunkify + image assembly — single-threaded, typically 20-40 min on its own
-- **Cold elements:** Any junction ref bump (Renovate PRs for distrobox, gnome-build-meta, etc.) invalidates those subtrees → full recompile from source adds 30-90 min
+Cold junction changes can still take time because actions genuinely need to run,
+but they run on the remote executor. Measure the new path before tuning.
 
-Do not cancel a build under 120 min just because it "seems slow." Historical range for successful builds: 90-150 min.
+### Fetcher count needs measurement under remote-backed CAS (2026-06-23)
 
-### 32 fetchers is the right setting for cache.projectbluefin.io (2026-06-23)
-
-`buildstream-ci.conf` uses `fetchers: 32` (BST default is 10). With default + nvidia running simultaneously = 64 concurrent gRPC streams. The CAS server is a Hetzner AX102-U (1 Gbit/s uplink, NVMe Gen4) and can serve 64 streams comfortably. The bottleneck is network bandwidth (~125 MB/s total), not server capacity. Do not reduce fetchers without evidence of server-side saturation.
+`buildstream-ci.conf` retains `fetchers: 32` for the initial RE rollout. Four
+variant jobs can create more metadata requests than the old two-job model, while
+top-level remote storage avoids transferring file payloads through the runners.
+Change this value only from observed endpoint saturation or latency evidence.
 
 ### Avoid /dev/stdin redirection in remote sandboxes (2026-07-25)
 
-BuildStream elements that write inline configuration files using `install -Dm644 /dev/stdin ... <<'EOF'` fail in remote execution sandboxes (like BuildBarn) where `/dev/stdin` is not available as a standard character device. Write inline files using a two-step pattern: create the destination file with `install -Dm644 /dev/null target`, then populate it with `cat > target <<'EOF'`.
+BuildStream elements that write inline configuration files using `install -Dm644 /dev/stdin ... <<'EOF'` fail in remote execution sandboxes (such as BuildBox) where `/dev/stdin` is not available as a standard character device. Write inline files using a two-step pattern: create the destination file with `install -Dm644 /dev/null target`, then populate it with `cat > target <<'EOF'`.
 
 ### overlap-whitelist required for base system file replacement
 

@@ -78,6 +78,7 @@ bst *ARGS:
 [group('dev')]
 check-publish-workflow:
     python3 scripts/check_publish_workflow.py
+    python3 -m unittest scripts.test_check_publish_workflow
 
 [group('dev')]
 monitor-pipeline BUILD_RUN_ID="":
