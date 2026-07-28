@@ -1950,7 +1950,7 @@ automatically.
 **Do not add a `/var/tmp` bind-mount workaround to individual workflows.** The fix
 belongs in the action, not scattered across consumers.
 
-### Dakota BST chunkify must use the compiled fakecap helper (2026-07-27)
+### Dakota BST chunkify must use the compiled fakecap helper
 
 The shared `chunka@v1` action's BST path injects every entry in
 `files/fakecap-manifest.tsv` with Python. Dakota's manifest is approximately one
