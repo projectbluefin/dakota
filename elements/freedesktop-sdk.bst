@@ -63,9 +63,10 @@ config:
 
     components/geoclue-base.bst: gnome-build-meta.bst:gnomeos-deps/geoclue-base.bst
 
-    # All variants ship the OGC kernel (sched_ext, ntsync, handheld
-    # support). Routed through the junction override so every consumer
-    # of components/linux.bst (unsigned-modules, initramfs,
-    # nvidia-drivers) resolves to it and module/kernel co-versioning
-    # holds by construction.
-    components/linux.bst: core/linux-ogc.bst
+    # Keep kernel selection at the junction boundary so every consumer
+    # (unsigned-modules, initramfs, nvidia-drivers) resolves the same
+    # kernel and module/kernel co-versioning holds by construction.
+    components/linux.bst: core/linux-fdsdk.bst
+    (?):
+    - gaming == true:
+        components/linux.bst: core/linux-ogc.bst

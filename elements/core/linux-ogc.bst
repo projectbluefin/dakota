@@ -1,15 +1,14 @@
-# Open Gaming Collective (OGC) kernel, the project kernel for ALL
-# Dakota variants, wired in unconditionally via the junction override in
-# elements/freedesktop-sdk.bst. Reproduces FDSDK's artifact contract
-# exactly: vmlinuz/config at %{bootdir}, modules at
+# Open Gaming Collective (OGC) kernel for Dakota gaming variants, selected
+# via the junction override in elements/freedesktop-sdk.bst. Reproduces
+# FDSDK's artifact contract exactly: vmlinuz/config at %{bootdir}, modules at
 # /usr/lib/modules/<kver>/ with a `build` symlink into
 # /usr/src/linux-<kver> (nvidia-drivers.bst compiles against it).
 #
 # The recipe is FDSDK 25.08 components/linux.bst with three deltas:
 #   1. Source: OGC's stable-tree fork; FDSDK's patch queue is dropped,
 #      the OGC tree carries its own gaming patchset.
-#   2. Config: FDSDK's fdsdk-config.sh pass (vendored at
-#      files/linux-ogc/, keep in sync when bumping the junction), then
+#   2. Config: FDSDK's fdsdk-config.sh pass (vendored at files/linux/,
+#      keep in sync when bumping the junction), then
 #      OGC's ogc.config.set/unset fragments (sched_ext, ntsync, BTF).
 #   3. Modules stripped (INSTALL_MOD_STRIP=1) and vmlinux to the devel
 #      split: OGC forces DEBUG_INFO=y for BTF.
@@ -19,7 +18,7 @@
 # stable-series jump, nvidia-drivers.bst must compile against the new
 # tree before shipping.
 kind: make
-description: OGC Linux kernel (all Dakota variants)
+description: OGC Linux kernel (Dakota gaming variants)
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-make.bst
@@ -243,9 +242,9 @@ sources:
   track: v*-ogc*
   ref: v7.1.4-ogc1-0-g29e5cbbcc123d68c41fc41b9c15afc3a2a98469e
 - kind: local
-  path: files/linux-ogc/config-utils.sh
+  path: files/linux/config-utils.sh
 - kind: local
-  path: files/linux-ogc/fdsdk-config.sh
+  path: files/linux/fdsdk-config.sh
 - kind: local
   path: files/linux-ogc/ogc.config.set
 - kind: local

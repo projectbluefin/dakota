@@ -69,6 +69,8 @@ case "$arch" in
 	enable SC_LPASS_CORECC_7280
 	enable SC_VIDEOCC_7280
 	enable SC_GCC_7280
+
+	enable QCOM_PD_MAPPER
     ;;
 esac
 
@@ -457,6 +459,7 @@ module AR5523
 module ATH10K_USB
 module ATH11K
 module ATH11K_PCI
+module ATH12K
 module ATH5K
 module ATH6KL
 module ATH6KL_SDIO

@@ -331,3 +331,26 @@ no authselect on this image, so a whole-file override is the only option. sudo
 cargo feature (`default = []`), so sudo-rs opens the `sudo` PAM service (not
 `sudo-i`) for `sudo -i` too — both paths include `system-auth`. Re-sync the
 copied stock stack at every fdsdk bump.
+
+### Select variant-specific kernels at the junction boundary (2026-07-28)
+
+Kernel consumers such as initramfs assembly, unsigned module collection, and NVIDIA
+module builds all depend on `freedesktop-sdk.bst:components/linux.bst`. When image
+variants need different kernels, make that path resolve conditionally in the
+freedesktop-sdk junction override. Swapping only the final runtime dependency can
+pair modules built for one kernel with another kernel at boot.
+
+If a required config change is present on freedesktop-sdk `master` but not the
+pinned release branch, prefer a leaf kernel element over patching the junction.
+Copy the pinned kernel source and config, state an exit condition tied to the
+upstream commit, and keep the junction source itself byte-aligned with
+gnome-build-meta. This invalidates the kernel and its reverse dependencies instead
+of the entire SDK graph. Validate both option values with `bst show`, because the
+default graph alone does not exercise the conditional kernel.
+
+For Linux 7.0 and 7.1, WCN7850 (`17cb:1107`) support is controlled by
+`CONFIG_ATH12K`. Even though the bound PCI module is named `ath12k_wifi7`,
+that single symbol builds both `ath12k.ko` and the Wi-Fi 7 family module;
+there is no separate `ATH12K_PCI` or `ATH12K_WIFI7` Kconfig option in those
+trees. Verify the selected kernel's Kconfig, Wi-Fi 7 PCI ID table, and
+`/usr/lib/firmware/ath12k/WCN7850/hw2.0/` payload together.

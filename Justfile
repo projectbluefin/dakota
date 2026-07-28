@@ -7,9 +7,10 @@ default:
 export image_name := env("BUILD_IMAGE_NAME", "dakota")
 export image_tag := env("BUILD_IMAGE_TAG", "latest")
 
-# Gaming variant: adds the gaming/ stack (the OGC kernel ships in ALL
-# variants regardless). Applies to every bst invocation here; exported
-# podman refs get a -gaming suffix so builds don't collide.
+# Gaming variant: adds the gaming/ stack and selects the OGC kernel.
+# Non-gaming variants use the freedesktop-sdk stable kernel. Applies to
+# every bst invocation here; exported podman refs get a -gaming suffix
+# so builds don't collide.
 export gaming := env("BUILD_GAMING", "false")
 export base_dir := env("BUILD_BASE_DIR", ".")
 export filesystem := env("BUILD_FILESYSTEM", "btrfs")
