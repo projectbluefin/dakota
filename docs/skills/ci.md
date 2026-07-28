@@ -105,6 +105,14 @@ The rationalizations that have caused real production failures:
 
 ## Fresh publish verification for testing images
 
+### Public GHCR visibility checks must not use runner credentials
+
+Dakota's published images are public. The post-push `skopeo inspect` probe in
+`publish.yml` must inspect the immutable SHA tag without `--creds`; GHCR can
+reject the authenticated probe even while the public manifest is readable.
+Keeping credentials on that probe makes the job fail before signing and leaves
+an unsigned candidate that `execute-release.yml` correctly rejects.
+
 When the task is "publish a fresh testing image" or "why is the image date wrong", verify the live state before changing anything.
 
 1. Start with the GitHub CLI: `gh run list --repo projectbluefin/dakota --limit 10` and `gh run view <run-id> --repo projectbluefin/dakota`.

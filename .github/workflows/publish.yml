@@ -198,7 +198,6 @@ jobs:
           # Do not let downstream smoke/release workflows race that visibility lag.
           for attempt in $(seq 1 12); do
             if skopeo inspect --no-tags \
-                --creds "$GH_ACTOR:$GH_TOKEN" \
                 "docker://${IMAGE}:${BUILD_SHA}" > /dev/null 2>&1; then
               echo "Verified immutable tag :${BUILD_SHA} is readable (attempt ${attempt})"
               break
