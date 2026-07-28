@@ -1,13 +1,26 @@
 # freedesktop-sdk stable kernel for non-gaming Dakota variants.
 #
-# This reproduces the x86_64/aarch64 artifact contract of the linux.bst
-# element at Dakota's pinned freedesktop-sdk 25.08 ref, with the shared
-# config enabling ATH12K. The pinned upstream kernel patches only affect
+# This reproduces the x86_64/aarch64 recipe of the linux.bst element at
+# Dakota's pinned freedesktop-sdk 25.08 ref, with the shared config
+# enabling ATH12K. The pinned upstream kernel patches only affect
 # RISC-V and PowerPC, which Dakota does not build.
 #
-# Exit condition: Drop this element and route non-gaming variants directly
-# to freedesktop-sdk's components/linux.bst once the pinned 25.08 release
-# contains freedesktop-sdk commit 2d9798306 (linux: Build ATH12K).
+# Two Dakota deltas from the upstream recipe (both shared with
+# linux-ogc.bst, see there):
+#   1. CRYPTO_ZSTD forced =y: the zswap.compressor=zstd karg
+#      (bluefin/zswap-config.bst, all variants) needs the compressor
+#      built in.
+#   2. Modules stripped (INSTALL_MOD_STRIP=1) and vmlinux to the devel
+#      split: the shared config pass enables DEBUG_INFO_BTF (forcing
+#      DEBUG_INFO=y), and Dakota's runtime OCI layers only exclude the
+#      devel/debug domains, so upstream's contract would ship ~0.5 GB
+#      of debug payload in composed images.
+#
+# Exit condition: once the pinned 25.08 release contains freedesktop-sdk
+# commit 2d9798306 (linux: Build ATH12K), the config divergence ends and
+# the vendored files/linux/ scripts re-sync with upstream. The two deltas
+# above are Dakota-specific and outlive it: only drop this element in
+# favor of components/linux.bst if zswap and image size are re-verified.
 kind: make
 description: freedesktop-sdk stable Linux kernel with ATH12K
 
@@ -32,6 +45,10 @@ build-depends:
 variables:
   bootdir: /boot
   indep-libdir: '%{prefix}/lib'
+  # Modules are stripped by kbuild (INSTALL_MOD_STRIP=1) *before* the
+  # module signature is appended; a post-build strip pass would tear
+  # the signatures off again.
+  strip-binaries: ''
   kernel_arch: '%{arch}'
   src-arch: '%{kernel_arch}'
   image-name: '$(make -s image_name)'
@@ -63,6 +80,10 @@ config:
     . ./fdsdk-config.sh "%{arch}"
 
   - |
+    # The zswap.compressor=zstd karg needs the compressor built in, not =m.
+    scripts/config --keep-case -e CRYPTO_ZSTD
+
+  - |
     make -j1 olddefconfig
 
   - |
@@ -81,13 +102,16 @@ config:
       ;;
     esac
 
+    # has() accepts =m; the zswap karg requires =y.
+    grep -q '^CONFIG_CRYPTO_ZSTD=y$' .config
+
   install-commands:
   - |
     install -Dm644 "%{image-name}" '%{install-root}%{bootdir}/vmlinuz'
     install -Dm644 vmlinux '%{install-root}%{bootdir}/vmlinux'
     install -Dm644 System.map '%{install-root}%{bootdir}/System.map'
     install -Dm644 .config '%{install-root}%{bootdir}/config'
-    make -j1 INSTALL_MOD_PATH='%{install-root}%{prefix}' modules_install
+    make -j1 INSTALL_MOD_PATH='%{install-root}%{prefix}' INSTALL_MOD_STRIP=1 modules_install
 
   - |
     release=$(make -s kernelrelease)
@@ -132,6 +156,10 @@ public:
       devel:
         (>):
         - '%{bootdir}/System.map'
+        # DEBUG_INFO=y (via the shared config's DEBUG_INFO_BTF) makes
+        # vmlinux ~0.5 GB; runtime consumers read /sys/kernel/btf/vmlinux,
+        # not this file, so keep it out of the composed images.
+        - '%{bootdir}/vmlinux'
     overlap-whitelist:
     - "%{project_licensedir}"
     - "%{project_licensedir}/**"
