@@ -134,12 +134,26 @@ jobs:
             *) echo "is_maintainer=false" >> "$GITHUB_OUTPUT" ;;
           esac
 
+      # Merge-queue groups created by github-actions[bot] never dispatch
+      # required checks; enqueue with the MergeRaptor app token instead.
+      - name: Get MergeRaptor token
+        if: >-
+          steps.perm.outputs.is_maintainer == 'true' &&
+          github.event.review.state == 'approved'
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.MERGERAPTOR_APP_ID }}
+          private-key: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Approved — clear label, enable auto-merge, update branch
         if: >-
           steps.perm.outputs.is_maintainer == 'true' &&
           github.event.review.state == 'approved'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           gh pr edit "$PR_URL" --remove-label "pr/needs-review" 2>/dev/null || true

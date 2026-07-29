@@ -16,3 +16,8 @@ jobs:
     with:
       head_sha: ${{ github.event.workflow_run.head_sha }}
       base_branch: testing
+    # Merge-queue groups created by github-actions[bot] never dispatch
+    # required checks; the app token keeps the queue from wedging.
+    secrets:
+      app_id: ${{ secrets.MERGERAPTOR_APP_ID }}
+      private_key: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}
