@@ -41,10 +41,21 @@ jobs:
       should-release: ${{ steps.compare.outputs.should-release }}
       build_sha: ${{ steps.compare.outputs.build_sha }}
     steps:
+      - name: Download digest artifact from publish run
+        if: github.event_name == 'workflow_run'
+        continue-on-error: true
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: digest-default
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/digest
+
       - name: Check publish conclusion and compare digests
         id: compare
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
         run: |
           set -euo pipefail
 
@@ -68,23 +79,6 @@ jobs:
             BUILD_SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/testing" --jq '.object.sha')
           fi
 
-          # Verify the SHA-tagged image exists in GHCR (proves this SHA was published).
-          # GHCR can briefly lag after publish.yml completes, so retry before
-          # declaring the release broken.
-          for attempt in $(seq 1 12); do
-            if skopeo inspect --no-tags \
-                "docker://ghcr.io/projectbluefin/dakota:${BUILD_SHA}" > /dev/null 2>&1; then
-              echo "Verified :${BUILD_SHA} is readable in GHCR (attempt ${attempt})"
-              break
-            fi
-            if [ "$attempt" -eq 12 ]; then
-              echo "ERROR: :${BUILD_SHA} is still unavailable in GHCR after publish"
-              exit 1
-            fi
-            echo "Waiting for GHCR to expose :${BUILD_SHA} (attempt ${attempt}/12)..."
-            sleep 10
-          done
-
           # Guard: if testing advanced since the build, the reusable fast-forward would
           # point main to a newer commit than the image we're promoting. Skip promotion.
           # Bypassed when promote_sha is specified (recovery: explicit SHA override).
@@ -97,16 +91,47 @@ jobs:
             fi
           fi
 
-          # Compare the SHA-tagged build digest against :stable. Using the SHA tag
-          # (not floating :testing) guarantees the decision input matches the action
-          # input — the same image we will promote is the one we evaluated.
-          TESTING_DIGEST=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:${BUILD_SHA}" \
-            | jq -r '.Digest')
+          IMAGE="ghcr.io/projectbluefin/dakota"
+          TESTING_DIGEST=""
+          META="${RUNNER_TEMP}/digest/digest.json"
+          if [ -f "$META" ]; then
+            D=$(jq -r '.digest // empty' "$META" 2>/dev/null || true)
+            A_SHA=$(jq -r '.sha // empty' "$META" 2>/dev/null || true)
+            if [[ "$D" =~ ^sha256:[0-9a-f]{64}$ ]] && [ "$A_SHA" = "$BUILD_SHA" ]; then
+              TESTING_DIGEST="$D"
+              echo "Using digest from publish artifact: ${TESTING_DIGEST}"
+            else
+              echo "::warning::digest-default artifact malformed or sha mismatch (artifact sha='${A_SHA:-}') — falling back to authenticated tag inspect"
+            fi
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "::warning::no digest artifact on publish run — falling back to authenticated tag inspect"
+          fi
+          if [ -z "$TESTING_DIGEST" ]; then
+            for attempt in $(seq 1 12); do
+              TESTING_DIGEST=$(skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
+                "docker://${IMAGE}:${BUILD_SHA}" 2>/dev/null | jq -r '.Digest // empty' || true)
+              if [ -n "$TESTING_DIGEST" ]; then
+                echo "Resolved :${BUILD_SHA} to ${TESTING_DIGEST} (attempt ${attempt})"
+                break
+              fi
+              if [ "$attempt" -eq 12 ]; then
+                echo "ERROR: :${BUILD_SHA} is not resolvable in GHCR (authenticated)"
+                exit 1
+              fi
+              echo "Waiting for authenticated read of :${BUILD_SHA} (attempt ${attempt}/12)..."
+              sleep 10
+            done
+          fi
+
+          skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
+            "docker://${IMAGE}@${TESTING_DIGEST}" > /dev/null \
+            || { echo "ERROR: digest ${TESTING_DIGEST} is not readable in GHCR"; exit 1; }
 
           STABLE_DIGEST=""
-          if skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:stable" > /dev/null 2>&1; then
-            STABLE_DIGEST=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:stable" \
-              | jq -r '.Digest')
+          if skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
+              "docker://${IMAGE}:stable" > /dev/null 2>&1; then
+            STABLE_DIGEST=$(skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
+              "docker://${IMAGE}:stable" | jq -r '.Digest')
           fi
 
           if [ -n "$STABLE_DIGEST" ] && [ "$TESTING_DIGEST" = "$STABLE_DIGEST" ]; then

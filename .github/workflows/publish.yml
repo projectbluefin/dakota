@@ -215,24 +215,26 @@ jobs:
           done
           $PUSH_OK || { echo "ERROR: all push attempts failed for :${BUILD_SHA}"; exit 1; }
 
-          # GHCR can briefly return manifest unknown immediately after a push.
-          # Do not let downstream smoke/release workflows race that visibility lag.
-          # 36 × 10 s = 6 min — observed GHCR lag can exceed 120 s on large pushes.
-          for attempt in $(seq 1 36); do
+          DIGEST=$(cat /tmp/digest.txt)
+          if ! [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "ERROR: malformed digest in digestfile: '${DIGEST}'"
+            exit 1
+          fi
+
+          # Advisory only; must never fail the job.
+          for attempt in $(seq 1 18); do
             if skopeo inspect --no-tags \
                 "docker://${IMAGE}:${BUILD_SHA}" > /dev/null 2>&1; then
-              echo "Verified immutable tag :${BUILD_SHA} is readable (attempt ${attempt})"
+              echo "Anonymous tag :${BUILD_SHA} visible (attempt ${attempt})"
               break
             fi
-            if [ "$attempt" -eq 36 ]; then
-              echo "ERROR: GHCR never exposed :${BUILD_SHA} after push"
-              exit 1
+            if [ "$attempt" -eq 18 ]; then
+              echo "::warning::GHCR has not exposed :${BUILD_SHA} anonymously after 3 min; continuing — the hard gate is the authenticated digest read"
             fi
-            echo "Waiting for GHCR to expose :${BUILD_SHA} (attempt ${attempt}/36)..."
             sleep 10
           done
 
-          echo "digest=$(cat /tmp/digest.txt)" >> "$GITHUB_OUTPUT"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Install oras
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
@@ -247,6 +249,29 @@ jobs:
           digest: ${{ steps.push.outputs.digest }}
           generate-sbom: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Uploaded after signing: the artifact means pushed AND signed.
+      - name: Write digest artifact
+        env:
+          BUILD_SHA: ${{ needs.setup.outputs.sha }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digest-artifact"
+          jq -n \
+            --arg variant "${{ matrix.variant }}" \
+            --arg image   "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}" \
+            --arg sha     "${BUILD_SHA}" \
+            --arg digest  "${{ steps.push.outputs.digest }}" \
+            --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{schema: 1, variant: $variant, image: $image, sha: $sha, digest: $digest, created: $created}' \
+            > "${RUNNER_TEMP}/digest-artifact/digest.json"
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: digest-${{ matrix.variant }}
+          path: ${{ runner.temp }}/digest-artifact/digest.json
+          retention-days: 30
+          if-no-files-found: error
 
   # ── Generate and attach SBOM ──────────────────────────────────────────────
   # Runs outside the critical path to :testing. Failures here must not block
@@ -278,6 +303,7 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -340,8 +366,13 @@ jobs:
       - name: Install oras
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
 
-      # Re-derive the image digest via skopeo so this job has no runtime
-      # dependency on publish-image job outputs (avoids matrix output wiring).
+      - name: Download digest artifact
+        continue-on-error: true
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: digest-${{ matrix.variant }}
+          path: ${{ runner.temp }}/digest
+
       - name: Resolve image digest
         id: digest
         env:
@@ -350,9 +381,34 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
-          DIGEST=$(skopeo inspect \
-            "docker://${IMAGE}:${BUILD_SHA}" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)['Digest'])")
+          DIGEST=""
+          META="${RUNNER_TEMP}/digest/digest.json"
+          if [ -f "$META" ]; then
+            DIGEST=$(jq -r '.digest // empty' "$META" 2>/dev/null || true)
+            ART_SHA=$(jq -r '.sha // empty' "$META" 2>/dev/null || true)
+            if ! [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || [ "$ART_SHA" != "$BUILD_SHA" ]; then
+              echo "::warning::digest-${{ matrix.variant }} artifact malformed or sha mismatch (artifact sha='${ART_SHA:-}') — falling back to authenticated tag inspect"
+              DIGEST=""
+            else
+              echo "Using digest from publish artifact: ${DIGEST}"
+            fi
+          else
+            echo "::warning::digest-${{ matrix.variant }} artifact missing — falling back to authenticated tag inspect"
+          fi
+          if [ -z "$DIGEST" ]; then
+            for attempt in $(seq 1 12); do
+              DIGEST=$(skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
+                "docker://${IMAGE}:${BUILD_SHA}" 2>/dev/null | jq -r '.Digest // empty' || true)
+              if [ -n "$DIGEST" ]; then
+                break
+              fi
+              if [ "$attempt" -eq 12 ]; then
+                echo "ERROR: cannot resolve digest for :${BUILD_SHA} (authenticated)"
+                exit 1
+              fi
+              sleep 10
+            done
+          fi
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Attach SBOM
@@ -381,7 +437,7 @@ jobs:
             "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}@${SBOM_DIGEST}"
 
   # ── Promote :testing ──────────────────────────────────────────────────────
-  # Re-tags :$sha as :testing after publish-image and validation succeed.
+  # Applies the stream tag to the digest recorded by publish-image.
   # Uses skopeo copy for server-side re-tagging: layers never leave the registry,
   # saving the 20–25 min round-trip of the previous podman pull→tag→push approach.
   # --preserve-digests keeps the promoted tag pointing at the signed manifest digest.
@@ -398,68 +454,103 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image_suffix: ''
+          - variant: default
+            image_suffix: ''
             continue: false
-          - image_suffix: '-nvidia'
+          - variant: nvidia
+            image_suffix: '-nvidia'
             continue: true
-          - image_suffix: '-gaming'
+          - variant: gaming
+            image_suffix: '-gaming'
             continue: true
-          - image_suffix: '-nvidia-gaming'
+          - variant: nvidia-gaming
+            image_suffix: '-nvidia-gaming'
             continue: true
     continue-on-error: ${{ matrix.continue }}
     permissions:
       contents: write
       packages: write
+      actions: read
     steps:
-      - name: Promote :${{ needs.setup.outputs.sha }} to :${{ needs.setup.outputs.testing_tag }}
+      - name: Download digest artifact
+        continue-on-error: true
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: digest-${{ matrix.variant }}
+          path: ${{ runner.temp }}/digest
+
+      - name: Resolve source digest
+        id: digest
         env:
           BUILD_SHA: ${{ needs.setup.outputs.sha }}
-          TESTING_TAG: ${{ needs.setup.outputs.testing_tag }}
           GH_ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
-          # Check the immutable source before copying. This also absorbs a short
-          # GHCR manifest-visibility delay without moving a broken stream tag.
-          # 36 × 10 s = 6 min — observed GHCR lag can exceed 120 s on large pushes.
-          for attempt in $(seq 1 36); do
-            if skopeo inspect --no-tags \
-                "docker://${IMAGE}:${BUILD_SHA}" > /dev/null 2>&1; then
-              break
+          DIGEST=""
+          META="${RUNNER_TEMP}/digest/digest.json"
+          if [ -f "$META" ]; then
+            DIGEST=$(jq -r '.digest // empty' "$META" 2>/dev/null || true)
+            ART_SHA=$(jq -r '.sha // empty' "$META" 2>/dev/null || true)
+            if ! [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || [ "$ART_SHA" != "$BUILD_SHA" ]; then
+              echo "::warning::digest-${{ matrix.variant }} artifact malformed or sha mismatch (artifact sha='${ART_SHA:-}') — falling back to authenticated tag inspect"
+              DIGEST=""
+            else
+              echo "Using digest from publish artifact: ${DIGEST}"
             fi
-            if [ "$attempt" -eq 36 ]; then
-              echo "ERROR: source tag :${BUILD_SHA} is not readable in GHCR"
-              exit 1
-            fi
-            echo "Waiting for source tag :${BUILD_SHA} (attempt ${attempt}/36)..."
-            sleep 10
-          done
+          else
+            echo "::warning::digest-${{ matrix.variant }} artifact missing — falling back to authenticated tag inspect"
+          fi
+          if [ -z "$DIGEST" ]; then
+            for attempt in $(seq 1 12); do
+              DIGEST=$(skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
+                "docker://${IMAGE}:${BUILD_SHA}" 2>/dev/null | jq -r '.Digest // empty' || true)
+              if [ -n "$DIGEST" ]; then
+                break
+              fi
+              if [ "$attempt" -eq 12 ]; then
+                echo "ERROR: cannot resolve digest for :${BUILD_SHA} (authenticated)"
+                exit 1
+              fi
+              sleep 10
+            done
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
+      - name: Promote :${{ needs.setup.outputs.sha }} to :${{ needs.setup.outputs.testing_tag }}
+        env:
+          TESTING_TAG: ${{ needs.setup.outputs.testing_tag }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
+        run: |
+          IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
           PUSH_OK=false
           for attempt in 1 2 3; do
             skopeo copy \
               --preserve-digests \
               --src-creds "$GH_ACTOR:$GH_TOKEN" \
               --dest-creds "$GH_ACTOR:$GH_TOKEN" \
-              "docker://${IMAGE}:${BUILD_SHA}" \
+              "docker://${IMAGE}@${DIGEST}" \
               "docker://${IMAGE}:${TESTING_TAG}" && { PUSH_OK=true; break; }
             echo "skopeo copy attempt ${attempt} failed for :${TESTING_TAG}, retrying in 5s..."
             [ "$attempt" -lt 3 ] && sleep 5
           done
           $PUSH_OK || { echo "ERROR: all copy attempts failed for :${TESTING_TAG}"; exit 1; }
 
-          if ! skopeo inspect --no-tags \
-              "docker://${IMAGE}:${TESTING_TAG}" > /dev/null 2>&1; then
-            echo "ERROR: promoted tag :${TESTING_TAG} is not readable in GHCR"
+          PROMOTED=$(skopeo inspect --no-tags --creds "$GH_ACTOR:$GH_TOKEN" \
+            "docker://${IMAGE}:${TESTING_TAG}" | jq -r '.Digest')
+          if [ "$PROMOTED" != "$DIGEST" ]; then
+            echo "ERROR: :${TESTING_TAG} points at ${PROMOTED}, expected ${DIGEST}"
             exit 1
           fi
 
       - name: Push :btw alias (next stream only)
         if: needs.setup.outputs.testing_tag == 'next'
         env:
-          BUILD_SHA: ${{ needs.setup.outputs.sha }}
           GH_ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
           IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
           PUSH_OK=false
@@ -468,7 +559,7 @@ jobs:
               --preserve-digests \
               --src-creds "$GH_ACTOR:$GH_TOKEN" \
               --dest-creds "$GH_ACTOR:$GH_TOKEN" \
-              "docker://${IMAGE}:${BUILD_SHA}" \
+              "docker://${IMAGE}@${DIGEST}" \
               "docker://${IMAGE}:btw" && { PUSH_OK=true; break; }
             echo "skopeo copy attempt ${attempt} failed for :btw, retrying in 5s..."
             [ "$attempt" -lt 3 ] && sleep 5

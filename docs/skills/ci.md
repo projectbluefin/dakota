@@ -30,7 +30,7 @@ For Dakota, that means:
 - `cache.storage-service` plus `remote-execution` execution, storage, and action-cache services;
 - writable artifact/source remotes so BuildStream's build pipeline publishes results automatically;
 - no explicit dependency pre-pull, standalone artifact push, seed shards, or local fallback;
-- `build.max-jobs: 4` for the initial capacity setting.
+- `build.max-jobs: 8` (raised from 4 on 2026-07-29 after kernel-cascade evidence).
 
 The x86 build is fail-closed. Missing mTLS credentials, a missing RE block, an
 unreachable executor, or an absent `Remote Execution Configuration` startup
@@ -112,13 +112,17 @@ The rationalizations that have caused real production failures:
 
 ## Fresh publish verification for testing images
 
-### Public GHCR visibility checks must not use runner credentials
+### Hard gates read GHCR by digest with credentials; anonymous tag reads are advisory only
 
-Dakota's published images are public. The post-push `skopeo inspect` probe in
-`publish.yml` must inspect the immutable SHA tag without `--creds`; GHCR can
-reject the authenticated probe even while the public manifest is readable.
-Keeping credentials on that probe makes the job fail before signing and leaves
-an unsigned candidate that `execute-release.yml` correctly rejects.
+The pipeline's fail-closed checks inspect the pushed manifest **by digest**
+(from podman's `--digestfile`) with `--creds`. That path is read-your-writes.
+Both tag-read paths have independently failed as gates: the authenticated tag
+probe was rejected while the public manifest was readable (the reason `--creds`
+was originally removed, commit `8f8c7eb`), and the anonymous tag probe lagged
+past a six-minute poll while the push had long succeeded (2026-07-28). Neither
+tag path may hard-fail a job in either direction; anonymous visibility polls
+emit `::warning` at most. See the 2026-07-29 lesson below for the digest-first
+contract.
 
 For recovery, `publish.yml` accepts a `source_sha` workflow-dispatch input so a
 fixed publisher can republish an existing remote-CAS artifact without starting
@@ -321,7 +325,7 @@ git push --force-with-lease origin <branch-name>
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Build OOM or hangs | Worker memory pressure under RE, or a failed RE configuration | Verify the startup banner, then inspect the four-slot BuildBox host. Keep `max-jobs: 4` for the initial rollout. Prefer upstream GNOME OS / GBM / FSDK alignment over local compiler workarounds. Runner-local compilation is not a supported fallback. |
+| Build OOM or hangs | Worker memory pressure under RE, or a failed RE configuration | Verify the startup banner, then inspect the four-slot BuildBox host. `max-jobs: 8` is the evidence-backed setting; drop it only on observed executor memory pressure. Prefer upstream GNOME OS / GBM / FSDK alignment over local compiler workarounds. Runner-local compilation is not a supported fallback. |
 | "No space left on device" during **Chunkify** | Overlay copy-ups from `inject-xattrs.py` exhaust the ~1 GB root FS left by `setup-runner`'s BTRFS loopback | Fixed centrally in `chunka@v1` — auto-selects `/var/lib/containers` (BTRFS, ~49 GB) over `/var/tmp` (~1 GB) |
 | "No space left on device" during **Build** | BST cache fills runner disk | Check if any element generates large buildtrees. With RE enabled, the runner should not be building elements locally; if it is, see the semi-cold RE cascade lesson below. |
 | `bootc container lint` fails | Image structure issues | Check OCI assembly, `/usr/etc` merge |
@@ -420,12 +424,40 @@ gh run list --repo projectbluefin/dakota --limit 5
 
 > **Note:** Lessons are ordered newest-first. Deleted CI paths are historical evidence only; do not recreate them.
 
+### GHCR anonymous tag reads are eventually consistent — gate on authenticated digest reads (2026-07-29)
+
+On 2026-07-28 all four `publish-image` jobs failed at the post-push visibility
+gate: `podman push` succeeded and wrote the digestfile, but the anonymous
+`skopeo inspect` poll on the `:sha` tag (36×10s) never saw it. The tags became
+publicly visible minutes after the jobs died. The lag had already outgrown a
+120s window and a 360s window; extending the poll again would only buy a ticket
+to the next incident.
+
+The structural fix is the digest-first contract: the producer owns "the push
+landed", and a successful push plus its `--digestfile` digest is the receipt —
+no post-push readback needed; consumers receive that digest through per-variant
+`digest-<variant>` workflow artifacts (`promote` and `publish-sbom` download
+them same-run; `execute-release.yml` downloads `digest-default` from the
+triggering publish run) and copy or verify **by digest**. A consumer without an
+artifact falls back to an authenticated tag inspect guarded by a `.sha` match,
+so `source_sha`/`promote_sha` recovery dispatches still work. Anonymous tag
+polls remain only as a `::warning` signal.
+
+Do not reintroduce a hard gate on any tag read, authenticated or anonymous —
+both variants have independently caused production failures (see the visibility
+checks section above). The only trustworthy read is by digest, with
+credentials.
+
 ### Remote-backed CAS removes runner transfer phases (2026-07-28)
 
 The production endpoint is a single BuildBox 1.4.11 `buildbox-casd` executor
 behind Traefik mTLS, not the historical BuildBarn cluster. It has four action
 slots on a 32-thread, 128 GiB host. Match that capacity with four concurrent
-variant jobs and start conservatively at `build.max-jobs: 4` per action.
+variant jobs. The initial `build.max-jobs: 4` was raised to 8 on 2026-07-29:
+the first production run spent ~2.5 h on an ATH12K kernel cascade of ~20 serial
+build actions at 4 threads each, leaving the 32-thread executor mostly idle
+while 848 warm pulls had completed in 2 minutes. max-jobs is not part of BST
+cache keys, so the bump costs nothing in cache reuse.
 
 BuildStream 2.7 distinguishes artifact remotes, remote execution storage, and
 the top-level cache storage service. A `remote-execution:` block alone still
@@ -525,7 +557,7 @@ Applying any patches to the `gnome-build-meta` junction (e.g., local patch queue
 The durable rule is that `just bst build ...` loads a `remote-execution:` block
 and does not silently fall back to local compilation. The current BuildBox host
 provides the RE frontend and cache services. Keep `scheduler.builders: 2` and
-start at `build.max-jobs: 4`; backend `--jobs 4` caps global action concurrency.
+use `build.max-jobs: 8`; backend `--jobs 4` caps global action concurrency.
 The only generated file used by the build is `/src/buildstream-ci.conf`.
 
 ### Cache access and RE are separate; verify both (2026-07-11)

@@ -51,9 +51,7 @@ runs:
         )
 
         if [[ "${ENABLE_REMOTE_EXECUTION:-false}" == "true" ]]; then
-          # Four BuildBox action slots × four jobs per action is the initial
-          # conservative ceiling on the 32-thread, 128 GiB executor.
-          MAX_JOBS=4
+          MAX_JOBS=8
         else
           MAX_JOBS=1
         fi

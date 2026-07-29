@@ -80,7 +80,7 @@ def check_generated_configs(shell: str, errors: list[str]) -> None:
             "remote-execution:": "remote-execution block",
             "  execution-service:": "execution service",
             "  action-cache-service:": "action-cache service",
-            "  max-jobs: 4": "build.max-jobs: 4",
+            "  max-jobs: 8": "build.max-jobs: 8",
             "cache:\n  cache-buildtrees: never\n  storage-service:": "top-level cache storage service",
         }
         for token, description in required.items():
