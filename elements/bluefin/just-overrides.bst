@@ -16,6 +16,7 @@ public:
     - /usr/share/ublue-os/just/default.just
     - /usr/share/ublue-os/just/changelog.just
     - /usr/share/ublue-os/just/system.just
+    - /usr/lib/systemd/zram-generator.conf
 
 config:
   install-commands:
@@ -23,4 +24,5 @@ config:
   - install -Dm644 changelog.just "%{install-root}/usr/share/ublue-os/just/changelog.just"
   - install -Dm644 system.just "%{install-root}/usr/share/ublue-os/just/system.just"
   - install -Dm644 flutter.just "%{install-root}/usr/share/ublue-os/just/flutter.just"
+  - install -Dm644 zram-generator.conf "%{install-root}%{prefix}/lib/systemd/zram-generator.conf"
   - "%{install-extra}"

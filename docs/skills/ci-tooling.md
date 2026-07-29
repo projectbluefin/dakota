@@ -45,6 +45,27 @@ Use when you see:
 
 ## High-Value Failure Patterns
 
+### Composite action shell syntax must be tested as shell
+
+YAML validation does not parse the shell held in a composite action's `run: |`
+block. An unmatched `if` in `generate-bst-ci-config` caused both x86 target
+jobs to fail before BuildStream started. `scripts/check_publish_workflow.py`
+extracts that block and passes it to `bash -n`; `validate.yml` runs the
+checker through `just check-publish-workflow`.
+
+Keep this check when changing the config generator. The checker also executes
+the shell with dummy credentials in remote-build and fetch-only modes, verifies
+fail-closed credential handling, and inspects the resulting configs. Run its
+unit tests through `just check-publish-workflow`; a test file that is not wired
+into a Just recipe and CI is not protection.
+
+### Composite-action shell structure
+
+When removing a conditional branch from a composite action, remove its matching
+`fi` and validate the resulting shell block before dispatching CI. A shell parse
+failure in configuration generation prevents every downstream build job from
+starting, so it is not a BuildStream failure.
+
 ### 1) Reusable workflow token starvation
 
 If a thin caller uses `jobs.<id>.uses`, the caller's top-level `permissions:`
@@ -277,41 +298,13 @@ jobs:
 
 This pattern is also used in `track-bst-sources.yml` and `track-next-junctions.yml`.
 
-### 12) `sync-main-to-testing` resets testing to main — CI-only PRs to testing get wiped
+### 12) ~~`sync-main-to-testing` resets testing~~ — DELETED workflow (2026-06-23)
 
-The sync workflow runs on every push to `main`. It merges main into testing.
-If testing has commits that are not yet on main (e.g. a feature PR merged to testing
-before its content promoted), those commits survive the sync (merge wins).
+`sync-main-to-testing.yml` was deleted in the OCI-native redesign (issue 1073). This race condition no longer applies. Historical note retained for context.
 
-**But:** if testing was at the same SHA as main when the feature PR landed, and then
-a *different* push triggered sync before the feature PR's content was promoted, the
-sync fast-forwards testing to the new main HEAD, which may not include the feature commits
-if they diverged from a stale base.
+### 13) ~~`execute-release` fires on CI-only main push~~ — DELETED pattern (2026-06-23)
 
-**Observed:** PR #1045 (aarch64 workflow) merged to testing at 00:16 UTC.
-`sync-main-to-testing` ran at 02:38 UTC for an unrelated main push. Testing was reset
-to main's HEAD, erasing the aarch64 commit. Had to re-land as PR #1051.
-
-**Rule:** For CI-only changes that must survive to the next promotion, target `testing`
-and ensure promotion fires before the next unrelated push to `main`. Or target `main`
-directly (CI-only PRs can merge without review) to skip the sync race entirely.
-
-### 13) execute-release fires on CI-only main push — release-notes step fails
-
-`execute-release.yml` triggers on every `push: branches: main`. When the push is
-CI-only (no `publish.yml` image build ran for that commit), the `release-notes /
-Create stable image release` step fails:
-
-```
-::error::Could not find a successful publish.yml run on main
-```
-
-`check-trigger` does not detect CI-only pushes and bail early. This is a known bug
-(tracked in issue 1061). It does not affect image publishing (`execute / execute`
-succeeds) — only the GitHub Release creation step fails.
-
-**Workaround:** Ignore the `release-notes` failure when the triggering push was
-CI-only. The image is still published correctly.
+`execute-release.yml` no longer triggers on `push: main`. It now fires via `workflow_run` from `publish.yml` on `testing` only. The CI-only push trigger and the `check-trigger` commit-message gate were both removed. This bug no longer applies.
 
 ### 14) `BST_SHOW_OUT=$(cmd)` with bash -e exits on bst show failure (2026-06-23)
 
@@ -405,6 +398,19 @@ If a reusable automerge workflow matches PRs by `head_sha`, it must listen to th
 
 **Symptom:** open dependency PRs stay mergeable and green but never get `autoMergeRequest` set.
 
+## Lessons Learned
+
+### Scorecard push trigger must target the actual default branch (2026-07-03)
+
+`ossf/scorecard-action` validates default-branch-only behavior for checks like
+`Branch-Protection` and fails with `validating options: only default branch is
+supported` if the workflow's `push.branches` points at a non-default branch.
+Dakota's GitHub default branch is `testing`, not `main`, so
+`.github/workflows/scorecard.yml` must use `push.branches: [testing]`.
+
+Keep the weekly `schedule` trigger (`17 9 * * 1`) intact for the `Maintained`
+check; only retarget the push branch filter to the actual default branch.
+
 ## Red Flags
 
 - `permissions: {}` on a reusable workflow caller
@@ -418,7 +424,6 @@ If a reusable automerge workflow matches PRs by `head_sha`, it must listen to th
 - bot actors excluded from `pr-autoupdate` while their PRs go behind
 - `validate` job condition is `pull_request` only — blocked in merge queue for bot PRs
 - `renovate-automerge` missing Mergeraptor token — workflow-file bumps silently strand
-- landing a CI feature on `testing` and assuming it survives the next sync-main-to-testing
 - `pr-triage` gate only allowing `renovate/*` to target `testing`, blocking feature PRs
 - rapid-fire PR merges cancelling each other's pending builds (manual dispatch needed)
 - `if: ${{ inputs.X }}` in a job condition on a workflow that can be triggered by `workflow_run`

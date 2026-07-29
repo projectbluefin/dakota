@@ -22,6 +22,10 @@ config:
     # restore GPU memory. Without this the services run but GPU context
     # is lost on resume, causing hard locks. See gnome-build-meta !4685.
     options nvidia NVreg_PreserveVideoMemoryAllocations=1
+    # Where the VRAM save file goes during suspend. The default (/tmp)
+    # is tmpfs on this image, which would page up to the GPU's whole
+    # VRAM into RAM; /var/tmp is real disk.
+    options nvidia NVreg_TemporaryFilePath=/var/tmp
     EOF
 
     # Order matters: nvidia → nvidia-modeset → nvidia-drm. Loading early

@@ -5,13 +5,22 @@ depends:
   - oci/os-release.bst
 
   - freedesktop-sdk.bst:components/linux-firmware.bst
+  - core/ntsync-modules-load.bst
   - gnome-build-meta.bst:gnomeos/initramfs/signed-modules.bst
-  - gnome-build-meta.bst:oci/initramfs/image.bst
+  - gnome-build-meta.bst:oci/initramfs.bst
 
   - gnome-build-meta.bst:gnomeos-deps/bootc.bst
   - gnome-build-meta.bst:oci/integration/bootc-config.bst
   - freedesktop-sdk.bst:vm/config/useradd-default.bst
   - freedesktop-sdk.bst:vm/config/sudo.bst
+
+# Gaming host stack + Flathub preinstalls, only with `-o gaming true`.
+# Covers both variants: bluefin-nvidia-stack.bst depends on this stack.
+(?):
+- gaming == true:
+    depends:
+      (>):
+      - gaming/deps.bst
 
 public:
   bst:

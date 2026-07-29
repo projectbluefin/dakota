@@ -101,6 +101,74 @@ spinner messages and flavor text.
 
 ---
 
+## Recipe arguments must go through quote()
+
+just interpolates `{{param}}` textually into the recipe's script source, so
+`ISSUE="{{param}}"` lets an argument containing `"` break out of the quoting
+and execute before any shell validation runs. Always interpolate with the
+builtin `quote()`, then validate in bash:
+
+```bash
+ISSUE={{ quote(issue_number) }}
+if [[ ! "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
+    echo "usage..." >&2; exit 1
+fi
+```
+
+Do NOT use `set positional-arguments` for this — the file is merged into the
+system-wide ublue justfile and the setting would change every recipe.
+
+---
+
+## $(printf ...) strips trailing newlines — markdown tables collapse
+
+Command substitution strips trailing newlines, so building multi-line strings
+with `VAR+=$(printf '...\n')` silently glues rows together: a GitHub comment
+table posts as one mangled line. Append the newline outside the substitution
+(or use a `$'...'` literal for constant lines):
+
+```bash
+COMMENT+=$'| Field | Value |\n|-------|-------|\n'      # constant rows
+COMMENT+=$(printf '| Image | `%s` |' "$IMG")$'\n'       # substituted rows
+```
+
+---
+
+## bootc status --json field paths
+
+The digest lives under `.image`, not on the boot entry (the old
+`.status.booted.imageDigest` path never existed — it always rendered
+"unknown" through jq's `// "unknown"` fallback):
+
+```text
+.status.booted.image.image.image    # image ref
+.status.booted.image.version        # version (may be null)
+.status.booted.image.imageDigest    # digest
+```
+
+`bootc status` requires root. In anything that may run without a tty, use
+`sudo -n ... || fallback` so it can never hang on a password prompt.
+
+---
+
+## Recipes that post publicly must fail closed without a tty
+
+`gum confirm` fails when stdin is not a tty; under `set -e` patterns that can
+either abort the recipe or (worse) be "handled" into auto-posting. Detect the
+tty once and require explicit opt-in for scripted use instead of silently
+publishing:
+
+```bash
+INTERACTIVE=0
+[[ -t 0 ]] && INTERACTIVE=1
+# non-tty: post only when the caller passed an explicit "yes" argument
+```
+
+Related: `wl-copy` forks and lingers to serve the clipboard — a scripted
+caller capturing the recipe's output hangs on the open pipe. Only invoke
+clipboard tools when interactive.
+
+---
 ## jq -n for JSON file generation in just recipes
 
 When a just recipe needs to write a JSON file, use `jq -n` instead of a

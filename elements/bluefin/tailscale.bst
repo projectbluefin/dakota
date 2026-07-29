@@ -4,11 +4,11 @@ sources:
 - kind: tar
   (?):
   - arch == "x86_64":
-      url: tailscale_pkgs:tailscale_1.98.3_amd64.tgz
-      ref: a53002b0052317179d3fcace99dcd94c87b634dbb453da06b7374a4420c8160a
+      url: tailscale_pkgs:tailscale_1.98.10_amd64.tgz
+      ref: 52490ce0832b245857e2afef7426d6ae5a4b49fb391412833cc95729bd23f7de
   - arch == "aarch64":
-      url: tailscale_pkgs:tailscale_1.98.3_arm64.tgz
-      ref: d26ce4a1a259621fc76d16c7baf3f3a4252f356dfa9d9769484782f766ca1b7f
+      url: tailscale_pkgs:tailscale_1.98.10_arm64.tgz
+      ref: d74a84e07cb1948d9f09a23ae161417c6127e562949773705c95d0762be2809d
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
@@ -31,7 +31,8 @@ config:
     mv "%{install-root}%{indep-libdir}/systemd/system/tailscaled.service.patched" \
        "%{install-root}%{indep-libdir}/systemd/system/tailscaled.service"
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system-preset/80-tailscale.preset" <<'PRESET'
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system-preset/80-tailscale.preset"
+    cat > "%{install-root}%{indep-libdir}/systemd/system-preset/80-tailscale.preset" <<'PRESET'
     enable tailscaled.service
     PRESET
   - |

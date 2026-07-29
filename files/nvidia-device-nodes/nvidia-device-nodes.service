@@ -1,0 +1,20 @@
+[Unit]
+Description=Create NVIDIA device nodes
+# Sufficient ordering only because nvidia-modprobe-config.bst loads the
+# nvidia modules via modules-load.d; revisit if that changes.
+After=systemd-modules-load.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# One -c per GPU; /proc/driver/nvidia/gpus has one entry per device.
+# "-" prefixed steps tolerate absent hardware/module.
+ExecStart=/bin/sh -c 'n=$(ls /proc/driver/nvidia/gpus 2>/dev/null | wc -l); i=0; while [ "$i" -lt "$n" ]; do /usr/bin/nvidia-modprobe -c "$i"; i=$((i+1)); done'
+ExecStart=-/usr/bin/nvidia-modprobe -u -c 0
+ExecStart=-/usr/bin/nvidia-modprobe -m
+# Bounded wait for the RM to accept clients; the greeter's EGL init races GSP boot otherwise.
+ExecStart=-/bin/sh -c '[ -n "$(ls /proc/driver/nvidia/gpus 2>/dev/null)" ] || exit 0; i=0; while [ "$i" -lt 50 ]; do /usr/bin/nvidia-smi -L >/dev/null 2>&1 && exit 0; i=$((i+1)); sleep 0.2; done'
+
+[Install]
+WantedBy=multi-user.target

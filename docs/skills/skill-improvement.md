@@ -82,4 +82,14 @@ All learnings → `docs/skills/` in this repo. Cross-cutting patterns affecting 
 - [ ] The updated skill gives future agents concrete triggers, anti-patterns, and exit criteria
 - [ ] The branch is not marked done until the skill contribution check passes
 
+## Lessons Learned
+
+### Never dispatch parallel sub-agents that write to the same file (2026-07-09)
+
+Fleet-mode dispatched two parallel agents that both edited `Justfile`; the second agent's write clobbered the first agent's already-verified recipe, and the loss was only caught by a later review pass. Shared hot files in this repo — `Justfile`, `.github/workflows/build.yml`, `docs/skills/ci.md` — must have exactly one writer at a time. Partition parallel agent work by file ownership up front, or serialize any agent whose scope touches a shared file.
+
+### Verify sub-agent output by diff, never by its report (2026-07-09)
+
+A sub-agent asked to apply six fixes returned an empty response and had applied none of them — no error, no partial work, just silence. Before building on any sub-agent's work: run `git diff` / grep for the specific changes it was asked to make. An empty, vague, or summary-only response means assume nothing was done and verify from zero. If a sub-agent fails or no-ops once, do the work directly instead of re-dispatching.
+
 Full mandate: [`projectbluefin/common/docs/skills/skill-improvement.md`](https://github.com/projectbluefin/common/blob/main/docs/skills/skill-improvement.md)

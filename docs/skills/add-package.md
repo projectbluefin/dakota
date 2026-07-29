@@ -158,3 +158,18 @@ variables:
 ```
 
 External dep: `freedesktop-sdk.bst:components/sndfile.bst`. No external LV2 headers needed — bundled.
+
+### Dropping upstream apps silently drops their transitive libs/typelibs (2026-07-19)
+
+`core/meta-gnome-core-apps.bst` is overridden to a short allow-list, so any library
+pulled *only* by a dropped app never enters the image. This is invisible until a GI
+consumer fails to bind it. Example: dakota#1022 — gnome-console/builder/foundry were
+the only pullers of gnome-build-meta's `core-deps/vte.bst`, so the image shipped **zero**
+VTE typelibs and the user-installed ddterm extension (GTK3 ABI, `Vte-2.91`) could not load.
+
+Fix pattern: add a dedicated `bluefin/<lib>.bst` that rebuilds the *same source/ref as
+the junction element* (keep them in lockstep — bump together) rather than overriding the
+junction. If a Shell extension needs the GTK3 introspection ABI, build with `-Dgtk3=true`
+(depends on `gnome-build-meta.bst:sdk/gtk+-3.bst`); upstream's VTE is GTK4-only. Push demo
+binaries and unversioned `.so` linker symlinks to the `devel` split so `bluefin-runtime`'s
+compose (which excludes `devel`) keeps only the `.typelib` + versioned `.so.N`.

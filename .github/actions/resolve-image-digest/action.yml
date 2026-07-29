@@ -1,0 +1,101 @@
+name: Resolve image digest
+description: Resolve a published image digest from a publish digest artifact, with authenticated tag inspect fallback.
+
+inputs:
+  artifact-name:
+    description: Digest artifact name (digest-<variant>).
+    required: true
+  image:
+    description: Fully qualified image reference without tag.
+    required: true
+  build-sha:
+    description: Git SHA the artifact digest must match.
+    required: true
+  registry-creds:
+    description: user:token for authenticated registry reads.
+    required: true
+  run-id:
+    description: Workflow run to download the artifact from. Empty means the current run.
+    required: false
+    default: ''
+  github-token:
+    description: Token for cross-run artifact download.
+    required: false
+    default: ${{ github.token }}
+  verify:
+    description: Also require an authenticated read of the resolved digest.
+    required: false
+    default: 'false'
+
+outputs:
+  digest:
+    description: Resolved manifest digest.
+    value: ${{ steps.resolve.outputs.digest }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download digest artifact (current run)
+      if: inputs.run-id == ''
+      continue-on-error: true
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ runner.temp }}/${{ inputs.artifact-name }}
+
+    - name: Download digest artifact (cross-run)
+      if: inputs.run-id != ''
+      continue-on-error: true
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+      with:
+        name: ${{ inputs.artifact-name }}
+        run-id: ${{ inputs.run-id }}
+        github-token: ${{ inputs.github-token }}
+        path: ${{ runner.temp }}/${{ inputs.artifact-name }}
+
+    - name: Resolve digest
+      id: resolve
+      shell: bash
+      env:
+        ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        IMAGE: ${{ inputs.image }}
+        BUILD_SHA: ${{ inputs.build-sha }}
+        REGISTRY_CREDS: ${{ inputs.registry-creds }}
+        VERIFY: ${{ inputs.verify }}
+      run: |
+        set -euo pipefail
+        DIGEST=""
+        META="${RUNNER_TEMP}/${ARTIFACT_NAME}/digest.json"
+        if [ -f "$META" ]; then
+          D=$(jq -r '.digest // empty' "$META" 2>/dev/null || true)
+          A_SHA=$(jq -r '.sha // empty' "$META" 2>/dev/null || true)
+          if [[ "$D" =~ ^sha256:[0-9a-f]{64}$ ]] && [ "$A_SHA" = "$BUILD_SHA" ]; then
+            DIGEST="$D"
+            echo "Using digest from ${ARTIFACT_NAME}: ${DIGEST}"
+          else
+            echo "::warning::${ARTIFACT_NAME} malformed or sha mismatch (artifact sha='${A_SHA:-}'); falling back to authenticated tag inspect"
+          fi
+        else
+          echo "::warning::${ARTIFACT_NAME} missing; falling back to authenticated tag inspect"
+        fi
+        if [ -z "$DIGEST" ]; then
+          for attempt in $(seq 1 12); do
+            DIGEST=$(skopeo inspect --no-tags --creds "$REGISTRY_CREDS" \
+              "docker://${IMAGE}:${BUILD_SHA}" 2>/dev/null | jq -r '.Digest // empty' || true)
+            if [ -n "$DIGEST" ]; then
+              echo "Resolved :${BUILD_SHA} to ${DIGEST} (attempt ${attempt})"
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "ERROR: cannot resolve digest for ${IMAGE}:${BUILD_SHA}"
+              exit 1
+            fi
+            sleep 10
+          done
+        fi
+        if [ "$VERIFY" = "true" ]; then
+          skopeo inspect --no-tags --creds "$REGISTRY_CREDS" \
+            "docker://${IMAGE}@${DIGEST}" > /dev/null \
+            || { echo "ERROR: digest ${DIGEST} is not readable"; exit 1; }
+        fi
+        echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"

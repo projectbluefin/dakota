@@ -48,16 +48,16 @@ Use when the task mentions:
 1. **Run the CI pre-flight first.** Verify `OK: field is clear` before any action.
    See Hard Rule #9 in `.github/copilot-instructions.md`. No exceptions.
 2. **Identify the stage.**
+   - boot-check gate (in `publish.yml` — gates `:testing` promotion)
    - publish to `:testing`
    - `execute-release.yml` SHA freshness check
    - cosign verify `:testing`
-   - boot-check gate
    - skopeo copy `:testing` → `:stable`
    - fast-forward `main` bookmark
 3. **`execute-release.yml` fires via `workflow_run` from `publish.yml` on the `testing` branch.**
    It checks whether the SHA published as `:testing` differs from the current `:stable`. If
    they are equal, promotion is skipped (already up to date). If they differ, cosign verify
-   runs, then boot-check, then the copy and fast-forward.
+   runs, then the copy and fast-forward. The image is already boot-checked by `publish.yml`.
 4. **`workflow_run` from publish — not a push trigger.** `execute-release.yml` starts
    automatically after every successful `publish.yml` run on the `testing` branch. No cron
    or commit-message gate required.
@@ -73,12 +73,12 @@ Use when the task mentions:
 push to testing (BST-affecting paths)
   → build.yml (build job, including daily 13:00 UTC schedule)
   → publish.yml (workflow_run)
+      → boot-check gate (must boot before :testing is promoted)
       → :testing tag published to GHCR
   → execute-release.yml (workflow_run from publish on testing)
       → SHA freshness check (:testing SHA vs :stable SHA)
           → skip if equal (already up to date)
           → cosign verify :testing
-          → boot-check gate
           → skopeo copy :testing → :stable
           → fast-forward main bookmark
           → create GitHub Release
@@ -154,6 +154,10 @@ Do not substitute `github.event.workflow_run.head_sha` with a `skopeo inspect` l
 - The SHA freshness check compares the `:testing` SHA with the current `:stable` SHA. Equal → skip. Different → promote.
 - cosign `--certificate-identity-regexp` must be anchored with `^...$` and restricted to the publishing workflow file.
 - `execute-release.yml` `workflow_dispatch` bypass is allowed for manual recovery only.
+- `skip_release_gate` defaults to `false`; use it only when the exact candidate
+  images are already published and the testsuite cannot exercise a variant
+  (for example, an Nvidia image on a runner without an Nvidia device). The
+  post-release digest verification remains mandatory.
 
 ## Manual Recovery Shortcuts
 
@@ -164,8 +168,12 @@ gh run list --repo projectbluefin/dakota --workflow 'Execute Release' --limit 10
 # check recent publish runs (execute-release fires after these)
 gh run list --repo projectbluefin/dakota --workflow 'Publish Bluefin dakota' --limit 10
 
-# dispatch execute-release manually (bypasses freshness check — use only for recovery)
+# dispatch execute-release manually (use only for recovery)
 gh workflow run execute-release.yml --repo projectbluefin/dakota --ref testing
+
+# emergency recovery when testsuite cannot boot a variant-specific image
+gh workflow run execute-release.yml --repo projectbluefin/dakota --ref testing \
+  -f skip_release_gate=true
 
 # verify ruleset state
 gh api repos/projectbluefin/dakota/rulesets | jq '[.[] | {id, name}]'
@@ -253,6 +261,65 @@ gh run cancel <run-id> --repo projectbluefin/dakota
 
 Cancel everything, let one build finish, then re-trigger if needed.
 
+### promote_sha recovery — when testing advances past the build SHA (2026-07-28)
+
+Pushing workflow-only fixes to `testing` (which is the default branch) advances the
+testing HEAD past the build SHA. The auto-triggered execute-release sees
+`CURRENT_SHA != BUILD_SHA` and skips promotion ("testing has advanced — will promote
+next build").
+
+**Recovery:** Use the `promote_sha` workflow_dispatch input:
+```bash
+gh workflow run execute-release.yml \
+  --repo projectbluefin/dakota \
+  --ref testing \
+  -f promote_sha=<the-build-sha>
+```
+
+This bypasses the SHA mismatch guard and promotes the specific build SHA even though
+testing has advanced. Only the SHA-tagged images need to exist in GHCR (they do —
+push succeeds before the verify step runs even in failed publish runs).
+
+**Prerequisite:** The images at `promote_sha` must be cosign-signed. If publish
+failed before signing (e.g. due to the `--creds` skopeo issue), you MUST wait for
+a successful re-publish before dispatching execute-release.
+
+### main/testing bookmark divergence — commits directly on main (2026-07-28)
+
+If commits land directly on `main` (bypassing testing→promotion), `main` diverges
+from `testing`. The reusable execute-release action uses `force=false` for the
+main fast-forward, which fails with HTTP 422 for diverged branches.
+
+**Detection:**
+```bash
+gh api repos/projectbluefin/dakota/compare/TESTING_SHA...main --jq '.status'
+# returns "diverged" instead of "behind" (which is normal)
+```
+
+**Fix in execute-release.yml:** Remove `fast_forward_branch` from the reusable action
+call; add a separate `update-main-bookmark` job with `force=true` that runs after
+execute. This handles both the normal (behind) and diverged cases:
+```yaml
+update-main-bookmark:
+  needs: [freshness-check, execute]
+  if: always() && needs.execute.result == 'success'
+  runs-on: ubuntu-latest
+  permissions:
+    contents: write
+  env:
+    GH_TOKEN: ${{ github.token }}
+  steps:
+    - name: Force-update main to promoted SHA
+      env:
+        TARGET_SHA: ${{ needs.freshness-check.outputs.build_sha }}
+      run: |
+        compare=$(gh api "repos/${{ github.repository }}/compare/${TARGET_SHA}...main" \
+          --jq '.status' 2>/dev/null || echo "unknown")
+        [ "$compare" = 'identical' ] && exit 0
+        gh api "repos/${{ github.repository }}/git/refs/heads/main" \
+          --method PATCH --field sha="$TARGET_SHA" --field force=true
+```
+
 ### OCI-native daily promotion model (2026-06-23)
 
 Dakota migrated from a weekly squash-PR ceremony to a daily OCI-native promotion
@@ -278,6 +345,13 @@ flow (issue 1073). The key differences:
 - **ARM trigger change:** `build-aarch64.yml` now fires via `workflow_run` from
   `publish.yml` — not a Tuesday cron. This serializes ARM after x86 CAS writes
   complete, preventing CAS contention.
+
+### Keep stable variant lists aligned
+
+When adding an image variant to stable promotion, update the reusable release
+matrix, release-note digest collection, post-release digest verification, and
+untagged package cleanup together. The release workflow can otherwise promote
+only part of the variant set or report success without verifying the new image.
 
 ## Rollback
 

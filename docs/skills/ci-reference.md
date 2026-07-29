@@ -1992,3 +1992,17 @@ PAYLOAD
 **Why this is safe:** `testing` is a loose integration branch — not a stability gate. PRs to testing still trigger the `validate` job (visible as an informational PR check), but without a required status check, `gh pr merge --auto` fails and pr-triage falls back to a direct squash merge immediately. PRs merge to testing without waiting for CI. The real quality gate is at `main` where `validate` IS required (via merge queue). Removing `validate` from `testing` branch protection trades PR-time CI enforcement on the integration branch for a working automated sync.
 
 **Do NOT add PATs or tokens to the sync workflow — banned.** Fix is always at the branch protection level.
+
+### startup_failure on promote dispatch — statuses:write missing in caller (2026-06-23)
+
+*(Note: The promote-testing-to-main.yml workflow was removed when Dakota migrated to daily OCI-native promotion, but this pattern applies to any reusable workflow call.)*
+
+**Symptom:** Every `promote-testing-to-main.yml` dispatch returns `startup_failure` before any job runs. No log output available.
+
+**Root cause:** `projectbluefin/actions` updated `reusable-promote-squash.yml@v1` to post a `validate=success` commit status on the squash branch HEAD (so the merge queue accepts the PR in the same run). This requires `statuses: write` in the promote job.
+
+Caller-level `permissions:` sets the **ceiling** for all called workflow jobs. If `statuses: write` is not in the caller's top-level block, GitHub rejects the reusable workflow at startup — no job is queued, no log is written.
+
+**Fix:** Add `statuses: write` to the caller's permissions block.
+
+**Detection:** When `projectbluefin/actions@v1` adds a new permission to a reusable job, check whether the dakota caller's `permissions:` block covers it. Missing permissions produce `startup_failure` with no log output — not a runtime error.

@@ -36,3 +36,5 @@ Document the exit condition in the patch header:
 # Exit: Drop when fdsdk bumps to X.Y
 # Exit: Drop after GBM gnome-50 reaches commit abc123
 ```
+
+Dakota's current patch queue still carries a small set of downstream-only fixes for FSDK and GNOME Build Meta. Keep the headers updated as each patch is reviewed so it stays obvious whether the behavior is still pending upstream or has become part of the stock junction.

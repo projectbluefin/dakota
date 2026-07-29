@@ -1,12 +1,12 @@
 name: Generate BuildStream CI config
-description: Write buildstream-ci.conf for CI builds and optional remote execution.
+description: Write BuildStream CI config for remote builds and local artifact consumers.
 
 inputs:
   enable-remote-execution:
-    description: Enable x86_64 remote execution settings and max-jobs tuning.
+    description: Route build actions and CAS storage through cache.projectbluefin.io.
     required: true
   enable-push:
-    description: Push artifacts and sources to the remote cache. Set false for fetch-only jobs (e.g. publish).
+    description: Publish built artifacts and fetched sources during the BuildStream build.
     required: false
     default: 'true'
 
@@ -19,16 +19,48 @@ runs:
         ENABLE_REMOTE_EXECUTION: ${{ inputs.enable-remote-execution }}
         ENABLE_PUSH: ${{ inputs.enable-push }}
       run: |
-        mkdir -p logs
+        set -euo pipefail
+        WORKSPACE_ROOT="${GITHUB_WORKSPACE:-$PWD}"
+        mkdir -p "$WORKSPACE_ROOT/logs"
 
-        echo "${CASD_CLIENT_CERT:-}" > client.crt
-        echo "${CASD_CLIENT_KEY:-}" > client.key
+        if [[ "${ENABLE_REMOTE_EXECUTION:-false}" == "true" ]] &&
+           { [[ -z "${CASD_CLIENT_CERT:-}" ]] || [[ -z "${CASD_CLIENT_KEY:-}" ]]; }; then
+          echo "::error::remote execution was requested but CASD client credentials are missing"
+          exit 1
+        fi
 
-        cat > buildstream-ci.conf <<'BSTCONF'
+        printf '%s\n' "${CASD_CLIENT_CERT:-}" > "$WORKSPACE_ROOT/client.crt"
+        printf '%s\n' "${CASD_CLIENT_KEY:-}" > "$WORKSPACE_ROOT/client.key"
+        chmod 0600 "$WORKSPACE_ROOT/client.crt" "$WORKSPACE_ROOT/client.key"
+
+        # Every remote service entry shares one endpoint tuning and mTLS
+        # identity; the stanzas expand inside the unquoted heredocs below.
+        CONNECTION_CONFIG=$(cat <<'EOF'
+            connection-config:
+              keepalive-time: 180
+              retry-limit: 5
+              retry-delay: 1000
+              request-timeout: 180
+        EOF
+        )
+        CLIENT_AUTH=$(cat <<'EOF'
+            auth:
+              client-key: /src/client.key
+              client-cert: /src/client.crt
+        EOF
+        )
+
+        if [[ "${ENABLE_REMOTE_EXECUTION:-false}" == "true" ]]; then
+          MAX_JOBS=8
+        else
+          MAX_JOBS=1
+        fi
+
+        cat > "$WORKSPACE_ROOT/buildstream-ci.conf" <<'BSTCONF'
         scheduler:
           on-error: continue
           fetchers: 32
-          builders: 4
+          builders: 2
           network-retries: 3
 
         logging:
@@ -39,173 +71,81 @@ runs:
         logdir: /src/logs
         BSTCONF
 
-        if [[ -n "${CASD_CLIENT_CERT:-}" ]] && [[ -n "${CASD_CLIENT_KEY:-}" ]]; then
-          if [[ "$ENABLE_REMOTE_EXECUTION" == "true" ]]; then
-            cat >> buildstream-ci.conf <<'BSTCONFBUILD'
+        cat >> "$WORKSPACE_ROOT/buildstream-ci.conf" <<BSTCONFBUILD
         build:
           retry-failed: True
-          max-jobs: 32
+          max-jobs: ${MAX_JOBS}
         BSTCONFBUILD
-          else
-            cat >> buildstream-ci.conf <<'BSTCONFBUILD'
-        build:
-          retry-failed: True
-        BSTCONFBUILD
-          fi
-        else
-          cat >> buildstream-ci.conf <<'BSTCONFBUILD'
-        build:
-          retry-failed: True
-        BSTCONFBUILD
-        fi
 
         if [[ -n "${CASD_CLIENT_CERT:-}" ]] && [[ -n "${CASD_CLIENT_KEY:-}" ]]; then
           PUSH_FLAG="true"
           [[ "${ENABLE_PUSH:-true}" == "false" ]] && PUSH_FLAG="false"
-          cat >> buildstream-ci.conf <<BSTCONFCACHE
+          cat >> "$WORKSPACE_ROOT/buildstream-ci.conf" <<BSTCONFCACHE
         artifacts:
           servers:
           - url: https://cache.projectbluefin.io:11002
             push: ${PUSH_FLAG}
-            connection-config:
-              keepalive-time: 180
-              retry-limit: 5
-              retry-delay: 1000
-              request-timeout: 180
-            auth:
-              client-key: /src/client.key
-              client-cert: /src/client.crt
+        ${CONNECTION_CONFIG}
+        ${CLIENT_AUTH}
+          - url: https://gbm.gnome.org:11003
+            push: false
+        ${CONNECTION_CONFIG}
+          - url: https://cache.freedesktop-sdk.io:11001
+            push: false
+        ${CONNECTION_CONFIG}
 
         source-caches:
           servers:
           - url: https://cache.projectbluefin.io:11002
             push: ${PUSH_FLAG}
-            connection-config:
-              keepalive-time: 180
-              retry-limit: 5
-              retry-delay: 1000
-              request-timeout: 180
-            auth:
-              client-key: /src/client.key
-              client-cert: /src/client.crt
-
+        ${CONNECTION_CONFIG}
+        ${CLIENT_AUTH}
+          - url: https://gbm.gnome.org:11003
+            push: false
+        ${CONNECTION_CONFIG}
+          - url: https://cache.freedesktop-sdk.io:11001
+            push: false
+        ${CONNECTION_CONFIG}
         BSTCONFCACHE
-
-          # Top-level storage-service (under cache:) is ONLY for enable-push: true.
-          # Remote execution uses the NESTED storage-service inside remote-execution: block.
-          # NEVER add top-level storage-service when only RE is enabled — it puts casd
-          # in proxy mode and causes gRPC flooding. See docs/skills/ci.md.
-
-          if [[ "$ENABLE_REMOTE_EXECUTION" == "true" ]]; then
-            # IMPORTANT: storage-service is NESTED inside remote-execution, NOT at
-            # the top-level cache: block. This satisfies BST's validation requirement
-            # ("Remote execution requires storage-service") without putting buildbox-casd
-            # into write-through proxy mode (--cas-remote). Top-level cache.storage-service
-            # routes ALL casd operations through the remote and causes gRPC connection drops
-            # after ~3.5 hours. The nested form only affects per-action RE blob transfers
-            # (transient connections), avoiding the sustained stream that killed builds.
-            # See docs/skills/ci.md "Remote Execution with Nested storage-service".
-            cat >> buildstream-ci.conf <<'BSTCONFREMOTE'
-        remote-execution:
-          execution-service:
-            url: https://cache.projectbluefin.io:11002
-            connection-config:
-              keepalive-time: 180
-              retry-limit: 5
-              retry-delay: 1000
-              request-timeout: 180
-            auth:
-              client-key: /src/client.key
-              client-cert: /src/client.crt
-          storage-service:
-            url: https://cache.projectbluefin.io:11002
-            connection-config:
-              keepalive-time: 180
-              retry-limit: 5
-              retry-delay: 1000
-              request-timeout: 180
-            auth:
-              client-key: /src/client.key
-              client-cert: /src/client.crt
-          action-cache-service:
-            url: https://cache.projectbluefin.io:11002
-            connection-config:
-              keepalive-time: 180
-              retry-limit: 5
-              retry-delay: 1000
-              request-timeout: 180
-            auth:
-              client-key: /src/client.key
-              client-cert: /src/client.crt
-        BSTCONFREMOTE
-          fi
         fi
 
-        # Write the unified cache configuration block to avoid duplicate keys.
-        cat >> buildstream-ci.conf <<'BSTCONFCACHEBLOCK'
+        cat >> "$WORKSPACE_ROOT/buildstream-ci.conf" <<'BSTCONFCACHEBLOCK'
 
         cache:
           cache-buildtrees: never
         BSTCONFCACHEBLOCK
 
-        if [[ -n "${CASD_CLIENT_CERT:-}" ]] && [[ -n "${CASD_CLIENT_KEY:-}" ]]; then
-          if [[ "${ENABLE_PUSH:-true}" == "true" ]]; then
-            cat >> buildstream-ci.conf <<'BSTCONFSTORAGE'
+        if [[ "${ENABLE_REMOTE_EXECUTION:-false}" == "true" ]]; then
+          # The top-level storage service makes the runner's local casd a
+          # remote-backed cache, so artifact payloads stay on the BuildBox host.
+          # Keep this out of fetch-only publish configs: export must materialize
+          # the final artifact on the runner.
+          cat >> "$WORKSPACE_ROOT/buildstream-ci.conf" <<BSTCONFREMOTE
           storage-service:
             url: https://cache.projectbluefin.io:11002
-            connection-config:
-              keepalive-time: 180
-              retry-limit: 5
-              retry-delay: 1000
-              request-timeout: 180
-            auth:
-              client-key: /src/client.key
-              client-cert: /src/client.crt
-        BSTCONFSTORAGE
-          fi
-        fi
+        ${CONNECTION_CONFIG}
+        ${CLIENT_AUTH}
 
-        echo "=== BuildStream CI config ==="
-        cat buildstream-ci.conf
-
-        # Always generate a push-only config for the post-build artifact push step.
-        # push: true so bst artifact push can write; no storage-service so casd
-        # stays local and there is no sustained gRPC stream during the push phase.
-        if [[ -n "${CASD_CLIENT_CERT:-}" ]] && [[ -n "${CASD_CLIENT_KEY:-}" ]]; then
-          cat > buildstream-push.conf <<'BSTCONFPUSH'
-        scheduler:
-          on-error: continue
-          fetchers: 32
-          builders: 4
-          network-retries: 3
-
-        logging:
-          message-format: '[%{wallclock}][%{elapsed}][%{key}][%{element}] %{action} %{message}'
-          error-lines: 80
-
-        cachedir: /root/.cache/buildstream
-        logdir: /src/logs
-
-        build:
-          retry-failed: True
-
-        cache:
-          cache-buildtrees: never
-
-        artifacts:
-          servers:
-          - url: https://cache.projectbluefin.io:11002
+        remote-execution:
+          execution-service:
+            url: https://cache.projectbluefin.io:11002
+        ${CONNECTION_CONFIG}
+        ${CLIENT_AUTH}
+          storage-service:
+            url: https://cache.projectbluefin.io:11002
+        ${CONNECTION_CONFIG}
+        ${CLIENT_AUTH}
+          action-cache-service:
+            url: https://cache.projectbluefin.io:11002
             push: true
-            connection-config:
-              keepalive-time: 180
-              retry-limit: 5
-              retry-delay: 1000
-              request-timeout: 180
-            auth:
-              client-key: /src/client.key
-              client-cert: /src/client.crt
-
-        BSTCONFPUSH
-          echo "=== BuildStream push config ==="
-          cat buildstream-push.conf
+        ${CONNECTION_CONFIG}
+        ${CLIENT_AUTH}
+        BSTCONFREMOTE
+          echo "Remote execution enabled: yes"
+        else
+          echo "Remote execution enabled: no"
         fi
+
+        cp "$WORKSPACE_ROOT/buildstream-ci.conf" "$WORKSPACE_ROOT/logs/buildstream-ci.conf"
+        echo "=== BuildStream CI config ==="
+        cat "$WORKSPACE_ROOT/buildstream-ci.conf"

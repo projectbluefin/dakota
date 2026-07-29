@@ -22,7 +22,8 @@ config:
   - |
     install -Dm755 -t "%{install-root}%{bindir}" uupd
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system/uupd.service" <<'SERVICE'
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system/uupd.service"
+    cat > "%{install-root}%{indep-libdir}/systemd/system/uupd.service" <<'SERVICE'
     [Unit]
     Description=Universal Blue Update Oneshot Service
     StartLimitBurst=3
@@ -40,7 +41,8 @@ config:
     SELinuxContext=system_u:unconfined_r:unconfined_t:s0
     SERVICE
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system/uupd.timer" <<'TIMER'
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system/uupd.timer"
+    cat > "%{install-root}%{indep-libdir}/systemd/system/uupd.timer" <<'TIMER'
     [Unit]
     Description=Auto Update System Timer For Universal Blue
     Wants=network-online.target
@@ -59,7 +61,8 @@ config:
     WantedBy=timers.target
     TIMER
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system/uupd-manual.service" <<'MANUAL'
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system/uupd-manual.service"
+    cat > "%{install-root}%{indep-libdir}/systemd/system/uupd-manual.service" <<'MANUAL'
     [Unit]
     Description=Universal Blue Update Oneshot Service - Manual Activation
     StartLimitBurst=3
@@ -76,7 +79,8 @@ config:
     SELinuxContext=system_u:unconfined_r:unconfined_t:s0
     MANUAL
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{sysconfdir}/uupd/config.json" <<'CONFIG'
+    install -Dm644 /dev/null "%{install-root}%{sysconfdir}/uupd/config.json"
+    cat > "%{install-root}%{sysconfdir}/uupd/config.json" <<'CONFIG'
     {
         "checks": {
             "hardware": {
@@ -104,7 +108,8 @@ config:
     }
     CONFIG
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{sysconfdir}/polkit-1/rules.d/uupd.rules" <<'RULES'
+    install -Dm644 /dev/null "%{install-root}%{sysconfdir}/polkit-1/rules.d/uupd.rules"
+    cat > "%{install-root}%{sysconfdir}/polkit-1/rules.d/uupd.rules" <<'RULES'
     polkit.addRule(function(action, subject) {
         if (action.id == "org.freedesktop.systemd1.manage-units") {
             switch(action.lookup("unit")) {

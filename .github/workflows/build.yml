@@ -1,17 +1,20 @@
 name: Build Bluefin dakota
 
 on:
+  push:
+    branches: [testing]
+    paths:
+      - "elements/**"
+      - "patches/**"
+      - "project.conf"
+      - "include/**"
   # Fires daily at 13:00 UTC — 5 hours after the gnome-build-meta nightly
   # (~08:00 UTC) to absorb nightly deltas before building.
   # NOTE: schedule triggers run on the default branch; set testing as the
   # default branch in repo settings for this to target testing.
   schedule:
-    - cron: '0 13 * * *'
+    - cron: "0 13 * * *"
   workflow_dispatch:
-    # WARNING: Do not manually dispatch immediately after auto/track-* ref bumps
-    # (e.g. Renovate PRs updating gnome-build-meta.bst). Cold builds of GNOME
-    # require gbm.gnome.org to have built the new ref first — dispatch too early
-    # and you get a cold build that times out.
 
 permissions: read-all
 
@@ -19,18 +22,18 @@ env:
   IMAGE_NAME: dakota
   IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
 
+concurrency:
+  group: dakota-bst-build-global
+  cancel-in-progress: false
+
 jobs:
-  # ── Default-branch precondition ──────────────────────────────────────────
-  # Scheduled triggers always run on the repository default branch. If the
-  # default branch is not 'testing', the daily build silently targets the
-  # wrong ref. Fail fast and loudly when that invariant is violated.
   verify-default-branch:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
-      - name: Verify repository default branch is 'testing'
+      - name: Verify repository default branch is "testing"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -40,73 +43,53 @@ jobs:
             exit 1
           fi
 
-  # ── Full OCI build ────────────────────────────────────────────────────────
-  # Fires on schedule (daily 13:00 UTC) and workflow_dispatch only.
-  # merge_group is intentionally excluded: the merge queue requires only
-  # `validate` to pass; a full BST build triggered by merge_group is always
-  # cancelled when the PR merges (before the 5h build can finish), which
-  # wastes the CAS slot and starves the scheduled build.
   build:
     needs: [verify-default-branch]
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: (!cancelled()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
-    # Global BST concurrency: only one BuildStream build may run across
-    # ALL branches and workflows. The remote CAS at cache.projectbluefin.io
-    # is rate-limited and supports a single build at a time — concurrent
-    # builds tank cache hit rate and risk 6-hour timeouts. The same group
-    # name is used by nightly-next-build.yml so cross-workflow dispatch
-    # also serializes here. cancel-in-progress: false so an in-flight
-    # build on one branch is never killed by a push to another branch.
-    concurrency:
-      group: dakota-bst-build-global
-      cancel-in-progress: false
-    # Variants build serially — one BST build at a time per the hard rule.
-    # Shared runners and CAS write bandwidth cannot sustain concurrent builds.
+    timeout-minutes: 350
+    # The BuildBox backend has four action slots. Start every image variant
+    # together; the backend remains the global execution-capacity limit.
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 4
       matrix:
         include:
           - variant: default
             element: oci/bluefin.bst
-            image_suffix: ''
+            image_suffix: ""
             publish: true
             continue: false
           - variant: nvidia
             element: oci/bluefin-nvidia.bst
-            image_suffix: '-nvidia'
+            image_suffix: "-nvidia"
             publish: true
             continue: true
+          - variant: gaming
+            element: oci/bluefin.bst
+            image_suffix: "-gaming"
+            publish: true
+            continue: true
+            gaming: "true"
+          - variant: nvidia-gaming
+            element: oci/bluefin-nvidia.bst
+            image_suffix: "-nvidia-gaming"
+            publish: true
+            continue: true
+            gaming: "true"
     continue-on-error: ${{ matrix.continue }}
+    env:
+      BUILD_GAMING: ${{ matrix.gaming || 'false' }}
     permissions:
       contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Check bst2 image pin consistency
-        uses: ./.github/actions/check-bst2-pin
-
-      # FIXME: Make the build with JWT work
-      # - name: Get JWT token
-      #   previously used actions/github-script (kept disabled)
-      #   with:
-      #     script: |
-      #       const fs = require('fs');
-      #       const token = await core.getIDToken('cache.projectbluefin.io')
-      #       fs.writeFileSync('bluefin.token', token, { mode: 0o600 });
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Capture build timestamp
         id: timestamp
         run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-      # ── Disk and storage setup ────────────────────────────────────────
-      # Runs before any podman call (BST uses rootful podman to pull bst2;
-      # storage backend must be stable before first use).
-      # update-podman: true — newer podman from Ubuntu resolute for bst2 pull.
-      # Note: setup-runner btrfs does not pass loopback-free; watch for disk
-      # pressure and upstream the option if needed.
       - name: Setup runner
         uses: projectbluefin/actions/bootc-build/setup-runner@v1
         with:
@@ -114,52 +97,25 @@ jobs:
           update-podman: true
           install-tools: '["just"]'
 
-      # ── Generate CI-specific BuildStream config ───────────────────────
-      # Tuned per gnome-build-meta CI patterns:
-      # - on-error: continue  -> find ALL failures, don't stop at first
-      # - fetchers: 32        -> parallel downloads from upstream caches
-      # - builders: 4         -> Concurrent builds are controlled in the casd server
-      # - retry-failed: True  -> auto-retry flaky builds
-      # - error-lines: 80     -> generous error context in logs
-      # - cache-buildtrees: never -> save disk (we only need final artifacts)
-      #
       - name: Generate BuildStream CI config
         env:
           CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
           CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
         uses: ./.github/actions/generate-bst-ci-config
         with:
-          # Remote execution dispatches build actions to cache.projectbluefin.io:11002
-          # (16c/32t Ryzen 9 7950X3D). The action nests storage-service INSIDE the
-          # remote-execution: block — this satisfies BST's validation without putting
-          # casd in write-through proxy mode (which caused gRPC drops after 3.5h).
-          #
-          # enable-push stays false: the explicit "Push OCI artifact to remote CAS" step
-          # below handles cache writes atomically after the build succeeds. This avoids
-          # sustained gRPC write streams during the build phase.
-          #
-          # DO NOT add top-level cache.storage-service — that routes ALL casd operations
-          # through the remote and reintroduces the 3.5-hour gRPC flooding failure.
-          # See docs/skills/ci.md "Remote Execution with Nested storage-service".
-          enable-remote-execution: 'false'
-          enable-push: 'false'
+          enable-remote-execution: "true"
+          # BuildStream adds artifact/source push queues to the build when the
+          # configured remotes are writable. RE and the caches share one CAS,
+          # so payloads remain on the BuildBox host and are deduplicated there.
+          enable-push: "true"
 
-      # ── BuildStream build ─────────────────────────────────────────────
-      # Uses the Justfile's `bst` wrapper to run BuildStream inside the
-      # bst2 container. CI-specific flags (--no-interactive, --config)
-      # are injected via BST_FLAGS env var.
-
-      # Count the full element graph so the progress script can show %.
-      # bst show only reads element YAML + fetches junction refs — no CAS
-      # traffic, typically <60s. Runs after Generate BuildStream CI config
-      # so the remote CAS address is available.
       - name: Count elements for progress tracking
         id: count
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
         run: |
           set +e
-          BST_SHOW_OUT=$(just bst show --deps all --format '%{name}' \
+          BST_SHOW_OUT=$(just bst show --deps all --format "%{name}" \
             ${{ matrix.element }} 2>&1)
           rc=$?
           set -e
@@ -175,28 +131,23 @@ jobs:
 
       - name: Build OCI image with BuildStream
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
           ELEMENT_TOTAL: ${{ steps.count.outputs.total }}
         run: |
-          # pipefail: propagate non-zero exit from `just bst build` through the pipe
           set -o pipefail
-          just bst build ${{ matrix.element }} 2>&1 \
+          CONSOLE_LOG="logs/bst-console-${{ matrix.variant }}.log"
+          just bst build --deps none ${{ matrix.element }} 2>&1 \
+            | tee "$CONSOLE_LOG" \
             | python3 files/scripts/bst-progress.py
+
+          # Fail closed: a green cache hit is not proof that BuildStream loaded
+          # the remote executor. The startup banner is emitted whenever the
+          # remote-execution block is active, even if no action needs rebuilding.
+          if ! grep -Fq "Remote Execution Configuration" "$CONSOLE_LOG"; then
+            echo "::error::BuildStream did not load the remote execution configuration"
+            exit 1
+          fi
         timeout-minutes: 330
-
-      # Push all locally-built artifacts to remote CAS so publish.yml can export
-      # and the next scheduled build starts warm. Uses buildstream-push.conf
-      # (push: true, no storage-service) so bst artifact push can write without
-      # a sustained gRPC stream during the build phase. --deps run ensures every
-      # runtime element rebuilt locally or pulled during the build is cached.
-      - name: Push OCI artifact to remote CAS
-        env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive --config /src/buildstream-push.conf
-        run: |
-          just bst artifact push --deps run ${{ matrix.element }}
-
-      # ── Upload build logs ─────────────────────────────────────────────
-      # Always upload, even on failure, so build failures can be diagnosed.
 
       - name: Upload build logs
         if: always()

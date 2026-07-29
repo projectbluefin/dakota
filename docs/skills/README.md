@@ -48,6 +48,7 @@ Use this file when:
 - Need a language-specific packaging pattern → `packaging-*.md`
 
 ### CI / release
+- **Load first for any CI failure → `ci.md` (CI router)**
 - Need to know which workflow owns the stage → `workflow-map.md`
 - Reusable workflow / token / cache weirdness → `ci-tooling.md`
 - boot-check, smoke, testsuite, QEMU → `e2e-ci.md`
@@ -83,6 +84,7 @@ Use this file when:
 | Package a GNOME Shell extension | `packaging-gnome-extensions.md` |
 | Local OTA testing | `local-ota.md` |
 | Figure out which CI workflow owns the problem | `workflow-map.md` |
+| **Any CI failure — load first** | **`ci.md`** |
 | Reusable workflow / token / cache / startup failures | `ci-tooling.md` |
 | boot-check, smoke, testsuite wiring | `e2e-ci.md` |
 | Promotion PRs and stable release flow | `release-promotion.md` |

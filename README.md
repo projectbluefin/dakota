@@ -57,26 +57,16 @@ Leave a comment, challenge the design, propose alternatives. When a discussion r
 
 **Engineers** — these issues have clear acceptance criteria and no open design questions. Pick one up and build it:
 
-### [Agent-ready build queue &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Aqueue%2Fagent-ready+no%3Aassignee)
+### [Agent-ready build queue &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fqueued+no%3Aassignee)
 
 Comment `/claim` to take an issue. See [AGENTS.md](AGENTS.md) for the full contributor workflow.
-
-## Help shape what gets built
-
-These issues need human judgment before any code is written — design review, domain knowledge, or hardware context the team doesn't have yet:
-
-### [Issues open for discussion &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fdiscussing)
-
-Leave a comment, push back on the design, or share how your hardware is affected. When a discussion reaches consensus, a maintainer marks it `status/approved` and it enters the contributor queue.
-
-Ready to build something? See the [agent-ready queue](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Aqueue%2Fagent-ready+no%3Aassignee) for issues with clear acceptance criteria and no open questions.
 
 ## Image streams
 
 | Tag | Stream | What it is |
 |---|---|---|
-| `:stable` | Stable | GNOME 50 — production. Weekly promotion from `:testing`. |
-| `:testing` | Dev | GNOME 50 — daily builds from `main`. Gated by e2e before promotion. |
+| `:stable` | Stable | GNOME 50 — production. Daily automated promotion from `:testing`. |
+| `:testing` | Dev | GNOME 50 — daily builds from `testing` branch. Boot-check gated. |
 | `:next` | Rolling | **GNOME master — the bleeding edge.** Tracks gnome-build-meta `master` daily. Auto-updates, zero maintenance. |
 | `:btw` | Rolling | Alias for `:next`. |
 

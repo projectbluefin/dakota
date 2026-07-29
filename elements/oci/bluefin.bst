@@ -17,6 +17,12 @@ environment:
 
 variables:
   sysroot-seed: b57666f6-0fe5-4310-adff-f256936d164d
+  # Baked into org.opencontainers.image.ref.name: the `bootc upgrade`
+  # origin. Gaming gets its own repo since tags are release channels.
+  image-repo: dakota
+  (?):
+  - gaming == true:
+      image-repo: dakota-gaming
 
 config:
   commands:
@@ -82,5 +88,5 @@ config:
             'org.opencontainers.image.source': 'https://github.com/projectbluefin/dakota'
             'containers.bootc': '1'
         index-annotations:
-          'org.opencontainers.image.ref.name': 'ghcr.io/projectbluefin/dakota:latest'
+          'org.opencontainers.image.ref.name': 'ghcr.io/projectbluefin/%{image-repo}:latest'
       EOF

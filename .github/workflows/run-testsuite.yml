@@ -30,4 +30,3 @@ jobs:
       image: ${{ inputs.image }}
       suites: ${{ inputs.suites }}
     secrets: inherit
-

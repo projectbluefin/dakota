@@ -18,15 +18,15 @@ jobs:
       cancel-in-progress: true
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Check bst2 image pin consistency
-        uses: ./.github/actions/check-bst2-pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Just
-        uses: taiki-e/install-action@9bcaee1dcae34154180f412e2fa69355a7cda9f6 # v2
+        uses: taiki-e/install-action@18b1216eba7f8039b0f8d131d5473787f0edce68 # v2
         with:
           tool: just
+
+      - name: Validate publish workflow and composite actions
+        run: just check-publish-workflow
 
       - name: Restore BST cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -45,12 +45,15 @@ jobs:
             exit 1
           fi
 
+      - name: Check freedesktop-sdk patch drift
+        run: just patch-drift-check
+
       - name: Validate BST element graph (default)
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive
+          BST_FLAGS: -o x86_64_v3 false --no-interactive
         run: just bst show --deps all oci/bluefin.bst
 
       - name: Validate BST element graph (nvidia)
         env:
-          BST_FLAGS: -o x86_64_v3 true --no-interactive
+          BST_FLAGS: -o x86_64_v3 false --no-interactive
         run: just bst show --deps all oci/bluefin-nvidia.bst

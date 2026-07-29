@@ -22,6 +22,12 @@ variables:
   # Distinct from the default Bluefin seed so the two variants don't
   # share machine IDs / partition UUIDs when both are deployed.
   sysroot-seed: 7f9c5d11-3a26-4b9e-8e21-1d4f3f9e2c57
+  # Baked into org.opencontainers.image.ref.name: the `bootc upgrade`
+  # origin. Gaming gets its own repo since tags are release channels.
+  image-repo: dakota-nvidia
+  (?):
+  - gaming == true:
+      image-repo: dakota-nvidia-gaming
 
 config:
   commands:
@@ -73,5 +79,5 @@ config:
             'org.opencontainers.image.source': 'https://github.com/projectbluefin/dakota'
             'containers.bootc': '1'
         index-annotations:
-          'org.opencontainers.image.ref.name': 'ghcr.io/projectbluefin/dakota-nvidia:latest'
+          'org.opencontainers.image.ref.name': 'ghcr.io/projectbluefin/%{image-repo}:latest'
       EOF

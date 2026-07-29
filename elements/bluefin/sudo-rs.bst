@@ -16,6 +16,9 @@ depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 - freedesktop-sdk.bst:components/linux-pam.bst
 
+variables:
+  strip-binaries: ""
+
 config:
   build-commands:
   - cargo build --release
@@ -23,6 +26,7 @@ config:
   install-commands:
   - install -Dm4755 target/release/sudo "%{install-root}/usr/bin/sudo"
   - ln -sr "%{install-root}/usr/bin/sudo" "%{install-root}/usr/bin/sudoedit"
+  - '%{install-extra}'
 
 sources:
 - kind: git_repo

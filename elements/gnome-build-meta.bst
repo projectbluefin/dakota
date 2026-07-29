@@ -3,10 +3,8 @@ kind: junction
 sources:
 - kind: git_repo
   url: gnome:gnome-build-meta.git
-  track: master
-  ref: 49-branchpoint-808-ga01be1bab36092b9bfa83ade062f20faab94b488
-- kind: patch_queue
-  path: patches/gnome-build-meta
+  track: gnome-50
+  ref: 50.3-5-g4b25046df8a03b6341db7aa8956c55fbbc0c1365
 
 config:
   options:
@@ -22,7 +20,8 @@ config:
     # Replace the element so the OCI image doesn't have any apps
     core/meta-gnome-core-apps.bst: core/meta-gnome-core-apps.bst
 
-    # Override to track bootc ahead of gnome-build-meta upstream
+    # Override to track bootc ahead of gnome-build-meta upstream (gnome-50 is at v1.12.1)
+    # Remove when gnome-50 ships bootc >= v1.15.1 and files are identical
     gnomeos-deps/bootc.bst: gnomeos-deps/bootc.bst
 
     gnomeos-deps/plymouth-gnome-theme.bst: bluefin/plymouth-bluefin-theme.bst

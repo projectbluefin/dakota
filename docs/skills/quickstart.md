@@ -30,7 +30,7 @@ Use when:
 ## Core Process
 
 1. **Load `not-bluefin.md` if needed.**
-2. **Branch from `upstream/main`.**
+2. **Branch from `upstream/testing`.**
 3. **Pick the focused skill for the change.**
 4. **Use `just` recipes, not ad-hoc host commands.**
 5. **Run the lightest validation that proves the change.**
@@ -69,7 +69,7 @@ Use when:
 
 ```bash
 # branch
-git checkout upstream/main -b fix/short-description
+git checkout upstream/testing -b fix/short-description
 
 # inspect recipes
 just --list
@@ -102,7 +102,7 @@ git push upstream fix/short-description
 
 ## Red Flags
 
-- Starting from local `main` instead of `upstream/main`
+- Starting from local `testing` instead of `upstream/testing`
 - Using host-installed bst or random shell commands instead of `just`
 - No evidence attached to the PR
 - A skill-worthy lesson discovered but not written back
@@ -117,6 +117,22 @@ git push upstream fix/short-description
 
 ## Lessons Learned
 
+### Rootless podman export/lint on local shells (2026-07-05)
+
+If `just export` or `just lint` fail with `sudo: a terminal is required to read the password`,
+the repo recipes are invoking `sudo podman` even though the current user already
+has a working rootless podman setup. In that case, run the equivalent podman
+commands directly with the same flags as the recipe instead of forcing sudo.
+A successful local validation path is:
+
+1. `just validate`
+2. `just bst artifact checkout oci/bluefin.bst --directory /src/.build-out`
+3. `podman pull -q oci:.build-out`
+4. `podman build ... -t dakota:latest`
+5. `podman run ... dakota:latest bootc container lint`
+
+This is a local-environment workaround, not a repo change.
+
 ### Restarting the publish factory after a pause (2026-06-05)
 
 When publishing has been intentionally paused (e.g., post-repo-refactor), the
@@ -125,11 +141,27 @@ factory restart sequence is:
 1. Fix any `startup_failure` in `publish.yml` — check for invalid `permissions:` scopes
    (e.g. `artifact-metadata: write` is not a valid GITHUB_TOKEN scope) and
    job-level `permissions:` on reusable workflow call jobs.
-2. Dispatch `build.yml --ref main` to populate the remote CAS.
+2. Dispatch `build.yml --ref testing` to populate the remote CAS.
 3. Wait ~60–90 minutes for the build to complete.
 4. `publish.yml` auto-triggers via `workflow_run`. If not, dispatch manually.
-5. After `:testing` lands, dispatch `weekly-testing-promotion.yml` and get
-   2 human approvals at https://github.com/projectbluefin/dakota/deployments
-   to promote `:testing` → `:stable`.
+5. Once `:testing` lands, `execute-release.yml` auto-triggers to promote `:testing` → `:stable` (no human approval needed).
 
 Full details: `release-promotion.md` and `ci-tooling.md`.
+
+### When a remote build is slow, verify RE is actually active before changing workflows again (2026-07-06)
+
+If a Dakota remote build is slow or times out, do not start by toggling the same workflow flag again. First verify that the workflow still passes the correct inputs to the config generator and that the generated BuildStream config actually contains a `remote-execution:` block. The 2026-07-06 investigation showed that cache access alone can be present while expensive build actions are still happening locally on the runner.
+
+The required RE fail-fast checklist is:
+
+1. Confirm `build.yml` sets both `enable-remote-execution: 'true'` and `enable-push: 'true'`.
+2. Confirm `buildstream-ci.conf` contains top-level `cache.storage-service` and the `remote-execution:` services.
+3. Confirm BuildStream reports `Remote Execution Configuration`; the workflow fails this check automatically.
+4. On cache misses, confirm `Waiting for the remote build to complete` appears in the console log. A fully warm run may have no action to dispatch.
+5. If RE is active and the build still runs long, inspect the active element graph and the BuildBox host rather than reintroducing pre-pull/push phases.
+
+The production backend is one BuildBox 1.4.11 executor with four action slots,
+not the historical BuildBarn Kubernetes grid. Missing RE evidence is a hard
+failure; do not add a runner-local fallback.
+
+This keeps the work evidence-first and leaves the next run with a concrete verification path instead of another round of blind churn.

@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/common.git
   track: main
-  ref: v2026.06-437-gc49745b3c17016813fd313f138759f78a17dfc09
+  ref: v2026.07-51-ge84aa32a074dae28599be97486e1b3ce9a8ba0eb
 - kind: git_module
   url: github:projectbluefin/branding/
   path: bluefin-branding
@@ -43,7 +43,8 @@ config:
     cp -r bluefin-branding/system_files/etc/./ "%{install-root}%{sysconfdir}/"
 
     # Default Bluefin shell MOTD to disabled, while allowing user overrides.
-    install -Dm644 /dev/stdin "%{install-root}%{sysconfdir}/profile.d/bluefin-shell-defaults.sh" <<'EOF'
+    install -Dm644 /dev/null "%{install-root}%{sysconfdir}/profile.d/bluefin-shell-defaults.sh"
+    cat > "%{install-root}%{sysconfdir}/profile.d/bluefin-shell-defaults.sh" <<'EOF'
     : "${BLUEFIN_SHELL_ENABLE_MOTD:=0}"
     export BLUEFIN_SHELL_ENABLE_MOTD
     EOF

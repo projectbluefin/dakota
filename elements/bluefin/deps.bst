@@ -23,6 +23,7 @@ depends:
 
   - bluefin/common.bst
   - bluefin/just-overrides.bst
+  - bluefin/zswap-config.bst
   - bluefin/firstboot-date.bst
   - bluefin/firstboot-services.bst
   - bluefin/wallpaper-month.bst
@@ -34,16 +35,24 @@ depends:
 
   - bluefin/uutils-coreutils.bst
   - bluefin/sudo-rs.bst
+  - bluefin/fprintd-system-auth.bst
   - bluefin/efibootmgr.bst
   - bluefin/xdg-terminal-exec.bst
   - bluefin/nautilus-python.bst
   - bluefin/gnome-ponytail-daemon.bst
+  # Restores the VTE typelibs the app-drop strips out (dakota#1022)
+  - bluefin/vte.bst
   - bluefin/network.bst
   - bluefin/countme.bst
+  - bluefin/alsa-utils.bst
   # - bluefin/lsp-plugins-lv2.bst
 
   # Include things missing from the gnomeos base image
   - gnome-build-meta.bst:core-deps/fwupd.bst
+
+  # system-monitor shell extension needs GTop-2.0.typelib; only reaches the image
+  # transitively via gnome-control-center otherwise (projectbluefin/dakota#1163)
+  - gnome-build-meta.bst:core-deps/libgtop.bst
 
   - freedesktop-sdk.bst:components/buildstream2.bst
   - freedesktop-sdk.bst:components/containers-common.bst
@@ -64,5 +73,6 @@ depends:
   - gnome-build-meta.bst:gnomeos-deps/wl-clipboard.bst
 
   - bluefin/bindmounts.bst
+  - bluefin/migrate-var-home-passwd.bst
 
   - gnome-build-meta.bst:gnomeos-deps/snapd.bst

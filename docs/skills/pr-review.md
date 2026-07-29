@@ -150,4 +150,12 @@ corresponding `install -Dm644 ... "%{install-root}/..."` line is silently incomp
 PR 750 added `files/firstboot/keyring-unlock.service` with no install-commands
 entry — the service would never land in the image.
 
+### Verify GNOME Shell extension bumps against desktop major version
+
+GNOME Shell extension ref updates (e.g. `app-indicators`, `dash-to-dock`) must be verified against the target GNOME Shell major version (GNOME 50 on Dakota). Bumping `app-indicators` to v65 broke extension initialization in GNOME Shell 50 (`state=99` ERROR), requiring a revert back to v64.
+
+### Sequential queueing for merge-queue ruleset branches (2026-07-25)
+
+When merging PRs into branches with GitHub merge queue enabled (`testing`), `gh pr merge --auto --squash` places clean PRs into the queue sequentially. Always run the mandatory CI pre-flight check (`gh run list`) to clear conflicting active runs before dispatching full image builds.
+
 ---

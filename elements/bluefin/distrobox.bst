@@ -16,6 +16,7 @@ variables:
   strip-binaries: ""
 
 environment:
+  GOROOT: "%{libdir}/go"
   GOARCH: "%{go-arch}"
 
 config:

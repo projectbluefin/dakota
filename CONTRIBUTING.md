@@ -12,14 +12,15 @@ Check the [Contributing Guide](https://docs.projectbluefin.io/contributing) for 
 
 ## Prerequisites
 
-- [`bst`](https://buildstream.build/) (BuildStream 2) — `pip install buildstream`
 - `podman` — required for BST sandbox execution
 - `just` — `brew install just` or your OS package manager
+
+BST itself runs inside the pinned `bst2` container — use `just bst ...` rather than installing `bst` directly.
 
 ## Pull requests
 
 - Open PRs against the `testing` branch
-- Run `just check` before opening a PR
+- Run `just validate && just lint` before opening a PR
 - Follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages
 
 ## Where things live
@@ -27,8 +28,8 @@ Check the [Contributing Guide](https://docs.projectbluefin.io/contributing) for 
 ```
 project.conf          # BST project configuration
 elements/             # BST element files (.bst) — one per package
-junctions/            # BST junction manifests (upstream source pins)
-system_files/         # Files overlaid into the final OCI image
+patches/              # Patches applied to junction elements via patch_queue
+files/                # Static files installed by elements
 ```
 
 Full build reference and BST workflow: [`AGENTS.md`](AGENTS.md)

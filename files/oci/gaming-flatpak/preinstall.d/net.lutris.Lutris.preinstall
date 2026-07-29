@@ -1,0 +1,3 @@
+[Flatpak Preinstall net.lutris.Lutris]
+Branch=stable
+IsRuntime=false

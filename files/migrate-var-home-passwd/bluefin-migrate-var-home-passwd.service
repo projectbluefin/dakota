@@ -1,0 +1,19 @@
+[Unit]
+Description=Migrate legacy /var/home home paths in /etc/passwd to /home
+Documentation=https://github.com/projectbluefin/dakota/issues/1170
+After=local-fs.target
+# Must rewrite passwd before anything reads it for a session:
+# systemd-user-sessions gates all logins, accounts-daemon caches home fields.
+Before=systemd-user-sessions.service
+Before=accounts-daemon.service
+Before=display-manager.service
+Before=gdm.service
+ConditionPathExists=/etc/passwd
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/bluefin-migrate-var-home-passwd
+
+[Install]
+WantedBy=multi-user.target

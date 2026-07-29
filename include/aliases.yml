@@ -9,6 +9,7 @@
 aliases:
   # file aliases (e.g. tarballs)
   0pointer: https://0pointer.de/
+  alsa_project: https://www.alsa-project.org/files/pub/
   codeberg_files: https://codeberg.org/
   bindfs: https://bindfs.org/downloads/
   brltty: https://brltty.app/archive/
@@ -60,6 +61,14 @@ aliases:
   videolan_pub: https://download.videolan.org/pub/
   webkitgtk: https://webkitgtk.org/releases/
   ziglang: https://ziglang.org/
+
+  # Gaming stack (elements/gaming/), alias names match cosmic-build-meta
+  github-releases: https://github.com/
+  github-raw: https://raw.githubusercontent.com/
+  # Valve's Steam launcher/bootstrap CDN
+  steam-static: https://cdn.fastly.steamstatic.com/
+  # i386 .debs for Steam 32-bit compat libs
+  debian: https://deb.debian.org/debian/
 
 
   # git aliases go here

@@ -19,8 +19,6 @@
 | `elements/gnome-build-meta.bst` | GBM junction — tracks `gnome-50` branch |
 | `elements/bluefin/` | Bluefin-specific elements (~40 elements) |
 | `elements/oci/` | OCI image assembly — layers + final image |
-| `patches/freedesktop-sdk/` | Patches applied to fdsdk via `patch_queue` |
-| `patches/gnome-build-meta/` | Patches applied to GBM via `patch_queue` |
 | `patches/linux/` | Kernel patches (via fdsdk linux element) |
 | `files/` | Static files installed by elements |
 | `docs/skills/` | Agent skills — task-focused, lazy-loaded |
@@ -60,6 +58,6 @@ just bst show --deps all oci/bluefin.bst             # full dependency graph
 | `rpm-ostree`, `pip install`, `apt-get` in elements | BST-only build; all deps from junctions |
 | `$(date)`, `$(hostname)`, `$(curl ...)` in `install-commands` | Breaks reproducibility and BST caching |
 | Patch junction files directly | Use `patch_queue` source in the junction `.bst` |
-| Force-push to `main` | The merge queue owns merges |
+| Force-push to `main` | `main` is a release bookmark; `execute-release.yml` is the only writer |
 | Close issues via API or comment | Use `Closes #NNN` in the PR body |
 | Open a PR without running `just validate` | Wastes everyone's time |

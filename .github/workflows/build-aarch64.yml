@@ -32,10 +32,15 @@ permissions: read-all
 env:
   IMAGE_NAME: dakota
   IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+  # just export/lint tag the image as {image_name}:{image_tag}. Without this the
+  # export lands at dakota:latest while the push step looks for dakota:aarch64
+  # ("image not known", exit 125) — masked by job-level continue-on-error.
+  BUILD_IMAGE_TAG: aarch64
 
-# Per-ref isolation. ARM failures never cancel or affect x86_64 concurrency groups.
+# All BuildStream cache writers share one CAS serialization group. ARM remains
+# decoupled from x86 publication and release, but cannot contend for CAS writes.
 concurrency:
-  group: build-aarch64-${{ github.ref }}
+  group: dakota-bst-build-global
   cancel-in-progress: false
 
 jobs:
@@ -66,10 +71,7 @@ jobs:
           echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Check bst2 image pin consistency
-        uses: ./.github/actions/check-bst2-pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup runner
         uses: projectbluefin/actions/bootc-build/setup-runner@v1
@@ -194,7 +196,7 @@ jobs:
 
       - name: Install oras
         if: steps.push.outputs.pushed == 'true'
-        uses: oras-project/setup-oras@38de303aac69abb66f3e6255b7198bff35f323e3 # v2.0.0
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
 
       - name: Sign image and create attestation
         # Mirrors publish.yml exactly. generate-sbom: false — dakota uses BST-native

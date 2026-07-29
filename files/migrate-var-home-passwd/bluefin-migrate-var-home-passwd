@@ -1,0 +1,69 @@
+#!/usr/bin/bash
+# One-shot migration of legacy home fields in /etc/passwd: /var/home/<user>
+# -> /home/<user>, /var/roothome -> /root. Installs from before PR #1117
+# (2026-06-29) carry the old-layout fields, which breaks snapd and makes
+# bind-mount path-identity comparisons disagree. Full background:
+# projectbluefin/dakota#1170.
+#
+# The write is delegated to usermod (no -m: passwd field only, no data
+# moves) so locking and atomic replace are the canonical lckpwdf ones;
+# flock(2) would not interoperate. Deliberately no sentinel file: the grep
+# fast path is cheap and self-heals if a stale entry is ever reintroduced.
+#
+# MIGRATE_PREFIX=/some/dir operates on $MIGRATE_PREFIX/etc/passwd (passed
+# to usermod --prefix); tests only, leave unset in production.
+
+set -euo pipefail
+
+PREFIX="${MIGRATE_PREFIX:-}"
+PASSWD="${PREFIX}/etc/passwd"
+
+log() { echo "bluefin-migrate-var-home-passwd: $*"; }
+
+if [ ! -r "$PASSWD" ]; then
+    log "no readable $PASSWD; nothing to do"
+    exit 0
+fi
+
+# Nothing to migrate -> exit before taking any lock.
+if ! grep -qE ':(/var/home/|/var/roothome)(:|$)' "$PASSWD"; then
+    exit 0
+fi
+
+declare -a UARGS=()
+[ -n "$PREFIX" ] && UARGS+=(--prefix "$PREFIX")
+
+rc=0
+migrated=0
+
+# The loop holds the original inode open while usermod renames in new ones,
+# so every decision is made against a consistent pre-migration snapshot.
+while IFS=: read -r login _ _ _ _ home _; do
+    [ -n "$login" ] || continue
+    case "$home" in
+        /var/roothome)
+            new="/root"
+            ;;
+        /var/home/*)
+            new="/home/${home#/var/home/}"
+            ;;
+        *)
+            continue
+            ;;
+    esac
+
+    set +e
+    usermod "${UARGS[@]}" -d "$new" "$login"
+    uc=$?
+    set -e
+    if [ "$uc" -eq 0 ]; then
+        log "migrated $login: $home -> $new"
+        migrated=$((migrated + 1))
+    else
+        log "FAILED to migrate $login: $home -> $new (usermod rc=$uc)"
+        rc=1
+    fi
+done < "$PASSWD"
+
+log "done; migrated ${migrated} user(s)"
+exit "$rc"

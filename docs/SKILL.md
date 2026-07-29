@@ -27,6 +27,7 @@ If your first draft says "use dnf", "edit the Containerfile", or "enable a COPR"
 | Package a Go/Rust/Zig/binary/extension project | `docs/skills/packaging-*.md` |
 | Test OTA updates locally or on hardware | `docs/skills/local-ota.md` |
 | Identify which CI workflow owns the problem | `docs/skills/workflow-map.md` |
+| **Any CI failure — load first** | **`docs/skills/ci.md`** |
 | Fix reusable workflow / token / cache / startup failures | `docs/skills/ci-tooling.md` |
 | Change boot-check, smoke, testsuite, or QEMU CI | `docs/skills/e2e-ci.md` |
 | Change promotion PR or stable release flow | `docs/skills/release-promotion.md` |

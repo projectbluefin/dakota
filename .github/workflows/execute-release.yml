@@ -11,6 +11,15 @@ on:
         description: 'Dry run — verify gates but do not promote'
         type: boolean
         default: false
+      skip_release_gate:
+        description: 'Emergency recovery only — skip testsuite release gates'
+        type: boolean
+        default: false
+      promote_sha:
+        description: 'Recovery only — promote a specific SHA instead of the current testing HEAD (bypasses SHA mismatch guard)'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   actions: read
@@ -29,11 +38,14 @@ jobs:
   freshness-check:
     runs-on: ubuntu-latest
     outputs:
-      should-release: ${{ steps.compare.outputs.should-release }}
-      build_sha: ${{ steps.compare.outputs.build_sha }}
+      should-release: ${{ steps.compare.outputs.should-release || steps.gate.outputs.should-release }}
+      build_sha: ${{ steps.gate.outputs.build_sha }}
     steps:
-      - name: Check publish conclusion and compare digests
-        id: compare
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Resolve build SHA and release gate
+        id: gate
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -47,19 +59,22 @@ jobs:
             exit 0
           fi
 
-          # Resolve the SHA that was built and published
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+          # Resolve the SHA that was built and published.
+          # promote_sha overrides SHA resolution (recovery: promotes a specific build
+          # even when testing has advanced past it due to workflow-only commits).
+          if [[ -n "${{ inputs.promote_sha }}" ]]; then
+            BUILD_SHA="${{ inputs.promote_sha }}"
+            echo "Recovery mode: promoting specified SHA ${BUILD_SHA}"
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
             BUILD_SHA="${{ github.event.workflow_run.head_sha }}"
           else
             BUILD_SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/testing" --jq '.object.sha')
           fi
 
-          # Verify the SHA-tagged image exists in GHCR (proves this SHA was published)
-          skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:${BUILD_SHA}" > /dev/null
-
           # Guard: if testing advanced since the build, the reusable fast-forward would
           # point main to a newer commit than the image we're promoting. Skip promotion.
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+          # Bypassed when promote_sha is specified (recovery: explicit SHA override).
+          if [ "${{ github.event_name }}" = "workflow_run" ] && [[ -z "${{ inputs.promote_sha }}" ]]; then
             CURRENT_SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/testing" --jq '.object.sha')
             if [ "$CURRENT_SHA" != "$BUILD_SHA" ]; then
               echo "::warning::testing has advanced (build: ${BUILD_SHA}, current: ${CURRENT_SHA}). Skipping promotion to avoid SHA mismatch on main fast-forward. Will promote next build."
@@ -68,16 +83,38 @@ jobs:
             fi
           fi
 
-          # Compare the SHA-tagged build digest against :stable. Using the SHA tag
-          # (not floating :testing) guarantees the decision input matches the action
-          # input — the same image we will promote is the one we evaluated.
-          TESTING_DIGEST=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:${BUILD_SHA}" \
-            | jq -r '.Digest')
+          echo "build_sha=${BUILD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve published digest
+        if: steps.gate.outputs.proceed == 'true'
+        id: digest
+        uses: ./.github/actions/resolve-image-digest
+        with:
+          artifact-name: digest-default
+          image: ghcr.io/projectbluefin/dakota
+          build-sha: ${{ steps.gate.outputs.build_sha }}
+          registry-creds: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id || '' }}
+          verify: 'true'
+
+      - name: Compare against :stable
+        if: steps.gate.outputs.proceed == 'true'
+        id: compare
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+          BUILD_SHA: ${{ steps.gate.outputs.build_sha }}
+          TESTING_DIGEST: ${{ steps.digest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/projectbluefin/dakota"
 
           STABLE_DIGEST=""
-          if skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:stable" > /dev/null 2>&1; then
-            STABLE_DIGEST=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:stable" \
-              | jq -r '.Digest')
+          if skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
+              "docker://${IMAGE}:stable" > /dev/null 2>&1; then
+            STABLE_DIGEST=$(skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
+              "docker://${IMAGE}:stable" | jq -r '.Digest')
           fi
 
           if [ -n "$STABLE_DIGEST" ] && [ "$TESTING_DIGEST" = "$STABLE_DIGEST" ]; then
@@ -85,7 +122,6 @@ jobs:
             echo ":${BUILD_SHA} and :stable are identical ($TESTING_DIGEST) — nothing to promote"
           else
             echo "should-release=true" >> "$GITHUB_OUTPUT"
-            echo "build_sha=${BUILD_SHA}" >> "$GITHUB_OUTPUT"
             echo ":${BUILD_SHA} ($TESTING_DIGEST) differs from :stable (${STABLE_DIGEST:-not found}) — promotion needed"
           fi
 
@@ -106,12 +142,50 @@ jobs:
       variants: >-
         [
           {"image":"dakota","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"},
-          {"image":"dakota-nvidia","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"}
+          {"image":"dakota-nvidia","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"},
+          {"image":"dakota-gaming","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"}
         ]
       cosign_identity_regexp: ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)$
-      fast_forward_branch: main
+      # fast_forward_branch omitted: handled by update-main-bookmark job below,
+      # which force-updates main to the promoted SHA. The reusable action's
+      # force=false fast-forward fails when main diverges from testing (e.g.
+      # when commits land on main via direct merge, bypassing the testing flow).
       fast_forward_sha: ${{ needs.freshness-check.outputs.build_sha }}
+      run_release_gate: ${{ inputs.skip_release_gate != true }}
     secrets: inherit
+
+  # Update the stable bookmark (main) to point to the promoted SHA.
+  # Runs as a separate job with force=true to handle the case where main has
+  # diverged from testing (e.g. commits landed on main directly, bypassing
+  # the testing→stable promotion flow). The reusable action's force=false
+  # fast-forward would reject this; we handle it correctly here instead.
+  update-main-bookmark:
+    needs: [freshness-check, execute]
+    if: always() && needs.execute.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Force-update main to promoted SHA
+        env:
+          TARGET_SHA: ${{ needs.freshness-check.outputs.build_sha }}
+        run: |
+          set -euo pipefail
+          compare=$(gh api \
+            "repos/${{ github.repository }}/compare/${TARGET_SHA}...main" \
+            --jq '.status' 2>/dev/null || echo "unknown")
+          echo "main vs ${TARGET_SHA}: ${compare}"
+          if [ "$compare" = 'identical' ]; then
+            echo "main is already at ${TARGET_SHA}. Nothing to do."
+            exit 0
+          fi
+          gh api "repos/${{ github.repository }}/git/refs/heads/main" \
+            --method PATCH \
+            --field sha="$TARGET_SHA" \
+            --field force=true
+          echo "Updated main → ${TARGET_SHA}"
 
   release-notes:
     needs: [freshness-check, execute]
@@ -160,7 +234,7 @@ jobs:
         id: digests
         run: |
           set -euo pipefail
-          for image in dakota dakota-nvidia; do
+          for image in dakota dakota-nvidia dakota-gaming; do
             digest=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/${image}:stable" \
               | jq -r '.Digest' | cut -c1-19)
             echo "${image}=${digest}" >> "$GITHUB_OUTPUT"
@@ -170,6 +244,7 @@ jobs:
         env:
           DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota }}
           NVIDIA_DIGEST: ${{ steps.digests.outputs.dakota-nvidia }}
+          GAMING_DIGEST: ${{ steps.digests.outputs.dakota-gaming }}
         run: |
           set -euo pipefail
           TAG=$(gh release list --repo "${{ github.repository }}" --limit 1 --json tagName --jq '.[0].tagName')
@@ -182,6 +257,7 @@ jobs:
             '|---|---|---|' \
             "| \`dakota\` | \`:stable\` | \`${DAKOTA_DIGEST}\` |" \
             "| \`dakota-nvidia\` | \`:stable\` | \`${NVIDIA_DIGEST}\` |" \
+            "| \`dakota-gaming\` | \`:stable\` | \`${GAMING_DIGEST}\` |" \
             '' \
             '---' \
             '')
@@ -322,13 +398,17 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
-          promoted_digest=$(skopeo inspect --no-tags "docker://${IMAGE}:${BUILD_SHA}" | jq -r .Digest)
-          stable_digest=$(skopeo inspect --no-tags "docker://${IMAGE}:stable" | jq -r .Digest)
-          if [ "$stable_digest" != "$promoted_digest" ]; then
-            echo "::error::stable digest=$stable_digest, expected $promoted_digest"
-            exit 1
-          fi
-          echo "stable digest verified: $stable_digest"
+          for image in dakota dakota-nvidia dakota-gaming; do
+            promoted_digest=$(skopeo inspect --no-tags \
+              "docker://ghcr.io/projectbluefin/${image}:${BUILD_SHA}" | jq -r .Digest)
+            stable_digest=$(skopeo inspect --no-tags \
+              "docker://ghcr.io/projectbluefin/${image}:stable" | jq -r .Digest)
+            if [ "$stable_digest" != "$promoted_digest" ]; then
+              echo "::error::${image}:stable digest=$stable_digest, expected $promoted_digest"
+              exit 1
+            fi
+            echo "${image}:stable digest verified: $stable_digest"
+          done
 
       - name: Verify :stable-multiarch exists
         run: |
@@ -365,6 +445,15 @@ jobs:
         uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
         with:
           package-name: dakota-nvidia
+          package-type: container
+          min-versions-to-keep: 100
+          delete-only-untagged-versions: 'true'
+        continue-on-error: true
+
+      - name: Prune untagged GHCR versions for dakota-gaming
+        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+        with:
+          package-name: dakota-gaming
           package-type: container
           min-versions-to-keep: 100
           delete-only-untagged-versions: 'true'

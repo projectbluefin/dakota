@@ -6,11 +6,18 @@ default:
 # ── Configuration ─────────────────────────────────────────────────────
 export image_name := env("BUILD_IMAGE_NAME", "dakota")
 export image_tag := env("BUILD_IMAGE_TAG", "latest")
+
+# Gaming variant: adds the gaming/ stack and selects the OGC kernel.
+# Non-gaming variants use the freedesktop-sdk stable kernel. Applies to
+# every bst invocation here; exported podman refs get a -gaming suffix
+# so builds don't collide.
+export gaming := env("BUILD_GAMING", "false")
 export base_dir := env("BUILD_BASE_DIR", ".")
 export filesystem := env("BUILD_FILESYSTEM", "btrfs")
 
-# Same bst2 container image CI uses -- pinned by SHA for reproducibility
-export bst2_image := env("BST2_IMAGE", "registry.gitlab.com/freedesktop-sdk/infrastructure/freedesktop-sdk-docker-images/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d")
+# BuildStream container image used by local runs and CI.
+# Leave it unset to use the upstream image default instead of a repo-local digest pin.
+export bst2_image := env("BST2_IMAGE", "registry.gitlab.com/freedesktop-sdk/infrastructure/freedesktop-sdk-docker-images/bst2")
 
 # VM settings
 export vm_ram := env("VM_RAM", "8192")
@@ -23,7 +30,8 @@ export OCI_IMAGE_VERSION := env("OCI_IMAGE_VERSION", "latest")
 
 # ── BuildStream wrapper ──────────────────────────────────────────────
 # Runs any bst command inside the bst2 container via podman.
-# Defaults to `-o x86_64_v3 true --no-interactive` so local runs match CI.
+# Defaults to baseline x86_64 (`-o x86_64_v3 false`) so local runs match CI
+# and reuse artifacts published by gnome-build-meta and freedesktop-sdk.
 # Set BST_FLAGS to append flags (e.g. --config ...).
 # Set BST_FLAGS_OVERRIDE to replace all default/appended flags.
 # Usage: just bst build oci/bluefin.bst
@@ -34,26 +42,32 @@ bst *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p "${HOME}/.cache/buildstream"
-    DEFAULT_BST_FLAGS="-o x86_64_v3 true --no-interactive"
+    DEFAULT_BST_FLAGS="-o x86_64_v3 false --no-interactive"
     if [ -n "${BST_FLAGS_OVERRIDE:-}" ]; then
         EFFECTIVE_BST_FLAGS="${BST_FLAGS_OVERRIDE}"
     else
         EFFECTIVE_BST_FLAGS="${BST_FLAGS:-}"
-        if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]-o[[:space:]]+x86_64_v3[[:space:]]+true([[:space:]]|$) ]]; then
+        if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]-o[[:space:]]+x86_64_v3[[:space:]]+(true|false)([[:space:]]|$) ]]; then
             EFFECTIVE_BST_FLAGS="${DEFAULT_BST_FLAGS} ${EFFECTIVE_BST_FLAGS}"
         fi
         if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]--no-interactive([[:space:]]|$) ]]; then
             EFFECTIVE_BST_FLAGS="${EFFECTIVE_BST_FLAGS} --no-interactive"
         fi
+        if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]-o[[:space:]]+gaming[[:space:]]+(true|false)([[:space:]]|$) ]]; then
+            EFFECTIVE_BST_FLAGS="${EFFECTIVE_BST_FLAGS} -o gaming {{gaming}}"
+        fi
     fi
 
     # BST_FLAGS allows appending --no-interactive, --config, etc.
-    # Word-splitting is intentional here (flags are space-separated).
+    # BST_PODMAN_EXTRA_ARGS allows extra podman flags (e.g. CI mounts a
+    # hotfixed BST module over the image copy). Word-splitting is
+    # intentional here (flags are space-separated).
     # shellcheck disable=SC2086
     podman run --rm \
         --privileged \
         --device /dev/fuse \
         --network=host \
+        ${BST_PODMAN_EXTRA_ARGS:-} \
         -v "{{justfile_directory()}}:/src:rw" \
         -v "${HOME}/.cache/buildstream:/root/.cache/buildstream:rw" \
         -w /src \
@@ -64,12 +78,96 @@ bst *ARGS:
 [group('dev')]
 check-publish-workflow:
     python3 scripts/check_publish_workflow.py
+    python3 -m unittest scripts.test_check_publish_workflow
+
+[group('dev')]
+monitor-pipeline BUILD_RUN_ID="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "{{BUILD_RUN_ID}}" ]; then
+        echo "usage: just monitor-pipeline BUILD_RUN_ID=<run-id>" >&2
+        exit 2
+    fi
+    python3 files/monitor_pipeline.py --build-run-id "{{BUILD_RUN_ID}}"
 
 [group('dev')]
 validate:
     just check-publish-workflow
     just bst show --deps all oci/bluefin.bst
     just bst show --deps all oci/bluefin-nvidia.bst
+
+# Verify the local freedesktop-sdk patch queue matches the pinned GBM ref.
+[group('dev')]
+patch-drift-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    gbm_ref=$(awk '/^[[:space:]]*ref: / { print $2; exit }' elements/gnome-build-meta.bst)
+    if [[ ! "$gbm_ref" =~ -g([0-9a-f]{40})$ ]]; then
+        echo "ERROR: could not extract GBM commit SHA from elements/gnome-build-meta.bst ref: ${gbm_ref}" >&2
+        exit 1
+    fi
+    gbm_sha="${BASH_REMATCH[1]}"
+
+    local_dir="patches/freedesktop-sdk"
+    workdir=".cache/patch-drift-check.$$"
+    rm -rf "$workdir"
+    mkdir -p "$workdir/upstream"
+    trap 'rm -rf "$workdir"' EXIT
+
+    api_url="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/tree?path=patches/freedesktop-sdk&ref=${gbm_sha}&per_page=100"
+    curl -fsSL "$api_url" \
+        | python3 -c 'import json, sys; print("\n".join(sorted(item["name"] for item in json.load(sys.stdin) if item.get("type") == "blob")))' \
+        > "$workdir/upstream-files"
+
+    if [ ! -s "$workdir/upstream-files" ]; then
+        echo "ERROR: GBM patches/freedesktop-sdk listing is empty at ${gbm_sha}" >&2
+        exit 1
+    fi
+
+    while IFS= read -r name; do
+        encoded=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$name")
+        curl -fsSL "https://gitlab.gnome.org/GNOME/gnome-build-meta/-/raw/${gbm_sha}/patches/freedesktop-sdk/${encoded}" \
+            -o "$workdir/upstream/$name"
+    done < "$workdir/upstream-files"
+
+    if [ -d "$local_dir" ]; then
+        find "$local_dir" -maxdepth 1 -type f -printf '%f\n' | sort > "$workdir/local-files"
+    else
+        : > "$workdir/local-files"
+    fi
+
+    comm -23 "$workdir/upstream-files" "$workdir/local-files" > "$workdir/missing"
+    comm -13 "$workdir/upstream-files" "$workdir/local-files" > "$workdir/extra"
+    : > "$workdir/differing"
+    comm -12 "$workdir/upstream-files" "$workdir/local-files" | while IFS= read -r name; do
+        if ! cmp -s "$workdir/upstream/$name" "$local_dir/$name"; then
+            echo "$name" >> "$workdir/differing"
+        fi
+    done
+
+    status=0
+    if [ -s "$workdir/missing" ]; then
+        echo "ERROR: missing local patches from GBM patches/freedesktop-sdk at ${gbm_sha}:" >&2
+        sed 's/^/  /' "$workdir/missing" >&2
+        status=1
+    fi
+    if [ -s "$workdir/extra" ]; then
+        echo "ERROR: extra local patches not in GBM patches/freedesktop-sdk at ${gbm_sha}:" >&2
+        sed 's/^/  /' "$workdir/extra" >&2
+        status=1
+    fi
+    if [ -s "$workdir/differing" ]; then
+        echo "ERROR: differing patch contents versus GBM patches/freedesktop-sdk at ${gbm_sha}:" >&2
+        sed 's/^/  /' "$workdir/differing" >&2
+        status=1
+    fi
+    if [ "$status" -ne 0 ]; then
+        exit "$status"
+    fi
+
+    count=$(wc -l < "$workdir/upstream-files" | tr -d ' ')
+    echo "OK: patches/freedesktop-sdk matches GBM ${gbm_sha} (${count} files)"
 
 # ── Build ─────────────────────────────────────────────────────────────
 # Build the OCI image and load it into podman.
@@ -130,6 +228,9 @@ export variant="default":
         nvidia)  ELEMENT="oci/bluefin-nvidia.bst"; FINAL_NAME="{{image_name}}-nvidia" ;;
         *) echo "ERROR: unknown variant '{{variant}}' (expected: default | nvidia)" >&2; exit 1 ;;
     esac
+    if [ "{{gaming}}" = "true" ]; then
+        FINAL_NAME="${FINAL_NAME}-gaming"
+    fi
     FINAL_TAG="{{image_tag}}"
 
     # Use sudo unless already root (CI runners are root)
@@ -244,6 +345,9 @@ generate-bootable-image variant="default" $base_dir=base_dir $filesystem=filesys
         nvidia)  FINAL_NAME="{{image_name}}-nvidia" ;;
         *) echo "ERROR: unknown variant '{{variant}}' (expected: default | nvidia)" >&2; exit 1 ;;
     esac
+    if [ "{{gaming}}" = "true" ]; then
+        FINAL_NAME="${FINAL_NAME}-gaming"
+    fi
 
     REF="${FINAL_NAME}:{{image_tag}}"
     if ! sudo podman image exists "$REF"; then
@@ -663,6 +767,12 @@ chunkify image_ref:
     if [ -n "$NEW_REF" ] && [ "$NEW_REF" != "{{image_ref}}" ]; then
         echo "==> Retagging chunked image to {{image_ref}}..."
         $SUDO_CMD podman tag "$NEW_REF" "{{image_ref}}"
+    fi
+
+    # Publish steps run as the unprivileged runner user after rootful chunkah.
+    # Copy the result into that user's podman store before returning.
+    if [ -n "$SUDO_CMD" ]; then
+        $SUDO_CMD podman save "{{image_ref}}" | podman load
     fi
 
 # ── bcvk (fast VM testing) ───────────────────────────────────────────

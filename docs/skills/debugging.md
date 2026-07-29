@@ -142,6 +142,54 @@ Do not open the sandbox before you even know whether the graph parses.
 
 ## Lessons Learned
 
+### Local BST co-schedules giant elements — cap builders for interactive builds (2026-07-09)
+
+The default image graph contains two WebKit-sized elements (`sdk/webkitgtk-6.0.bst` and `sdk/webkit2gtk-4.1.bst`, ~9400 steps each). BuildStream's local scheduler will happily run both concurrently plus other elements, oversubscribing the machine (observed: load 22-28 on 16 threads, 22/31 GB RAM) and roughly doubling each element's wall time versus serial execution. For local builds where wall time to first result matters, cap concurrent build jobs (`builders: 2` in the BST user config) so giants do not co-schedule. Also make ETAs assuming giants share the machine, not that each gets it exclusively.
+
 ### `Error loading project` before any build step = YAML error, not a build failure (2026-06-07)
 
 When BST exits with `Error loading project` before any `[build]` output appears, the element has a YAML/option error — it never even started building. Run `just bst show bluefin/<name>.bst` (no build) to pinpoint the exact line. Common causes: hyphenated option names, wrong option type, missing alias, bad indentation. Do not reach for `just bst shell` until `bst show` exits cleanly.
+
+### Invalidate stale/corrupt remote CAS cache keys with a no-op command (2026-07-03)
+
+If a remote artifact on `cache.projectbluefin.io` is corrupted (e.g., due to partial writes or aborted builds), BuildStream may attempt to pull it and fail with a transport error or gRPC `INTERNAL` (blob download code 13). Because BuildStream does not automatically fall back to rebuilding if a pull fails midway, the build remains broken. The fix is to modify the element (e.g., adding a no-op command like `- true` in `elements/oci/bluefin.bst`) to bust the cache key, forcing a clean rebuild from dependencies.
+
+Dakota's verified mitigation for a stale remote blob is a small, versioned marker file installed into the OCI layer: `elements/oci/layers/bluefin-layer-marker.bst` installs `files/oci/bluefin-layer-marker` at `/usr/lib/projectbluefin/cas-epoch`. Bump the marker contents when the remote cache needs a fresh layer digest so BuildStream cannot reuse the poisoned blob under the old digest/size tuple.
+
+### Plain-text marker files need `strip-binaries: ""` (2026-07-05)
+
+Elements that install non-ELF payloads (plain text files, shell scripts, fonts, JSON, prebuilt archives) can fail during the stripping phase even when the install command itself is correct. The symptom is a BuildStream failure with `freedesktop-sdk-stripper` exiting `127` while the element's `install-commands` are otherwise simple. The root cause is that BuildStream's default strip step is trying to process a file that is not an ELF binary. Add `variables: { strip-binaries: "" }` to the element to disable the strip step for that payload.
+
+### Remote-build slowness is diagnosed from logs and generated config, not from workflow churn (2026-07-06)
+
+When a remote BST build is slow or hits the workflow timeout, the first question is not "should we change the timeout again?" The first question is whether the generated BuildStream config is actually enabling remote execution and whether the run is progressing with remote cache activity. The 2026-07-06 investigation showed that a workflow can appear to be using the remote cache while still not dispatching expensive build actions to the remote execution service.
+
+Good evidence to gather before changing anything else:
+
+1. Confirm the workflow requests remote execution and writable caches.
+2. Confirm `buildstream-ci.conf` contains top-level `cache.storage-service` plus `remote-execution:`.
+3. Confirm BuildStream reports `Remote Execution Configuration`; `build.yml` enforces this automatically.
+4. On a real cache miss, look for `Waiting for the remote build to complete`. A warm artifact can complete without dispatching an action.
+5. Inspect the active element graph and the latest upstream nightly delta before making another workflow-only change.
+6. For backend diagnosis, inspect the rootful `cache-buildbox-casd-1` container on `ahmedadan@cache.projectbluefin.io`; old `kubectl -n buildbarn` instructions are obsolete.
+
+A missing config section or startup banner is an unacceptable runner-local/cache-only state. Fail closed rather than extending timeouts or adding a local fallback.
+
+### Ghost-lab input-root staging failure is a diagnosed RE failure, not a reason to disable RE (2026-07-07)
+
+> **Superseded by the RE-first policy.** The original lesson recommended keeping ghost-lab builds local to the runner. Dakota now requires verified RE; use the facts below to diagnose the specific failure and restore RE.
+
+The 2026-07-07 ghost-lab failure in `bootstrap/gcc.bst` was not a compiler regression; it was a BuildStream remote-execution input-root staging failure (`Failed to obtain input directory ".": Shard 1: Object not found`). The cluster workflow was routing both the remote execution and the artifact/source-cache path through the local buildbarn frontend, and that path failed before the compiler ever got a clean input tree.
+
+**Diagnosis steps to retain:**
+- Confirm the failure is an input-root staging error, not a compile error.
+- Check BuildBarn scheduler/worker health: `kubectl get pods -n buildbarn` and worker logs.
+- Verify whether routing RE and cache through the same frontend is contributing to the failure.
+
+**Recovery rule:** A temporary runner-local build with read-only cache pulls may be used as an explicit, diagnosed failure investigation, but it is not a new operating model. The follow-up work must restore verified RE before merging. A permanent local-execution fallback violates the Dakota build model.
+
+### Prefer upstream alignment over local compiler workarounds (2026-07-08)
+
+Carrying custom local patches or build flag overrides in the `freedesktop-sdk` junction (such as hacking Pipewire versions or adding local GCC 15 compiler workarounds) alters the sub-project config and invalidates the cache keys for every single element in that junction. This forces the runners to build the entire base OS—including compiler toolchains, glibc, and systemd—from source, causing extremely long compile times, compiler crashes, and OOMs.
+
+The correct fix is to align Dakota with the upstream GNOME OS / `gnome-build-meta` / `freedesktop-sdk` ref that already works, then keep the patch queue clean. Do not compile our own GCC, ship a local GCC bootstrap toolchain, or add compiler-specific hacks under any circumstance. If an upstream-aligned ref is available, use that path first; only use a local override when there is no upstream path and it has a documented exit condition.

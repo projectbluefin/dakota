@@ -20,10 +20,48 @@ permissions:
   packages: write
 
 jobs:
-  smoke:
+  wait-for-images:
     if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Verify dakota image
+        uses: ./.github/actions/resolve-image-digest
+        with:
+          artifact-name: digest-default
+          image: ghcr.io/${{ github.repository_owner }}/dakota
+          build-sha: ${{ github.event.workflow_run.head_sha }}
+          registry-creds: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          verify: 'true'
+
+      - name: Verify dakota-nvidia image
+        uses: ./.github/actions/resolve-image-digest
+        with:
+          artifact-name: digest-nvidia
+          image: ghcr.io/${{ github.repository_owner }}/dakota-nvidia
+          build-sha: ${{ github.event.workflow_run.head_sha }}
+          registry-creds: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          verify: 'true'
+
+  smoke:
+    needs: wait-for-images
+    if: github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: dakota
+          - image: dakota-nvidia
     uses: ./.github/workflows/run-testsuite.yml
     with:
-      image: ghcr.io/${{ github.repository_owner }}/dakota:${{ github.event.workflow_run.head_sha }}
+      image: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.event.workflow_run.head_sha }}
       suites: smoke
     secrets: inherit
