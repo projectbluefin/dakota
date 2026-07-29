@@ -139,9 +139,9 @@ Gaps as of 2026-06-03. Y = present, N = absent.
 |---|:---:|:---:|
 | just | Y | Y |
 | wl-clipboard | Y | Y |
-| glow | Y | Y |
+| glow | N (brew-preinstall) | Y |
 | gum | Y | Y |
-| fzf | Y | Y |
+| fzf | N (brew-preinstall) | Y |
 | fish | N | Y |
 | zsh | N | Y |
 | tmux | N | Y |

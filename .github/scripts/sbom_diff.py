@@ -49,8 +49,6 @@ NOTABLE: list[tuple[str, str, str | None]] = [
     ("common",           "common",         None),
     ("JetBrainsMono",    "JetBrains Mono", None),
     ("gum",              "gum",            None),
-    ("fzf",              "fzf",            None),
-    ("glow",             "glow",           None),
 ]
 
 # ── Version string helpers ────────────────────────────────────────────────────

@@ -176,7 +176,7 @@ install-commands:
 ### All current Go tools in Dakota are pre-built binaries — not Go-from-source builds (2026-06-07)
 
 As of June 2026, every Go-based tool in Dakota uses `kind: manual` with pre-built binaries
-from GitHub Releases. `glow.bst`, `gum.bst`, and `fzf.bst` are all pre-built binary elements,
+from GitHub Releases. `gum.bst` is a pre-built binary element,
 not Go source builds. See `packaging-binaries.md` for the pre-built pattern.
 
 Go-from-source build infrastructure (this skill) exists for future use when a required tool

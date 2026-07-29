@@ -41,7 +41,7 @@ Use when you need to:
 ## Quick Start
 
 ```bash
-cp elements/bluefin/glow.bst elements/bluefin/<name>.bst
+cp elements/bluefin/gum.bst elements/bluefin/<name>.bst
 # edit the new element
 just bst show oci/bluefin.bst
 just bst build bluefin/<name>.bst

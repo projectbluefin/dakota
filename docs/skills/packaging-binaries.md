@@ -150,7 +150,7 @@ url: releases:owner/project/releases/download/v%{version}/binary.tar.gz
 
 ### `strip-binaries: ""` belongs under `variables:`, not `public: bst:` (2026-06-07)
 
-Real elements (`tailscale.bst`, `glow.bst`, `gum.bst`, `fzf.bst`, `tealdeer.bst`) all declare
+Real elements (`tailscale.bst`, `gum.bst`, `tealdeer.bst`) all declare
 `strip-binaries: ""` under `variables:`. `public: bst:` is for `overlap-whitelist` entries only.
 Placing `strip-binaries` under `public: bst:` causes a YAML error at element parse time.
 
@@ -169,7 +169,7 @@ public:
 
 Some projects (e.g., `fzf`) release tarballs where the binary sits at the archive root with no
 wrapping directory. Without `base-dir: ""`, BST expects a top-level directory and fails. Example
-from `fzf.bst`:
+from `fzf.bst` (`fzf.bst` was removed in 49382c5; the pattern still applies to any flat-tarball binary):
 
 ```yaml
 sources:
@@ -217,7 +217,7 @@ sources:
       ref: sha256hex...
 ```
 
-This pattern is used in `tailscale.bst`, `glow.bst`, `gum.bst`, and `fzf.bst`.
+This pattern is used in `tailscale.bst`, `gum.bst`, and `tealdeer.bst`.
 
 ### Shared profile scripts require the binary in a BST element — check common Containerfile (2026-06-09)
 
@@ -254,3 +254,24 @@ sources:
 ```
 
 References: projectbluefin/common PR 542, projectbluefin/dakota PR 762 (issue 753)
+
+### `changelog.just` hard-calls glow — guard for brew-preinstall timing (2026-07-29)
+
+`files/just-overrides/changelog.just` pipes GitHub Release notes through `glow -p`.
+glow was moved from the BST image to Homebrew's cli.Brewfile in 49382c5
+(image diet work, projectbluefin/common#546), so it is not present on a fresh
+boot before brew-preinstall.service runs. The recipe must guard with
+`command -v glow` and fall back to `cat` — otherwise `ujust changelog` exits 127.
+
+When a ujust recipe calls a binary that lives in Homebrew (not the BST image),
+it must degrade gracefully. The binary is available after first-login
+brew-preinstall, not at build time or on a pre-login fresh boot.
+
+Also: when removing a BST element, check `track-bst-sources.yml`, `overview.md`,
+and skill files for stale references — 49382c5 left all three dangling
+(the "Update glow"/"Update fzf" steps, overview table, and packaging examples).
+
+A second bug in the same recipe: the release-tag regex
+`OSTREE_VERSION=.*\d{2}\.\K\d{8}[.0-9]*` appended the OSTREE fractional part
+(`.0`) to the date, producing query tags like `stable-20260619.0` which don't
+exist (real tags are `stable-YYYYMMDD`). Fix: drop `[.0-9]*`.
