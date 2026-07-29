@@ -57,6 +57,21 @@ config:
       dconf update /layer/etc/dconf/db
 
     - |
+      # FDSDK's Mesa merge path must stay a symlink so libgbm sees both
+      # Mesa's DRI backend and NVIDIA's backend on hybrid systems.
+      GBM_DIR="/layer%{libdir}/GL/lib/gbm"
+      if [ ! -L "$GBM_DIR" ]; then
+        echo "FATAL: $GBM_DIR is not the FDSDK Mesa merge symlink" >&2
+        exit 1
+      fi
+      for backend in dri_gbm.so nvidia-drm_gbm.so; do
+        if [ ! -e "$GBM_DIR/$backend" ]; then
+          echo "FATAL: GBM backend $GBM_DIR/$backend is missing" >&2
+          exit 1
+        fi
+      done
+
+    - |
       cd "%{install-root}"
       build-oci <<EOF
       mode: oci

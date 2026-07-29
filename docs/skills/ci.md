@@ -2038,6 +2038,43 @@ unacceptably slow even when the overlay is on the correct BTRFS volume. Dakota's
 uses that recipe and then transfers the rootful result back to the runner user's
 podman store before lint and push.
 
+### GitHub runner Podman must use native rootful overlay storage (2026-07-29)
+
+**Symptom:** `just chunkify` fails immediately after fakecap restoration while
+walking the mounted rootfs:
+
+```
+Error: scanning /chunkah for files
+Caused by:
+  0: failed to walk rootfs
+  1: Stale file handle (os error 116)
+```
+
+**Root cause:** the `ubuntu-24.04` runner image update from `20260720.247.2`
+to `20260726.254.1` added a static Podman 5.8 stack under `/usr/local` and an
+`/etc/containers/storage.conf` that selects `fuse-overlayfs`. Installing Podman
+5.7 from Ubuntu Resolute does not remove those files: `/usr/local/bin/podman`
+still wins path resolution while the host contains a mixture of runner and
+Resolute packages. Dakota then creates a kernel overlay from `podman image
+mount` and asks chunkah to scan that overlay through a Podman bind mount. The
+FUSE-backed lower store can return `ESTALE` under that nested access pattern.
+
+**Rule:** use the shared `setup-runner` action's explicit native-overlay mode at
+every Dakota call site:
+
+```yaml
+with:
+  storage-backend: btrfs
+  update-podman: false
+  native-overlay: true
+```
+
+The shared action must keep this mode opt-in until other consumers validate it.
+It must reject `native-overlay: true` together with `update-podman: true`, verify
+the runner Podman version, and fail unless rootful `podman info` reports native
+overlay without a `fuse-overlayfs` mount program. Do not remove or replace
+runner binaries ad hoc in Dakota workflows.
+
 ### actions/cache does not create the cache directory on a cold miss — podman bind-mounts fail (2026-06-13)
 
 `actions/cache` only *restores* an existing archive; on a cache miss it does

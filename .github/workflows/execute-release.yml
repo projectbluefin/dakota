@@ -143,7 +143,8 @@ jobs:
         [
           {"image":"dakota","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"},
           {"image":"dakota-nvidia","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"},
-          {"image":"dakota-gaming","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"}
+          {"image":"dakota-gaming","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"},
+          {"image":"dakota-nvidia-gaming","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"}
         ]
       cosign_identity_regexp: ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)$
       # fast_forward_branch omitted: handled by update-main-bookmark job below,
@@ -234,7 +235,7 @@ jobs:
         id: digests
         run: |
           set -euo pipefail
-          for image in dakota dakota-nvidia dakota-gaming; do
+          for image in dakota dakota-nvidia dakota-gaming dakota-nvidia-gaming; do
             digest=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/${image}:stable" \
               | jq -r '.Digest' | cut -c1-19)
             echo "${image}=${digest}" >> "$GITHUB_OUTPUT"
@@ -245,6 +246,7 @@ jobs:
           DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota }}
           NVIDIA_DIGEST: ${{ steps.digests.outputs.dakota-nvidia }}
           GAMING_DIGEST: ${{ steps.digests.outputs.dakota-gaming }}
+          NVIDIA_GAMING_DIGEST: ${{ steps.digests.outputs.dakota-nvidia-gaming }}
         run: |
           set -euo pipefail
           TAG=$(gh release list --repo "${{ github.repository }}" --limit 1 --json tagName --jq '.[0].tagName')
@@ -258,6 +260,7 @@ jobs:
             "| \`dakota\` | \`:stable\` | \`${DAKOTA_DIGEST}\` |" \
             "| \`dakota-nvidia\` | \`:stable\` | \`${NVIDIA_DIGEST}\` |" \
             "| \`dakota-gaming\` | \`:stable\` | \`${GAMING_DIGEST}\` |" \
+            "| \`dakota-nvidia-gaming\` | \`:stable\` | \`${NVIDIA_GAMING_DIGEST}\` |" \
             '' \
             '---' \
             '')
@@ -398,7 +401,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
-          for image in dakota dakota-nvidia dakota-gaming; do
+          for image in dakota dakota-nvidia dakota-gaming dakota-nvidia-gaming; do
             promoted_digest=$(skopeo inspect --no-tags \
               "docker://ghcr.io/projectbluefin/${image}:${BUILD_SHA}" | jq -r .Digest)
             stable_digest=$(skopeo inspect --no-tags \
@@ -454,6 +457,15 @@ jobs:
         uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
         with:
           package-name: dakota-gaming
+          package-type: container
+          min-versions-to-keep: 100
+          delete-only-untagged-versions: 'true'
+        continue-on-error: true
+
+      - name: Prune untagged GHCR versions for dakota-nvidia-gaming
+        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+        with:
+          package-name: dakota-nvidia-gaming
           package-type: container
           min-versions-to-keep: 100
           delete-only-untagged-versions: 'true'
