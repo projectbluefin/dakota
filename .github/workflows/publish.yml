@@ -366,50 +366,14 @@ jobs:
       - name: Install oras
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
 
-      - name: Download digest artifact
-        continue-on-error: true
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
-        with:
-          name: digest-${{ matrix.variant }}
-          path: ${{ runner.temp }}/digest
-
       - name: Resolve image digest
         id: digest
-        env:
-          BUILD_SHA: ${{ needs.setup.outputs.sha }}
-          GH_ACTOR: ${{ github.actor }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
-          DIGEST=""
-          META="${RUNNER_TEMP}/digest/digest.json"
-          if [ -f "$META" ]; then
-            DIGEST=$(jq -r '.digest // empty' "$META" 2>/dev/null || true)
-            ART_SHA=$(jq -r '.sha // empty' "$META" 2>/dev/null || true)
-            if ! [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || [ "$ART_SHA" != "$BUILD_SHA" ]; then
-              echo "::warning::digest-${{ matrix.variant }} artifact malformed or sha mismatch (artifact sha='${ART_SHA:-}') — falling back to authenticated tag inspect"
-              DIGEST=""
-            else
-              echo "Using digest from publish artifact: ${DIGEST}"
-            fi
-          else
-            echo "::warning::digest-${{ matrix.variant }} artifact missing — falling back to authenticated tag inspect"
-          fi
-          if [ -z "$DIGEST" ]; then
-            for attempt in $(seq 1 12); do
-              DIGEST=$(skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
-                "docker://${IMAGE}:${BUILD_SHA}" 2>/dev/null | jq -r '.Digest // empty' || true)
-              if [ -n "$DIGEST" ]; then
-                break
-              fi
-              if [ "$attempt" -eq 12 ]; then
-                echo "ERROR: cannot resolve digest for :${BUILD_SHA} (authenticated)"
-                exit 1
-              fi
-              sleep 10
-            done
-          fi
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+        uses: ./.github/actions/resolve-image-digest
+        with:
+          artifact-name: digest-${{ matrix.variant }}
+          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
+          build-sha: ${{ needs.setup.outputs.sha }}
+          registry-creds: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
 
       - name: Attach SBOM
         id: sbom-attach
@@ -472,50 +436,17 @@ jobs:
       packages: write
       actions: read
     steps:
-      - name: Download digest artifact
-        continue-on-error: true
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
-        with:
-          name: digest-${{ matrix.variant }}
-          path: ${{ runner.temp }}/digest
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Resolve source digest
         id: digest
-        env:
-          BUILD_SHA: ${{ needs.setup.outputs.sha }}
-          GH_ACTOR: ${{ github.actor }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
-          DIGEST=""
-          META="${RUNNER_TEMP}/digest/digest.json"
-          if [ -f "$META" ]; then
-            DIGEST=$(jq -r '.digest // empty' "$META" 2>/dev/null || true)
-            ART_SHA=$(jq -r '.sha // empty' "$META" 2>/dev/null || true)
-            if ! [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || [ "$ART_SHA" != "$BUILD_SHA" ]; then
-              echo "::warning::digest-${{ matrix.variant }} artifact malformed or sha mismatch (artifact sha='${ART_SHA:-}') — falling back to authenticated tag inspect"
-              DIGEST=""
-            else
-              echo "Using digest from publish artifact: ${DIGEST}"
-            fi
-          else
-            echo "::warning::digest-${{ matrix.variant }} artifact missing — falling back to authenticated tag inspect"
-          fi
-          if [ -z "$DIGEST" ]; then
-            for attempt in $(seq 1 12); do
-              DIGEST=$(skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
-                "docker://${IMAGE}:${BUILD_SHA}" 2>/dev/null | jq -r '.Digest // empty' || true)
-              if [ -n "$DIGEST" ]; then
-                break
-              fi
-              if [ "$attempt" -eq 12 ]; then
-                echo "ERROR: cannot resolve digest for :${BUILD_SHA} (authenticated)"
-                exit 1
-              fi
-              sleep 10
-            done
-          fi
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+        uses: ./.github/actions/resolve-image-digest
+        with:
+          artifact-name: digest-${{ matrix.variant }}
+          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
+          build-sha: ${{ needs.setup.outputs.sha }}
+          registry-creds: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
 
       - name: Promote :${{ needs.setup.outputs.sha }} to :${{ needs.setup.outputs.testing_tag }}
         env:

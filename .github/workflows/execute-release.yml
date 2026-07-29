@@ -38,24 +38,16 @@ jobs:
   freshness-check:
     runs-on: ubuntu-latest
     outputs:
-      should-release: ${{ steps.compare.outputs.should-release }}
-      build_sha: ${{ steps.compare.outputs.build_sha }}
+      should-release: ${{ steps.compare.outputs.should-release || steps.gate.outputs.should-release }}
+      build_sha: ${{ steps.gate.outputs.build_sha }}
     steps:
-      - name: Download digest artifact from publish run
-        if: github.event_name == 'workflow_run'
-        continue-on-error: true
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
-        with:
-          name: digest-default
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/digest
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Check publish conclusion and compare digests
-        id: compare
+      - name: Resolve build SHA and release gate
+        id: gate
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_ACTOR: ${{ github.actor }}
         run: |
           set -euo pipefail
 
@@ -91,41 +83,32 @@ jobs:
             fi
           fi
 
-          IMAGE="ghcr.io/projectbluefin/dakota"
-          TESTING_DIGEST=""
-          META="${RUNNER_TEMP}/digest/digest.json"
-          if [ -f "$META" ]; then
-            D=$(jq -r '.digest // empty' "$META" 2>/dev/null || true)
-            A_SHA=$(jq -r '.sha // empty' "$META" 2>/dev/null || true)
-            if [[ "$D" =~ ^sha256:[0-9a-f]{64}$ ]] && [ "$A_SHA" = "$BUILD_SHA" ]; then
-              TESTING_DIGEST="$D"
-              echo "Using digest from publish artifact: ${TESTING_DIGEST}"
-            else
-              echo "::warning::digest-default artifact malformed or sha mismatch (artifact sha='${A_SHA:-}') — falling back to authenticated tag inspect"
-            fi
-          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo "::warning::no digest artifact on publish run — falling back to authenticated tag inspect"
-          fi
-          if [ -z "$TESTING_DIGEST" ]; then
-            for attempt in $(seq 1 12); do
-              TESTING_DIGEST=$(skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
-                "docker://${IMAGE}:${BUILD_SHA}" 2>/dev/null | jq -r '.Digest // empty' || true)
-              if [ -n "$TESTING_DIGEST" ]; then
-                echo "Resolved :${BUILD_SHA} to ${TESTING_DIGEST} (attempt ${attempt})"
-                break
-              fi
-              if [ "$attempt" -eq 12 ]; then
-                echo "ERROR: :${BUILD_SHA} is not resolvable in GHCR (authenticated)"
-                exit 1
-              fi
-              echo "Waiting for authenticated read of :${BUILD_SHA} (attempt ${attempt}/12)..."
-              sleep 10
-            done
-          fi
+          echo "build_sha=${BUILD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
 
-          skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
-            "docker://${IMAGE}@${TESTING_DIGEST}" > /dev/null \
-            || { echo "ERROR: digest ${TESTING_DIGEST} is not readable in GHCR"; exit 1; }
+      - name: Resolve published digest
+        if: steps.gate.outputs.proceed == 'true'
+        id: digest
+        uses: ./.github/actions/resolve-image-digest
+        with:
+          artifact-name: digest-default
+          image: ghcr.io/projectbluefin/dakota
+          build-sha: ${{ steps.gate.outputs.build_sha }}
+          registry-creds: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id || '' }}
+          verify: 'true'
+
+      - name: Compare against :stable
+        if: steps.gate.outputs.proceed == 'true'
+        id: compare
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+          BUILD_SHA: ${{ steps.gate.outputs.build_sha }}
+          TESTING_DIGEST: ${{ steps.digest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/projectbluefin/dakota"
 
           STABLE_DIGEST=""
           if skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
@@ -139,7 +122,6 @@ jobs:
             echo ":${BUILD_SHA} and :stable are identical ($TESTING_DIGEST) — nothing to promote"
           else
             echo "should-release=true" >> "$GITHUB_OUTPUT"
-            echo "build_sha=${BUILD_SHA}" >> "$GITHUB_OUTPUT"
             echo ":${BUILD_SHA} ($TESTING_DIGEST) differs from :stable (${STABLE_DIGEST:-not found}) — promotion needed"
           fi
 
