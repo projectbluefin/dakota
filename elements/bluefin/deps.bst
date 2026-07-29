@@ -45,6 +45,8 @@ depends:
   - bluefin/network.bst
   - bluefin/countme.bst
   - bluefin/alsa-utils.bst
+  - bluefin/lm-sensors.bst
+  - bluefin/nethogs.bst
   # - bluefin/lsp-plugins-lv2.bst
 
   # Include things missing from the gnomeos base image
