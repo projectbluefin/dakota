@@ -14,85 +14,61 @@
 
 **Alpha** — [filing issues](https://github.com/projectbluefin/dakota/issues) is the whole point.
 
+## Start here
+
+| I need to... | Read |
+|---|---|
+| Understand what Dakota is and how it is assembled | [`docs/architecture.md`](docs/architecture.md) |
+| Contribute, branch, validate, and open a PR | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| Understand validation and proof expectations | [`docs/qa.md`](docs/qa.md) |
+| Verify publish, signatures, SBOMs, promotion, or rollback | [`docs/release.md`](docs/release.md) |
+| Understand the product feedback-loop model | [`docs/feedback-loop.md`](docs/feedback-loop.md) |
+| Route an agent task to the right focused repo skill | [`docs/skills/index.md`](docs/skills/index.md) |
+| Load hard repository boundaries for agents | [`AGENTS.md`](AGENTS.md) |
+
 ## Built-in feedback loop
 
-Dakota doesn't eat tickets, it treats them as evidence.
+Dakota treats bug reports as evidence, not queue noise.
 
-Every user running Dakota is part of a structured loop that flows directly back into upstream GNOME, freedesktop, and the kernel. When something breaks on your hardware, you have three commands:
+Every user running Dakota has three core commands:
 
 | Command | What it does |
 |---|---|
-| `ujust report` | Captures your system state and opens a pre-filled issue. One command instead of a wall of "please attach logs." |
-| `ujust confirm <issue>` | Tells the team your hardware hits the same bug. Adds a hardware fingerprint to the issue — no duplicate filing. |
-| `ujust verify <issue>` | After a fix ships in a nightly, confirms it works on your machine. Closes the loop with evidence. |
+| `ujust report` | Captures system state and opens a pre-filled issue for review |
+| `ujust confirm <issue>` | Adds another hardware confirmation without filing a duplicate |
+| `ujust verify <issue>` | Verifies that a shipped fix actually works on real hardware |
 
-No telemetry. No phone-home. Every report is reviewed by you before it leaves your machine, lives in a gist you own, and can be deleted anytime.
+No telemetry. No phone-home. Reports are reviewed before they leave the machine and stay user-owned.
 
-When three users independently run `ujust verify` on a fix, that issue closes with real confidence — not just "we think this is fixed."
-
-### The hardware layer
-
-Each Dakota installation is designed to run as a hardware diagnostic lab for itself. When will you find your first?
-
-[Read the full feedback loop design](docs/feedback-loop.md)
-
-## The research behind it
-
-Dakota is human driven with contribution workflows for agents, so if you have tokens to donate, ask it to review issues or PRs, it's useful! The humans make the final decisions. We coordinate this project via a tool called [Hive](https://github.com/kubestellar/hive) from Kubestellar, a CNCF Sandbox project.
-
-Dakota's feedback loop model is grounded in Andy Anderson's work on autonomous AI-assisted software development. The core finding: the intelligence of a system like this lives not in any single model, but in the infrastructure of instructions, tests, metrics, and feedback loops surrounding it.
-
-- [The AI Codebase Maturity Model](https://arxiv.org/abs/2604.09388) — the arxiv paper
-- [When AI agents become contributors](https://www.cncf.io/blog/2026/05/14/when-ai-agents-become-contributors-how-kubestellar-reached-81-pr-acceptance/) — CNCF blog
-- [Beyond prompting: How KubeStellar reached 81% PR acceptance](https://thenewstack.io/ai-codebase-maturity-model/) — The New Stack
-- [KubeStellar Hive](https://github.com/kubestellar/hive) — the reference implementation Dakota draws from
+See [`docs/feedback-loop.md`](docs/feedback-loop.md) for the full model.
 
 ## Help shape what gets built
 
-**Architects and designers** — these features and epics need your input before any code is written. Design decisions, tradeoffs, and priorities:
+**Architects and designers** — these features and epics need input before code is written:
 
-### [Open features and epics for discussion &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fdiscussing+label%3Atype%2Ffeature%2Ckind%2Fepic)
+### [Open features and epics for discussion →](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fdiscussing+label%3Atype%2Ffeature%2Ckind%2Fepic)
 
-Leave a comment, challenge the design, propose alternatives. When a discussion reaches consensus a maintainer marks it `status/approved` and it enters the build queue.
+**Engineers** — these issues have clear acceptance criteria and are ready to build:
 
-**Engineers** — these issues have clear acceptance criteria and no open design questions. Pick one up and build it:
-
-### [Agent-ready build queue &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fqueued+no%3Aassignee)
-
-Comment `/claim` to take an issue. See [AGENTS.md](AGENTS.md) for the full contributor workflow.
+### [Agent-ready build queue →](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fqueued+no%3Aassignee)
 
 ## Image streams
 
 | Tag | Stream | What it is |
 |---|---|---|
-| `:stable` | Stable | GNOME 50 — production. Daily automated promotion from `:testing`. |
-| `:testing` | Dev | GNOME 50 — daily builds from `testing` branch. Boot-check gated. |
-| `:next` | Rolling | **GNOME master — the bleeding edge.** Tracks gnome-build-meta `master` daily. Auto-updates, zero maintenance. |
-| `:btw` | Rolling | Alias for `:next`. |
+| `:stable` | Stable | Production tag promoted from a previously published `:testing` build |
+| `:testing` | Development | The main development stream from the `testing` branch |
+| `:next` | Rolling | GNOME master / rolling branch build |
+| `:btw` | Rolling | Alias for `:next` |
 
-`:next` / `:btw` is the arch competitor stream — latest GNOME the moment it lands upstream, built from source with memory-safe defaults (sudo-rs, uutils-coreutils). If you want to run GNOME before everyone else and help find regressions before they reach stable, this is your image.
+Release, trust, promotion, and rollback details live in [`docs/release.md`](docs/release.md).
 
-```bash
-# Switch to the rolling stream
-sudo bootc switch ghcr.io/projectbluefin/dakota:next
-# or
-sudo bootc switch ghcr.io/projectbluefin/dakota:btw
-```
-
-## ISO Download
+## ISO download
 
 [dakota-live-latest.iso](https://projectbluefin.dev/dakota-live-latest.iso) · [Checksum](https://projectbluefin.dev/dakota-live-latest.iso-CHECKSUM)
 
-
-## Known gaps
-
-- Installation path is still being worked on
-- Upgrades and rollbacks need more hardening
-
-See the [open issues](https://github.com/projectbluefin/dakota/issues) for where things stand.
-
 ## Contributing or building from source
 
-See [AGENTS.md](AGENTS.md) for the full contributor workflow, build instructions, and PR checklist.
+Use [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contributor workflow, [`docs/qa.md`](docs/qa.md) for proof requirements, and [`AGENTS.md`](AGENTS.md) for hard repository boundaries.
 
 ![Dakorator](https://github.com/user-attachments/assets/ee92291d-a617-496e-abb6-9045a4c665ce)

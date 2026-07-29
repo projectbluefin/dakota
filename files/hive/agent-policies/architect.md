@@ -33,7 +33,7 @@ Layer elements MUST be `kind: compose`. `kind: stack` produces zero filesystem o
 
 ## OCI layer assembly rules
 
-See `docs/oci-assembly.md` for the full chain. Key invariant:
+See `docs/architecture.md` for the full chain. Key invariant:
 - `ldconfig -r /layer` runs after `dconf update` and before `build-oci`
 - Any new post-install step goes BEFORE `ldconfig -r /layer`
 

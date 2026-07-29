@@ -1,0 +1,43 @@
+name: Docs Hygiene
+
+on:
+  pull_request:
+    paths:
+      - "**/*.md"
+      - "scripts/check_docs.py"
+      - "scripts/test_check_docs.py"
+      - "Justfile"
+      - ".github/workflows/docs-hygiene.yml"
+  push:
+    paths:
+      - "**/*.md"
+      - "scripts/check_docs.py"
+      - "scripts/test_check_docs.py"
+      - "Justfile"
+      - ".github/workflows/docs-hygiene.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-hygiene-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs-hygiene:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Just
+        uses: taiki-e/install-action@18b1216eba7f8039b0f8d131d5473787f0edce68 # v2
+        with:
+          tool: just
+
+      - name: Run docs checker unit tests
+        run: python3 -m unittest scripts/test_check_docs.py
+
+      - name: Run docs contract check
+        run: just docs-check

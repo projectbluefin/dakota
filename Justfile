@@ -81,6 +81,10 @@ check-publish-workflow:
     python3 -m unittest scripts.test_check_publish_workflow
 
 [group('dev')]
+docs-check:
+    python3 scripts/check_docs.py
+
+[group('dev')]
 monitor-pipeline BUILD_RUN_ID="":
     #!/usr/bin/env bash
     set -euo pipefail
