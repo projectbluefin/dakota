@@ -36,16 +36,14 @@ concurrency:
 
 jobs:
   freshness-check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
-      should-release: ${{ steps.compare.outputs.should-release || steps.gate.outputs.should-release }}
-      build_sha: ${{ steps.gate.outputs.build_sha }}
+      should-release: ${{ steps.compare.outputs.should-release }}
+      build_sha: ${{ steps.compare.outputs.build_sha }}
+      fsdk_minor: ${{ steps.compare.outputs.fsdk_minor }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Resolve build SHA and release gate
-        id: gate
+      - name: Check publish conclusion and compare digests
+        id: compare
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -71,6 +69,41 @@ jobs:
             BUILD_SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/testing" --jq '.object.sha')
           fi
 
+          # Verify the SHA-tagged image exists in GHCR (proves this SHA was published).
+          # GHCR can briefly lag after publish.yml completes, so retry before
+          # declaring the release broken.
+          for attempt in $(seq 1 12); do
+            if skopeo inspect --no-tags \
+                "docker://ghcr.io/projectbluefin/dakota:${BUILD_SHA}" > /dev/null 2>&1; then
+              echo "Verified :${BUILD_SHA} is readable in GHCR (attempt ${attempt})"
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "ERROR: :${BUILD_SHA} is still unavailable in GHCR after publish"
+              exit 1
+            fi
+            echo "Waiting for GHCR to expose :${BUILD_SHA} (attempt ${attempt}/12)..."
+            sleep 10
+          done
+
+          # Resolve the tested FSDK minor from the published image metadata so
+          # stable promotion reuses the exact channel lineage that publish.yml
+          # derived for this SHA.
+          FSDK_VERSION=$(skopeo inspect --config \
+            "docker://ghcr.io/projectbluefin/dakota:${BUILD_SHA}" \
+            | jq -r '.config.Labels["io.projectbluefin.fsdk.version"] // .config.Labels["org.opencontainers.image.version"] // empty')
+          if [ -z "$FSDK_VERSION" ]; then
+            echo "ERROR: failed to resolve io.projectbluefin.fsdk.version for :${BUILD_SHA}"
+            exit 1
+          fi
+          FSDK_MINOR=$(printf '%s\n' "$FSDK_VERSION" | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
+          if [ -z "$FSDK_MINOR" ]; then
+            echo "ERROR: failed to derive FSDK minor from version ${FSDK_VERSION}"
+            exit 1
+          fi
+          echo "fsdk_minor=${FSDK_MINOR}" >> "$GITHUB_OUTPUT"
+          echo "Resolved FSDK version ${FSDK_VERSION} → minor ${FSDK_MINOR}"
+
           # Guard: if testing advanced since the build, the reusable fast-forward would
           # point main to a newer commit than the image we're promoting. Skip promotion.
           # Bypassed when promote_sha is specified (recovery: explicit SHA override).
@@ -83,38 +116,16 @@ jobs:
             fi
           fi
 
-          echo "build_sha=${BUILD_SHA}" >> "$GITHUB_OUTPUT"
-          echo "proceed=true" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve published digest
-        if: steps.gate.outputs.proceed == 'true'
-        id: digest
-        uses: ./.github/actions/resolve-image-digest
-        with:
-          artifact-name: digest-default
-          image: ghcr.io/projectbluefin/dakota
-          build-sha: ${{ steps.gate.outputs.build_sha }}
-          registry-creds: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id || '' }}
-          verify: 'true'
-
-      - name: Compare against :stable
-        if: steps.gate.outputs.proceed == 'true'
-        id: compare
-        env:
-          GH_ACTOR: ${{ github.actor }}
-          GH_TOKEN: ${{ github.token }}
-          BUILD_SHA: ${{ steps.gate.outputs.build_sha }}
-          TESTING_DIGEST: ${{ steps.digest.outputs.digest }}
-        run: |
-          set -euo pipefail
-          IMAGE="ghcr.io/projectbluefin/dakota"
+          # Compare the SHA-tagged build digest against :stable. Using the SHA tag
+          # (not floating :testing) guarantees the decision input matches the action
+          # input — the same image we will promote is the one we evaluated.
+          TESTING_DIGEST=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:${BUILD_SHA}" \
+            | jq -r '.Digest')
 
           STABLE_DIGEST=""
-          if skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
-              "docker://${IMAGE}:stable" > /dev/null 2>&1; then
-            STABLE_DIGEST=$(skopeo inspect --no-tags --creds "${GH_ACTOR}:${GH_TOKEN}" \
-              "docker://${IMAGE}:stable" | jq -r '.Digest')
+          if skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:stable" > /dev/null 2>&1; then
+            STABLE_DIGEST=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:stable" \
+              | jq -r '.Digest')
           fi
 
           if [ -n "$STABLE_DIGEST" ] && [ "$TESTING_DIGEST" = "$STABLE_DIGEST" ]; then
@@ -122,11 +133,159 @@ jobs:
             echo ":${BUILD_SHA} and :stable are identical ($TESTING_DIGEST) — nothing to promote"
           else
             echo "should-release=true" >> "$GITHUB_OUTPUT"
+            echo "build_sha=${BUILD_SHA}" >> "$GITHUB_OUTPUT"
             echo ":${BUILD_SHA} ($TESTING_DIGEST) differs from :stable (${STABLE_DIGEST:-not found}) — promotion needed"
           fi
 
-  execute:
+  snapshot-stable-tags:
     needs: [freshness-check]
+    if: needs.freshness-check.outputs.should-release == 'true' && inputs.dry_run != true
+    runs-on: ubuntu-26.04
+    outputs:
+      snapshots: ${{ steps.snapshot.outputs.snapshots }}
+    steps:
+      - name: Snapshot current stable destinations
+        id: snapshot
+        env:
+          FSDK_MINOR: ${{ needs.freshness-check.outputs.fsdk_minor }}
+        run: |
+          set -euo pipefail
+
+          VERSIONED_TAG="${FSDK_MINOR}-stable"
+          snapshots='{}'
+
+          inspect_optional_digest() {
+            local image="$1"
+            local tag="$2"
+            local inspect_json
+            if inspect_json=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/${image}:${tag}" 2>/dev/null); then
+              jq -r '.Digest' <<<"${inspect_json}"
+            else
+              echo ""
+            fi
+          }
+
+          for image in dakota dakota-nvidia dakota-gaming; do
+            versioned_digest="$(inspect_optional_digest "${image}" "${VERSIONED_TAG}")"
+            stable_digest="$(inspect_optional_digest "${image}" stable)"
+            snapshots=$(jq -c \
+              --arg image "${image}" \
+              --arg versioned_digest "${versioned_digest}" \
+              --arg stable_digest "${stable_digest}" \
+              '. + {
+                ($image): {
+                  versioned_digest: (if $versioned_digest == "" then null else $versioned_digest end),
+                  stable_digest: (if $stable_digest == "" then null else $stable_digest end)
+                }
+              }' <<<"${snapshots}")
+            echo "Snapshot ${image}:${VERSIONED_TAG}=${versioned_digest:-<absent>} ${image}:stable=${stable_digest:-<absent>}"
+          done
+
+          echo "snapshots=${snapshots}" >> "$GITHUB_OUTPUT"
+
+  resolve-stable-source-digests:
+    needs: [freshness-check]
+    if: needs.freshness-check.outputs.should-release == 'true' && inputs.dry_run != true
+    runs-on: ubuntu-26.04
+    outputs:
+      source_digests: ${{ steps.resolve.outputs.source_digests }}
+      optional_missing: ${{ steps.resolve.outputs.optional_missing }}
+    env:
+      BUILD_SHA: ${{ needs.freshness-check.outputs.build_sha }}
+    steps:
+      - name: Resolve stable source digests
+        id: resolve
+        run: |
+          set -euo pipefail
+
+          variant_policy='{"dakota":{"required":true},"dakota-nvidia":{"required":false},"dakota-gaming":{"required":false}}'
+          source_digests='{}'
+          optional_missing='[]'
+
+          known_manifest_absence() {
+            local inspect_output="$1"
+            local normalized_output
+            normalized_output=$(printf '%s\n' "${inspect_output}" | tr '[:upper:]' '[:lower:]')
+            case "${normalized_output}" in
+              *"manifest unknown"*|*"name unknown"*)
+                return 0
+                ;;
+            esac
+            return 1
+          }
+
+          resolve_source_digest() {
+            local image="$1"
+            local required="$2"
+            local ref="docker://ghcr.io/projectbluefin/${image}:${BUILD_SHA}"
+            local attempt inspect_output status digest
+
+            for attempt in 1 2 3; do
+              set +e
+              inspect_output=$(skopeo inspect --no-tags "${ref}" 2>&1)
+              status=$?
+              set -e
+
+              if [ "${status}" -eq 0 ]; then
+                digest=$(jq -r '.Digest // empty' <<<"${inspect_output}")
+                if [ -z "${digest}" ]; then
+                  echo "::error::Failed to parse digest from ${ref}" >&2
+                  printf '%s\n' "${inspect_output}" >&2
+                  return 1
+                fi
+                printf '%s\n' "${digest}"
+                return 0
+              fi
+
+              if [ "${attempt}" -lt 3 ]; then
+                echo "::warning::skopeo inspect failed for ${ref} (attempt ${attempt}/3, exit ${status}); retrying in 10s." >&2
+                printf '%s\n' "${inspect_output}" >&2
+                sleep 10
+                continue
+              fi
+
+              if [ "${required}" != "true" ] && [ "${status}" -eq 2 ] && known_manifest_absence "${inspect_output}"; then
+                echo "::notice::Optional stable variant ${ref} is genuinely absent after ${attempt} attempts; recovery will skip it." >&2
+                printf '%s\n' "${inspect_output}" >&2
+                return 10
+              fi
+
+              echo "::error::Failed to inspect ${ref} after ${attempt} attempts (exit ${status})." >&2
+              printf '%s\n' "${inspect_output}" >&2
+              return 1
+            done
+          }
+
+          for image in dakota dakota-nvidia dakota-gaming; do
+            required=$(jq -r --arg image "${image}" '.[$image].required' <<<"${variant_policy}")
+            if source_digest="$(resolve_source_digest "${image}" "${required}")"; then
+              :
+            else
+              status=$?
+              if [ "${status}" -eq 10 ]; then
+                optional_missing=$(jq -c --arg image "${image}" '. + [$image]' <<<"${optional_missing}")
+                continue
+              fi
+              exit 1
+            fi
+
+            if [ -z "${source_digest}" ]; then
+              echo "::error::Resolved an empty digest for ghcr.io/projectbluefin/${image}:${BUILD_SHA}"
+              exit 1
+            fi
+
+            source_digests=$(jq -c \
+              --arg image "${image}" \
+              --arg digest "${source_digest}" \
+              '. + {($image): $digest}' <<<"${source_digests}")
+            echo "Resolved ${image}:${BUILD_SHA} → ${source_digest}"
+          done
+
+          echo "source_digests=${source_digests}" >> "$GITHUB_OUTPUT"
+          echo "optional_missing=${optional_missing}" >> "$GITHUB_OUTPUT"
+
+  execute:
+    needs: [freshness-check, snapshot-stable-tags, resolve-stable-source-digests]
     if: needs.freshness-check.outputs.should-release == 'true' && inputs.dry_run != true
     permissions:
       actions: read
@@ -141,9 +300,9 @@ jobs:
       registry: ghcr.io/projectbluefin
       variants: >-
         [
-          {"image":"dakota","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"},
-          {"image":"dakota-nvidia","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"},
-          {"image":"dakota-gaming","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"stable"}
+          {"image":"dakota","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"${{ needs.freshness-check.outputs.fsdk_minor }}-stable"},
+          {"image":"dakota-nvidia","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"${{ needs.freshness-check.outputs.fsdk_minor }}-stable"},
+          {"image":"dakota-gaming","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"${{ needs.freshness-check.outputs.fsdk_minor }}-stable"}
         ]
       cosign_identity_regexp: ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)$
       # fast_forward_branch omitted: handled by update-main-bookmark job below,
@@ -154,15 +313,238 @@ jobs:
       run_release_gate: ${{ inputs.skip_release_gate != true }}
     secrets: inherit
 
+  # Reconcile :stable with the versioned stable tags even when the reusable
+  # execute workflow only partially promotes variants. If reconciliation itself
+  # fails, restore the full snapshotted stable set before exiting so retries do
+  # not strand a subset of variants in a mixed state.
+  reconcile-stable-tag-pairs:
+    needs: [freshness-check, snapshot-stable-tags, resolve-stable-source-digests, execute]
+    if: >-
+      always() &&
+      needs.freshness-check.outputs.should-release == 'true' &&
+      inputs.dry_run != true &&
+      needs.resolve-stable-source-digests.result == 'success' &&
+      (needs.execute.result == 'success' || needs.execute.result == 'failure')
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      FSDK_MINOR: ${{ needs.freshness-check.outputs.fsdk_minor }}
+      SNAPSHOTS_JSON: ${{ needs.snapshot-stable-tags.outputs.snapshots }}
+      SOURCE_DIGESTS_JSON: ${{ needs.resolve-stable-source-digests.outputs.source_digests }}
+      OPTIONAL_MISSING_JSON: ${{ needs.resolve-stable-source-digests.outputs.optional_missing }}
+      EXECUTE_RESULT: ${{ needs.execute.result }}
+      GH_ACTOR: ${{ github.actor }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Login to GHCR
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | skopeo login ghcr.io --username "$GH_ACTOR" --password-stdin
+
+      - name: Reconcile stable tag pairs for promoted variants
+        run: |
+          set -euo pipefail
+
+          VERSIONED_TAG="${FSDK_MINOR}-stable"
+          images=(dakota dakota-nvidia dakota-gaming)
+          declare -A expected_digests
+          declare -A snapshot_versioned_digests
+          declare -A snapshot_stable_digests
+          reconciled_images=()
+
+          inspect_optional_digest() {
+            local image="$1"
+            local tag="$2"
+            local inspect_json
+            if inspect_json=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/${image}:${tag}" 2>/dev/null); then
+              jq -r '.Digest' <<<"${inspect_json}"
+            else
+              echo ""
+            fi
+          }
+
+          inspect_digest() {
+            local image="$1"
+            local tag="$2"
+            skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/${image}:${tag}" | jq -r '.Digest'
+          }
+
+          restore_tag() {
+            local image="$1"
+            local tag="$2"
+            local previous_digest="$3"
+            if [ -z "${previous_digest}" ]; then
+              if skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/${image}:${tag}" > /dev/null 2>&1; then
+                if ! skopeo delete \
+                  --creds "$GH_ACTOR:$GH_TOKEN" \
+                  "docker://ghcr.io/projectbluefin/${image}:${tag}"; then
+                  echo "::warning::Failed to delete newly-created ${image}:${tag} during recovery"
+                  return 1
+                fi
+              fi
+              return 0
+            fi
+
+            if ! skopeo copy --preserve-digests --all \
+              --src-creds "$GH_ACTOR:$GH_TOKEN" \
+              --dest-creds "$GH_ACTOR:$GH_TOKEN" \
+              "docker://ghcr.io/projectbluefin/${image}@${previous_digest}" \
+              "docker://ghcr.io/projectbluefin/${image}:${tag}"; then
+              echo "::warning::Failed to restore ${image}:${tag} to ${previous_digest}"
+              return 1
+            fi
+
+            restored_digest="$(inspect_optional_digest "${image}" "${tag}")"
+            if [ "${restored_digest}" != "${previous_digest}" ]; then
+              echo "::warning::${image}:${tag} restored to ${restored_digest:-<absent>}, expected ${previous_digest}"
+              return 1
+            fi
+          }
+
+          restore_all_snapshots() {
+            local failed=0
+            for image in "${images[@]}"; do
+              restore_tag "${image}" "${VERSIONED_TAG}" "${snapshot_versioned_digests[$image]:-}" || failed=1
+              restore_tag "${image}" stable "${snapshot_stable_digests[$image]:-}" || failed=1
+            done
+            return "${failed}"
+          }
+
+          abort_and_restore() {
+            local message="$1"
+            echo "::error::${message}"
+            if ! restore_all_snapshots; then
+              echo "::warning::Failed to fully restore the snapshotted stable tag set after reconciliation failed."
+            fi
+            exit 1
+          }
+
+          copy_stable_with_retries() {
+            local image="$1"
+            local digest="$2"
+            local attempt
+            for attempt in 1 2 3; do
+              if skopeo copy --preserve-digests --all \
+                  --src-creds "$GH_ACTOR:$GH_TOKEN" \
+                  --dest-creds "$GH_ACTOR:$GH_TOKEN" \
+                  "docker://ghcr.io/projectbluefin/${image}@${digest}" \
+                  "docker://ghcr.io/projectbluefin/${image}:stable"; then
+                return 0
+              fi
+              echo "::warning::Attempt ${attempt}/3 failed while moving ${image}:stable to match ${image}:${VERSIONED_TAG}"
+              sleep 10
+            done
+            return 1
+          }
+
+          for image in "${images[@]}"; do
+            expected_digests["${image}"]="$(jq -r --arg image "${image}" '.[$image] // empty' <<<"${SOURCE_DIGESTS_JSON}")"
+            snapshot_versioned_digests["${image}"]="$(jq -r --arg image "${image}" '.[$image].versioned_digest // empty' <<<"${SNAPSHOTS_JSON}")"
+            snapshot_stable_digests["${image}"]="$(jq -r --arg image "${image}" '.[$image].stable_digest // empty' <<<"${SNAPSHOTS_JSON}")"
+          done
+
+          if [ "${OPTIONAL_MISSING_JSON}" != "[]" ]; then
+            echo "::warning::Optional stable sources unavailable for recovery: $(jq -r '.[]' <<<"${OPTIONAL_MISSING_JSON}" | paste -sd ', ' -)"
+          fi
+
+          for image in "${images[@]}"; do
+            if [ -z "${expected_digests[$image]:-}" ]; then
+              echo "Skipping ${image}: no SHA-pinned source digest is available for recovery."
+              continue
+            fi
+
+            versioned_digest="$(inspect_optional_digest "${image}" "${VERSIONED_TAG}")"
+            stable_digest="$(inspect_optional_digest "${image}" stable)"
+
+            if [ -n "${versioned_digest}" ] && \
+               [ "${versioned_digest}" != "${expected_digests[$image]}" ] && \
+               [ "${versioned_digest}" != "${snapshot_versioned_digests[$image]:-}" ]; then
+              abort_and_restore "${image}:${VERSIONED_TAG} digest=${versioned_digest} is neither the promoted digest ${expected_digests[$image]} nor the pre-release snapshot ${snapshot_versioned_digests[$image]:-<absent>}"
+            fi
+
+            if [ -n "${stable_digest}" ] && \
+               [ "${stable_digest}" != "${expected_digests[$image]}" ] && \
+               [ "${stable_digest}" != "${snapshot_stable_digests[$image]:-}" ]; then
+              abort_and_restore "${image}:stable digest=${stable_digest} is neither the promoted digest ${expected_digests[$image]} nor the pre-release snapshot ${snapshot_stable_digests[$image]:-<absent>}"
+            fi
+
+            if [ "${versioned_digest}" = "${expected_digests[$image]}" ] && [ "${stable_digest}" != "${expected_digests[$image]}" ]; then
+              if ! copy_stable_with_retries "${image}" "${expected_digests[$image]}"; then
+                if [ -z "${snapshot_versioned_digests[$image]:-}" ]; then
+                  echo "::warning::${image}:${VERSIONED_TAG} did not exist before this release attempt; future retries must reconcile the new versioned tag with :stable."
+                fi
+                abort_and_restore "Failed to move ${image}:stable to match ${image}:${VERSIONED_TAG}"
+              fi
+              stable_digest="$(inspect_digest "${image}" stable)"
+              versioned_digest="$(inspect_digest "${image}" "${VERSIONED_TAG}")"
+              reconciled_images+=("${image}")
+            elif [ "${stable_digest}" = "${expected_digests[$image]}" ] && [ "${versioned_digest}" != "${expected_digests[$image]}" ]; then
+              abort_and_restore "${image}:stable already points at ${expected_digests[$image]} but ${image}:${VERSIONED_TAG} does not."
+            fi
+
+            for tag in "${VERSIONED_TAG}" stable; do
+              digest="$(inspect_optional_digest "${image}" "${tag}")"
+              if [ -z "${digest}" ] && [ "${tag}" = "${VERSIONED_TAG}" ] && [ -z "${snapshot_versioned_digests[$image]:-}" ]; then
+                continue
+              fi
+              if [ -z "${digest}" ]; then
+                abort_and_restore "${image}:${tag} is absent after reconciliation"
+              fi
+              if [ "${digest}" != "${expected_digests[$image]}" ] && [ "${digest}" != "${snapshot_stable_digests[$image]:-}" ] && [ "${digest}" != "${snapshot_versioned_digests[$image]:-}" ]; then
+                abort_and_restore "${image}:${tag} ended at unexpected digest ${digest}"
+              fi
+            done
+          done
+
+          for image in "${images[@]}"; do
+            if [ -z "${expected_digests[$image]:-}" ]; then
+              continue
+            fi
+            versioned_digest="$(inspect_optional_digest "${image}" "${VERSIONED_TAG}")"
+            stable_digest="$(inspect_optional_digest "${image}" stable)"
+            if [ "${versioned_digest}" = "${expected_digests[$image]}" ] || [ "${stable_digest}" = "${expected_digests[$image]}" ]; then
+              if [ "${versioned_digest}" != "${expected_digests[$image]}" ] || [ "${stable_digest}" != "${expected_digests[$image]}" ]; then
+                abort_and_restore "${image}:${VERSIONED_TAG} (${versioned_digest:-<absent>}) and ${image}:stable (${stable_digest:-<absent>}) are still divergent after reconciliation"
+              fi
+              echo "${image}:${VERSIONED_TAG} and ${image}:stable now point at ${expected_digests[$image]}"
+            else
+              echo "${image}:${VERSIONED_TAG} and ${image}:stable remain at their pre-release digests"
+            fi
+          done
+
+          if [ "${EXECUTE_RESULT}" != "success" ]; then
+            if [ "${#reconciled_images[@]}" -gt 0 ]; then
+              echo "::warning::reusable-execute-release partially promoted ${reconciled_images[*]}; stable tag pairs were reconciled, but the release remains incomplete."
+            else
+              echo "::warning::reusable-execute-release failed before any stable tag pairs moved."
+            fi
+            exit 1
+          fi
+
+          for image in "${images[@]}"; do
+            if [ -z "${expected_digests[$image]:-}" ]; then
+              continue
+            fi
+            versioned_digest="$(inspect_digest "${image}" "${VERSIONED_TAG}")"
+            stable_digest="$(inspect_digest "${image}" stable)"
+            if [ "${versioned_digest}" != "${expected_digests[$image]}" ] || [ "${stable_digest}" != "${expected_digests[$image]}" ]; then
+              abort_and_restore "${image}:${VERSIONED_TAG} (${versioned_digest}) and ${image}:stable (${stable_digest}) must both point at ${expected_digests[$image]} after a successful promotion"
+            fi
+          done
+
+          echo "Reconciled :${VERSIONED_TAG} and :stable for all promoted stable variants."
+
   # Update the stable bookmark (main) to point to the promoted SHA.
   # Runs as a separate job with force=true to handle the case where main has
   # diverged from testing (e.g. commits landed on main directly, bypassing
   # the testing→stable promotion flow). The reusable action's force=false
   # fast-forward would reject this; we handle it correctly here instead.
   update-main-bookmark:
-    needs: [freshness-check, execute]
-    if: always() && needs.execute.result == 'success'
-    runs-on: ubuntu-latest
+    needs: [freshness-check, execute, reconcile-stable-tag-pairs]
+    if: always() && needs.reconcile-stable-tag-pairs.result == 'success'
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
     env:
@@ -188,8 +570,8 @@ jobs:
           echo "Updated main → ${TARGET_SHA}"
 
   release-notes:
-    needs: [freshness-check, execute]
-    if: always() && needs.execute.result == 'success'
+    needs: [freshness-check, execute, reconcile-stable-tag-pairs]
+    if: always() && needs.reconcile-stable-tag-pairs.result == 'success'
     permissions:
       actions: read
       contents: write
@@ -221,9 +603,9 @@ jobs:
     secrets: inherit
 
   post-release-variants:
-    needs: [execute, release-notes]
+    needs: [freshness-check, reconcile-stable-tag-pairs, release-notes]
     if: always() && needs.release-notes.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       packages: read
@@ -242,6 +624,7 @@ jobs:
 
       - name: Prepend variants table to release
         env:
+          FSDK_MINOR: ${{ needs.freshness-check.outputs.fsdk_minor }}
           DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota }}
           NVIDIA_DIGEST: ${{ steps.digests.outputs.dakota-nvidia }}
           GAMING_DIGEST: ${{ steps.digests.outputs.dakota-gaming }}
@@ -253,16 +636,16 @@ jobs:
           VARIANTS_SECTION=$(printf '%s\n' \
             '## Variants promoted' \
             '' \
-            '| Variant | Tag | Digest |' \
-            '|---|---|---|' \
-            "| \`dakota\` | \`:stable\` | \`${DAKOTA_DIGEST}\` |" \
-            "| \`dakota-nvidia\` | \`:stable\` | \`${NVIDIA_DIGEST}\` |" \
-            "| \`dakota-gaming\` | \`:stable\` | \`${GAMING_DIGEST}\` |" \
+            '| Variant | Versioned tag | Alias | Digest |' \
+            '|---|---|---|---|' \
+            "| \`dakota\` | \`:${FSDK_MINOR}-stable\` | \`:stable\` | \`${DAKOTA_DIGEST}\` |" \
+            "| \`dakota-nvidia\` | \`:${FSDK_MINOR}-stable\` | \`:stable\` | \`${NVIDIA_DIGEST}\` |" \
+            "| \`dakota-gaming\` | \`:${FSDK_MINOR}-stable\` | \`:stable\` | \`${GAMING_DIGEST}\` |" \
             '' \
             '---' \
             '')
-          printf '%s\n%s' "$VARIANTS_SECTION" "$CURRENT" > /tmp/updated-body.md
-          gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file /tmp/updated-body.md
+          printf '%s\n%s' "$VARIANTS_SECTION" "$CURRENT" > updated-body.md
+          gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file updated-body.md
 
   # ── Multi-arch manifest (aarch64) ────────────────────────────────────────
   # Non-gating: creates a multi-arch :stable manifest if a SHA-pinned aarch64
@@ -276,9 +659,9 @@ jobs:
   # the manifest publishes exactly what was verified, not whatever the
   # floating `:aarch64` tag happens to point at.
   create-multiarch-stable:
-    needs: [freshness-check, execute]
-    if: always() && needs.execute.result == 'success'
-    runs-on: ubuntu-latest
+    needs: [freshness-check, execute, reconcile-stable-tag-pairs]
+    if: always() && needs.reconcile-stable-tag-pairs.result == 'success'
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       id-token: write
@@ -311,7 +694,7 @@ jobs:
         if: steps.check-aarch64.outputs.present == 'true'
         run: |
           set -euo pipefail
-          curl -fsSL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 \
+          curl -fsSL https://github.com/sigstore/cosign/releases/download/v3.1.2/cosign-linux-amd64 \
             -o "$RUNNER_TEMP/cosign"
           sudo install -m 0755 "$RUNNER_TEMP/cosign" /usr/local/bin/cosign
           cosign version
@@ -372,14 +755,15 @@ jobs:
 
   post-release-verify:
     name: Post-release verification + cleanup
-    if: inputs.dry_run != true && needs.execute.result == 'success' && needs.create-multiarch-stable.result == 'success'
-    needs: [freshness-check, execute, create-multiarch-stable]
-    runs-on: ubuntu-24.04
+    if: inputs.dry_run != true && needs.reconcile-stable-tag-pairs.result == 'success' && needs.create-multiarch-stable.result == 'success'
+    needs: [freshness-check, execute, reconcile-stable-tag-pairs, create-multiarch-stable]
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
     env:
       BUILD_SHA: ${{ needs.freshness-check.outputs.build_sha }}
+      FSDK_MINOR: ${{ needs.freshness-check.outputs.fsdk_minor }}
       IMAGE: ghcr.io/projectbluefin/dakota
     steps:
       - name: Verify main bookmark matches promoted SHA
@@ -394,20 +778,23 @@ jobs:
           fi
           echo "main bookmark verified: $main_sha"
 
-      - name: Verify :stable points to promoted digest
+      - name: Verify stable tag pair points to the promoted digest
         run: |
           set -euo pipefail
           sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
+          VERSIONED_TAG="${FSDK_MINOR}-stable"
           for image in dakota dakota-nvidia dakota-gaming; do
             promoted_digest=$(skopeo inspect --no-tags \
               "docker://ghcr.io/projectbluefin/${image}:${BUILD_SHA}" | jq -r .Digest)
-            stable_digest=$(skopeo inspect --no-tags \
-              "docker://ghcr.io/projectbluefin/${image}:stable" | jq -r .Digest)
-            if [ "$stable_digest" != "$promoted_digest" ]; then
-              echo "::error::${image}:stable digest=$stable_digest, expected $promoted_digest"
-              exit 1
-            fi
-            echo "${image}:stable digest verified: $stable_digest"
+            for tag in "${VERSIONED_TAG}" stable; do
+              digest=$(skopeo inspect --no-tags \
+                "docker://ghcr.io/projectbluefin/${image}:${tag}" | jq -r .Digest)
+              if [ "$digest" != "$promoted_digest" ]; then
+                echo "::error::${image}:${tag} digest=$digest, expected $promoted_digest"
+                exit 1
+              fi
+              echo "${image}:${tag} digest verified: $digest"
+            done
           done
 
       - name: Verify :stable-multiarch exists
@@ -465,7 +852,7 @@ jobs:
             echo "## Post-release verification"
             echo ""
             echo "- main bookmark: $BUILD_SHA"
-            echo "- :stable digest: verified"
+            echo "- :${FSDK_MINOR}-stable + :stable digests: verified"
             echo "- :stable-multiarch: present"
             echo "- stale auto/* branches: clean"
             echo "- untagged GHCR versions: pruned"

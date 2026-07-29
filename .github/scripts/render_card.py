@@ -438,6 +438,9 @@ def build_release_notes(
             full_diff_section = ["No package changes since last release.", ""]
 
     # Build lines with no leading whitespace — 4-space indent renders as code in GitHub MD
+    image_lines = [f"ghcr.io/{repo.split('/')[0]}/dakota:stable"]
+    image_lines.append(f"ghcr.io/{repo.split('/')[0]}/dakota:{sha}")
+
     L = [
         f"![Bluefin Dakota {tag}](https://github.com/{repo}/releases/download/{tag}/release-card.png)",
         "",
@@ -453,8 +456,7 @@ def build_release_notes(
         "## Images",
         "",
         "```",
-        f"ghcr.io/{repo.split('/')[0]}/dakota:latest",
-        f"ghcr.io/{repo.split('/')[0]}/dakota:{sha}",
+        *image_lines,
         "```",
         "",
         "## Verify your image",

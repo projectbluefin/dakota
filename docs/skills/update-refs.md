@@ -34,11 +34,11 @@ Use when bumping a package version, refreshing a tracked source ref, or regenera
 | Task | Command |
 |------|---------|
 | Update tarball to version X | Edit `version:` variable in element, then `just bst source track bluefin/<name>.bst` |
-| Update git-tracked element to latest | `just bst source track bluefin/<name>.bst` |
+| Update git-tracked element to the current upstream ref | `just bst source track bluefin/<name>.bst` |
 | Update all elements in a group | See `.github/workflows/track-bst-sources.yml` |
 | Regenerate cargo2 sources for a Rust element | `python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock` |
 
-The real tracking command is `just bst source track <element>` — it updates the `ref:` field in the element's source block to the latest matching version/commit.
+The real tracking command is `just bst source track <element>` — it updates the `ref:` field in the element's source block to the newest matching version/commit.
 
 **Rust elements:** After bumping the git ref, regenerate the `cargo2` source block manually:
 ```bash
@@ -81,7 +81,7 @@ sources:
 ```
 
 After `just bst source track`:
-1. `ref:` is updated to the latest commit on the tracked branch/tag
+1. `ref:` is updated to the current commit on the tracked branch/tag
 2. For Rust elements: regenerate `cargo2` manually with `generate_cargo_sources.py`
 3. Run `just bst build bluefin/<name>.bst` to verify
 
@@ -151,3 +151,14 @@ python3 files/scripts/generate_cargo_sources.py /host/Cargo.lock
 ### `just bst source track` only updates `ref:` — it does not regenerate derived sources (2026-06-07)
 
 `bst source track` updates the `ref:` field of `git_repo` and `tar` sources. It does NOT regenerate `cargo2`, `go_module`, or other derived source blocks. Those must be regenerated manually after tracking. Omitting this step is the most common cause of "build passes locally (from cache) but fails from scratch."
+
+### OCI version labels should derive from the pinned freedesktop-sdk ref (2026-07-29)
+
+`BUILD_IMAGE_TAG` is the local podman tag for development and CI, but `org.opencontainers.image.version` must stay tied to the pinned `elements/freedesktop-sdk.bst` ref. Keep those paths separate so channel tags can move independently without changing the OCI metadata label.
+
+### FSDK tags derive from the pinned junction ref, not a Dakota version (2026-07-29)
+
+When versioning freedesktop-sdk-derived image tags, strip the `freedesktop-sdk-`
+prefix and the trailing `-<count>-g<sha>` describe suffix, then derive the
+minor line from the first `major.minor` component. That keeps `just tags`
+stable and ensures channel aliases stay tied to the pinned junction ref.

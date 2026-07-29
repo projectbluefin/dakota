@@ -8,7 +8,7 @@ description: |
   Pascal and earlier need the closed-source kernel module we don't ship.
 
   To bump version: change url, ref (sha256), filename, and nvidia-version
-  below. Latest at https://www.nvidia.com/en-us/drivers/unix/.
+  below. Release feed: https://www.nvidia.com/en-us/drivers/unix/.
 
 build-depends:
 - freedesktop-sdk.bst:bootstrap/coreutils.bst

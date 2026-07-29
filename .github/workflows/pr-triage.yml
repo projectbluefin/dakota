@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   ensure-labels:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Create pr/needs-review label
         env:
@@ -41,7 +41,7 @@ jobs:
   on-pr-opened-or-updated:
     if: github.event_name == 'pull_request_target'
     needs: ensure-labels
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Validate PR target branch
         env:
@@ -113,7 +113,7 @@ jobs:
   on-pr-review:
     if: github.event_name == 'pull_request_review'
     needs: ensure-labels
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Check reviewer is maintainer
         id: perm

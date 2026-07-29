@@ -161,6 +161,17 @@ sudo podman run --rm <image> find /usr/lib/systemd -name "<service>.service"
 
 ## Lessons Learned
 
+### Rewrite channel-specific bootc origins at export time (2026-07-29)
+
+Dakota's OCI elements can keep `image-tag: testing` as the local BuildStream
+default, but CI channel metadata must not be baked into the BST artifact. The
+export path already carries `OCI_IMAGE_TAG` plus the final variant repo name, so
+rewrite `.build-out/index.json`'s
+`org.opencontainers.image.ref.name` in `Justfile` before `podman pull`. That
+keeps `bootc upgrade` origins correct for `:next`, `:stable`, immutable `:SHA`,
+and the default / nvidia / gaming repos without changing package or layer cache
+keys.
+
 ### New package in deps.bst missing from image after a successful build (2026-06-07)
 
 This is always the BST weak-key caching bug. The package was built but the OCI layer was not rebuilt. Symptom: `just bst artifact list-contents bluefin/<name>.bst` shows files, but `just bst artifact list-contents oci/layers/bluefin.bst | grep <name>` returns nothing.

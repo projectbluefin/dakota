@@ -685,7 +685,7 @@ grep -rl "Waiting for the remote build to complete" /tmp/bst-logs/ | while read 
   tail -1 "$f" | grep -q "Waiting" && echo "$f"
 done
 
-# Find the latest-timestamped log files (actively building at timeout):
+# Find the most recent-timestamped log files (actively building at timeout):
 find /tmp/bst-logs -name "*.log" | grep -oP '\d{8}-\d{6}' | sort | tail -10
 ```
 
@@ -841,17 +841,17 @@ The GitHub release (notes + card + SBOM) is created automatically by
 
 ### check-diff skip silently skips missing variant :stable tags (2026-06-08)
 
-`check-diff` compares `dakota:testing` vs `dakota:latest` only. If they match,
+`check-diff` compared `dakota:testing` vs the removed rolling alias only. If they matched,
 `has_diff=false` and the entire `promote` matrix is skipped — including the
 nvidia variant. This means if `dakota-nvidia:stable` was never created (e.g.,
-nvidia `:testing` didn't exist during the first promotion that set `:latest`),
+nvidia `:testing` didn't exist during the first promotion that set that alias),
 it will silently never get set on subsequent runs where the default image hasn't
 changed.
 
 **How it breaks:**
 
 1. First promotion: NVIDIA `:testing` not found → `has_nvidia=false` → nvidia skipped
-2. Next promotion: NVIDIA `:testing` now exists, but `dakota:testing == dakota:latest`
+2. Next promotion: NVIDIA `:testing` now exists, but `dakota:testing` still matches the removed rolling alias
    → `has_diff=false` → entire promote job skipped → `dakota-nvidia:stable` never set
 
 **Fix (manual):** Copy from the matching `:testing` digest directly:
@@ -1119,7 +1119,7 @@ on:
 
 jobs:
   check-trigger:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       is-promotion: ${{ steps.check.outputs.is-promotion }}
     steps:
@@ -1676,7 +1676,7 @@ to bluefin, bluefin-lts, and dakota.
 
 **Rule:** Any `just export` change that introduces a tool dependency beyond `podman` must be
 verified in both environments:
-- `quay.io/podman/stable:latest` (Argo pipeline image)
+- `quay.io/podman/stable:v5.8.2` (Argo pipeline image)
 - `ubuntu-24.04` GitHub Actions runner
 If the tool is only available on ubuntu-24.04, the Justfile recipe must install it explicitly
 (e.g. `dnf install -y buildah`) or the approach must avoid it entirely.

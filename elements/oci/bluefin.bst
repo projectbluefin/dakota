@@ -20,6 +20,7 @@ variables:
   # Baked into org.opencontainers.image.ref.name: the `bootc upgrade`
   # origin. Gaming gets its own repo since tags are release channels.
   image-repo: dakota
+  image-tag: testing
   (?):
   - gaming == true:
       image-repo: dakota-gaming
@@ -88,5 +89,5 @@ config:
             'org.opencontainers.image.source': 'https://github.com/projectbluefin/dakota'
             'containers.bootc': '1'
         index-annotations:
-          'org.opencontainers.image.ref.name': 'ghcr.io/projectbluefin/%{image-repo}:latest'
+          'org.opencontainers.image.ref.name': 'ghcr.io/projectbluefin/%{image-repo}:%{image-tag}'
       EOF

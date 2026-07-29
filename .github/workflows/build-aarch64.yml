@@ -10,13 +10,20 @@ name: Build Bluefin dakota (aarch64)
 #     land in the remote CAS for subsequent builds and warm-cache runs.
 #
 # Triggers:
-#   - workflow_run: fires after x86_64 publish completes on testing — ARM builds
-#     after x86 CAS writes are done, avoiding CAS write contention
-#   - workflow_dispatch: manual recovery / on-demand
+#   - workflow_run: fires after x86_64 publish completes on testing/next — ARM
+#     builds after x86 CAS writes are done, avoiding CAS write contention
+#   - workflow_dispatch: manual recovery / on-demand (immutable :aarch64-<sha>
+#     only; channel aliases move only when publish.yml itself came from an
+#     automatic workflow_run on a direct testing/next source branch)
 #
-# Published tags (when qualifying event on testing/main):
-#   :aarch64          — latest successful aarch64 build from testing
-#   :aarch64-<sha>    — immutable per-commit tag
+# Published tags:
+#   :aarch64-<sha>             — immutable per-commit tag
+#   :aarch64-<FSDK_VERSION>    — immutable point-release tag (write-once)
+#   :aarch64-<FSDK_MINOR>      — moving minor-line tag
+#   testing direct builds      — :aarch64-<FSDK_MINOR>-testing, :aarch64
+#   next direct builds         — :aarch64-<FSDK_MINOR>-next,
+#                                :aarch64-<FSDK_MINOR>-btw,
+#                                :aarch64-next, :aarch64-btw
 
 on:
   # Triggered after x86_64 publish completes — ARM builds after x86 CAS writes
@@ -24,7 +31,7 @@ on:
   workflow_run:
     workflows: ["Publish Bluefin dakota"]
     types: [completed]
-    branches: [testing]
+    branches: [testing, next]
   workflow_dispatch:
 
 permissions: read-all
@@ -32,10 +39,6 @@ permissions: read-all
 env:
   IMAGE_NAME: dakota
   IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
-  # just export/lint tag the image as {image_name}:{image_tag}. Without this the
-  # export lands at dakota:latest while the push step looks for dakota:aarch64
-  # ("image not known", exit 125) — masked by job-level continue-on-error.
-  BUILD_IMAGE_TAG: aarch64
 
 # All BuildStream cache writers share one CAS serialization group. ARM remains
 # decoupled from x86 publication and release, but cannot contend for CAS writes.
@@ -46,7 +49,7 @@ concurrency:
 jobs:
   build-aarch64:
     name: Build OCI image (aarch64)
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     # Skip if triggered by workflow_run but the upstream publish failed.
     if: >
       github.event_name != 'workflow_run' ||
@@ -59,19 +62,77 @@ jobs:
       sha: ${{ steps.context.outputs.sha }}
       aarch64_digest: ${{ steps.push.outputs.digest }}
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write
       attestations: write
 
     steps:
+      - name: Download upstream publish context
+        if: github.event_name == 'workflow_run'
+        continue-on-error: true
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: publish-context
+          path: ${{ runner.temp }}/publish-context
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Resolve build context
         id: context
         run: |
-          echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            CONTEXT_FILE="${RUNNER_TEMP}/publish-context/metadata.env"
+            if [ ! -f "${CONTEXT_FILE}" ]; then
+              echo "ERROR: upstream publish context artifact missing at ${CONTEXT_FILE}; refusing to guess the source SHA/channel"
+              exit 1
+            fi
+
+            # workflow_run only exposes the publish run's head_sha/head_branch.
+            # Manual publish recovery can republish an older source_sha, so ARM
+            # must consume the exported publish context rather than rebuilding
+            # the branch head by accident.
+            # shellcheck disable=SC1090
+            source "${CONTEXT_FILE}"
+            SHA="${source_sha:-}"
+            BRANCH="${source_branch:-}"
+            SOURCE_CHANNEL="${testing_tag:-}"
+            PUBLISH_EVENT="${{ github.event.workflow_run.event }}"
+            if [ -z "${SHA}" ] || [ -z "${BRANCH}" ]; then
+              echo "ERROR: upstream publish context did not provide source_sha/source_branch"
+              exit 1
+            fi
+          else
+            SHA="${{ github.sha }}"
+            BRANCH="${{ github.ref_name }}"
+            SOURCE_CHANNEL=""
+            PUBLISH_EVENT="${{ github.event_name }}"
+          fi
+
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+
+          case "${PUBLISH_EVENT}:${SOURCE_CHANNEL}" in
+            workflow_run:testing)
+              echo "channel=testing" >> "$GITHUB_OUTPUT"
+              echo "export_tag=aarch64" >> "$GITHUB_OUTPUT"
+              ;;
+            workflow_run:next)
+              echo "channel=next" >> "$GITHUB_OUTPUT"
+              echo "export_tag=aarch64-next" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "channel=" >> "$GITHUB_OUTPUT"
+              echo "export_tag=aarch64-${SHA}" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ steps.context.outputs.sha }}
 
       - name: Setup runner
         uses: projectbluefin/actions/bootc-build/setup-runner@v1
@@ -79,6 +140,18 @@ jobs:
           storage-backend: btrfs
           update-podman: true
           install-tools: '["just"]'
+
+      - name: Resolve FSDK tags from Justfile
+        id: fsdk
+        run: |
+          set -euo pipefail
+          mapfile -t TAGS < <(just tags)
+          if [ "${#TAGS[@]}" -lt 2 ]; then
+            echo "ERROR: just tags did not emit the expected FSDK version and minor"
+            exit 1
+          fi
+          echo "fsdk_version=${TAGS[0]}" >> "$GITHUB_OUTPUT"
+          echo "fsdk_minor=${TAGS[1]}" >> "$GITHUB_OUTPUT"
 
       - name: Capture build timestamp
         id: timestamp
@@ -88,9 +161,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/buildstream
-          key: bst-aarch64-${{ github.ref_name }}-${{ hashFiles('elements/gnome-build-meta.bst', 'elements/freedesktop-sdk.bst', 'Justfile') }}
+          key: bst-aarch64-${{ steps.context.outputs.branch }}-${{ hashFiles('elements/gnome-build-meta.bst', 'elements/freedesktop-sdk.bst', 'Justfile') }}
           restore-keys: |
-            bst-aarch64-${{ github.ref_name }}-
+            bst-aarch64-${{ steps.context.outputs.branch }}-
             bst-aarch64-
             bst-warm-aarch64-
 
@@ -116,21 +189,30 @@ jobs:
         env:
           BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf --option arch aarch64
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          BUILD_IMAGE_TAG: ${{ steps.context.outputs.export_tag }}
           OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}
-          OCI_IMAGE_REVISION: ${{ github.sha }}
-          OCI_IMAGE_VERSION: aarch64
+          OCI_IMAGE_TAG: ${{ steps.context.outputs.export_tag }}
+          OCI_IMAGE_REVISION: ${{ steps.context.outputs.sha }}
+          OCI_IMAGE_VERSION: ${{ steps.fsdk.outputs.fsdk_version }}
         run: |
           just export
-          echo "image_ref=${{ env.IMAGE_NAME }}:aarch64" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${{ env.IMAGE_NAME }}:${{ steps.context.outputs.export_tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify container metadata
+        env:
+          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: just verify-metadata "localhost/${BUILD_IMAGE_NAME}:${{ steps.context.outputs.export_tag }}"
 
       - name: Validate with bootc container lint
+        env:
+          BUILD_IMAGE_TAG: ${{ steps.context.outputs.export_tag }}
         run: just lint
 
       - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: buildstream-logs-aarch64-${{ github.sha }}
+          name: buildstream-logs-aarch64-${{ steps.context.outputs.sha }}
           path: logs/
           retention-days: 7
           if-no-files-found: ignore
@@ -156,16 +238,16 @@ jobs:
           github.event_name == 'workflow_run' ||
           github.event_name == 'workflow_dispatch'
         env:
-          BUILD_SHA: ${{ github.sha }}
+          BUILD_SHA: ${{ steps.context.outputs.sha }}
+          LOCAL_TAG: ${{ steps.context.outputs.export_tag }}
         run: |
+          set -euo pipefail
           IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
-          LOCAL="localhost/${{ steps.export.outputs.image_ref }}"
+          LOCAL="localhost/${{ env.IMAGE_NAME }}:${LOCAL_TAG}"
 
-          # Tag the immutable SHA-pinned ref first; push it with --digestfile so
-          # the captured digest matches exactly what was uploaded. The floating
-          # :aarch64 tag is pushed afterwards and points at the same manifest.
+          # Push the immutable SHA-pinned ref first; channel aliases are copied
+          # from this signed source digest after the sign-and-publish step.
           sudo podman tag "${LOCAL}" "${IMAGE}:aarch64-${BUILD_SHA}"
-          sudo podman tag "${LOCAL}" "${IMAGE}:aarch64"
 
           PUSH_OK=false
           for attempt in 1 2 3; do
@@ -184,14 +266,6 @@ jobs:
           DIGEST="$(cat "${RUNNER_TEMP}/digest.txt")"
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
-          # Floating :aarch64 — best-effort, never blocks signing of the pinned tag.
-          for attempt in 1 2 3; do
-            sudo podman push --compression-format=zstd \
-              "${IMAGE}:aarch64" && break
-            echo "Push attempt ${attempt} failed for :aarch64, retrying in 5s..."
-            [ "$attempt" -lt 3 ] && sleep 5
-          done
-
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
       - name: Install oras
@@ -209,3 +283,116 @@ jobs:
           digest: ${{ steps.push.outputs.digest }}
           generate-sbom: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote aarch64 versioned and alias tags
+        if: steps.push.outputs.pushed == 'true' && steps.context.outputs.channel != ''
+        env:
+          BUILD_SHA: ${{ steps.context.outputs.sha }}
+          CHANNEL: ${{ steps.context.outputs.channel }}
+          FSDK_VERSION: ${{ steps.fsdk.outputs.fsdk_version }}
+          FSDK_MINOR: ${{ steps.fsdk.outputs.fsdk_minor }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
+
+          inspect_digest() {
+            local tag="$1"
+            skopeo inspect --no-tags \
+              "docker://${IMAGE}:${tag}" \
+              | jq -r '.Digest'
+          }
+
+          wait_for_readable() {
+            local tag="$1"
+            for attempt in $(seq 1 36); do
+              if skopeo inspect --no-tags \
+                  "docker://${IMAGE}:${tag}" > /dev/null 2>&1; then
+                echo "Verified :${tag} is readable in GHCR (attempt ${attempt})"
+                return 0
+              fi
+              if [ "$attempt" -eq 36 ]; then
+                echo "ERROR: :${tag} is not readable in GHCR"
+                return 1
+              fi
+              echo "Waiting for GHCR to expose :${tag} (attempt ${attempt}/36)..."
+              sleep 10
+            done
+          }
+
+          copy_tag() {
+            local tag="$1"
+            local immutable="${2:-false}"
+
+            if [ "${immutable}" = "true" ] && skopeo inspect --no-tags \
+                "docker://${IMAGE}:${tag}" > /dev/null 2>&1; then
+              echo "Skipping existing immutable tag :${tag} ($(inspect_digest "${tag}"))"
+              return 0
+            fi
+
+            local push_ok=false
+            for attempt in 1 2 3; do
+              skopeo copy \
+                --preserve-digests \
+                --src-creds "$GH_ACTOR:$GH_TOKEN" \
+                --dest-creds "$GH_ACTOR:$GH_TOKEN" \
+                "docker://${IMAGE}:aarch64-${BUILD_SHA}" \
+                "docker://${IMAGE}:${tag}" && { push_ok=true; break; }
+              echo "skopeo copy attempt ${attempt} failed for :${tag}, retrying in 5s..."
+              [ "$attempt" -lt 3 ] && sleep 5
+            done
+            [ "${push_ok}" = "true" ] || {
+              echo "ERROR: all copy attempts failed for :${tag}"
+              exit 1
+            }
+
+            wait_for_readable "${tag}"
+
+            local digest
+            digest="$(inspect_digest "${tag}")"
+            if [ "${digest}" != "${SOURCE_DIGEST}" ]; then
+              echo "ERROR: :${tag} digest=${digest}, expected ${SOURCE_DIGEST}"
+              exit 1
+            fi
+          }
+
+          wait_for_readable "aarch64-${BUILD_SHA}"
+          SOURCE_DIGEST="$(inspect_digest "aarch64-${BUILD_SHA}")"
+          echo "Promoting ${IMAGE}:aarch64-${BUILD_SHA} (${SOURCE_DIGEST}) for channel ${CHANNEL}"
+
+          copy_tag "aarch64-${FSDK_VERSION}" true
+          copy_tag "aarch64-${FSDK_MINOR}"
+
+          declare -a channel_tags=()
+          case "${CHANNEL}" in
+            testing)
+              channel_tags=("aarch64-${FSDK_MINOR}-testing" "aarch64")
+              ;;
+            next)
+              channel_tags=(
+                "aarch64-${FSDK_MINOR}-next"
+                "aarch64-${FSDK_MINOR}-btw"
+                "aarch64-next"
+                "aarch64-btw"
+              )
+              ;;
+            *)
+              echo "ERROR: unsupported direct channel '${CHANNEL}'"
+              exit 1
+              ;;
+          esac
+
+          for tag in "${channel_tags[@]}"; do
+            copy_tag "${tag}"
+          done
+
+          declare -a verify_tags=("aarch64-${FSDK_MINOR}" "${channel_tags[@]}")
+          for tag in "${verify_tags[@]}"; do
+            digest="$(inspect_digest "${tag}")"
+            if [ "${digest}" != "${SOURCE_DIGEST}" ]; then
+              echo "ERROR: :${tag} digest=${digest}, expected ${SOURCE_DIGEST}"
+              exit 1
+            fi
+            echo "Verified :${tag} -> ${digest}"
+          done

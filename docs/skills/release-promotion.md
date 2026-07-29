@@ -19,7 +19,7 @@ testing (trunk) → build.yml → publish.yml → :testing tag
                                          execute-release.yml (workflow_run from publish)
                                          SHA freshness check → cosign verify → boot-check
                                                   │
-                                         :stable + fast-forward main bookmark
+                               :<FSDK_MINOR>-stable + :stable + fast-forward main bookmark
 ```
 
 `main` is a release bookmark only. It is fast-forwarded by `execute-release.yml` after each successful promotion. Do not open PRs against `main`.
@@ -52,12 +52,13 @@ Use when the task mentions:
    - publish to `:testing`
    - `execute-release.yml` SHA freshness check
    - cosign verify `:testing`
-   - skopeo copy `:testing` → `:stable`
+   - skopeo copy `:testing` → `:<FSDK_MINOR>-stable` + `:stable`
    - fast-forward `main` bookmark
 3. **`execute-release.yml` fires via `workflow_run` from `publish.yml` on the `testing` branch.**
    It checks whether the SHA published as `:testing` differs from the current `:stable`. If
    they are equal, promotion is skipped (already up to date). If they differ, cosign verify
-   runs, then the copy and fast-forward. The image is already boot-checked by `publish.yml`.
+   runs, then the copy to `:<FSDK_MINOR>-stable` plus `:stable`, and the fast-forward.
+   The image is already boot-checked by `publish.yml`.
 4. **`workflow_run` from publish — not a push trigger.** `execute-release.yml` starts
    automatically after every successful `publish.yml` run on the `testing` branch. No cron
    or commit-message gate required.
@@ -79,10 +80,42 @@ push to testing (BST-affecting paths)
       → SHA freshness check (:testing SHA vs :stable SHA)
           → skip if equal (already up to date)
           → cosign verify :testing
-          → skopeo copy :testing → :stable
+          → skopeo copy :testing → :<FSDK_MINOR>-stable + :stable
           → fast-forward main bookmark
           → create GitHub Release
 ```
+
+## Tag contract, permissions, and credentials
+
+- `publish.yml` on `testing` publishes immutable `:<sha>` and `:<FSDK_VERSION>`
+  tags, then moves `:testing` and `:<FSDK_MINOR>-testing`.
+- `publish.yml` on `next` publishes the same immutable evidence tags, then moves
+  `:next` / `:<FSDK_MINOR>-next` and `:btw` / `:<FSDK_MINOR>-btw` together.
+  `:btw` must always resolve to the same digest as `:next`.
+- `execute-release.yml` promotes the tested `testing` digest to both
+  `:<FSDK_MINOR>-stable` and `:stable`, then fast-forwards `main`.
+- `main` is a bookmark only. It never builds independently and it never owns a
+  separate image lineage from `testing`.
+
+Publishing and promotion need the top-level GitHub Actions permissions below:
+
+```yaml
+permissions:
+  contents: write
+  packages: write
+  attestations: write
+  id-token: write
+```
+
+- `packages: write` pushes GHCR tags.
+- `attestations: write` uploads GitHub artifact attestations.
+- `id-token: write` enables keyless cosign signing and verification.
+- `contents: write` updates release notes and the `main` bookmark.
+
+Build and publish jobs on `testing` / `next` also require BuildBarn cache
+credentials:
+- `CASD_CLIENT_CERT` — repository variable containing the PEM client cert
+- `CASD_CLIENT_KEY` — repository secret containing the PEM client key
 
 ## Branch Protection and Ruleset State
 
@@ -234,6 +267,7 @@ curl -X POST \
 - [ ] No PRs exist targeting `main`
 - [ ] `testing` is the GitHub default branch
 - [ ] Stable promoted without any human interaction after a successful publish
+- [ ] Publish and ARM export jobs verify FSDK OCI labels before chunking or pushing
 
 ## Lessons Learned
 
@@ -260,6 +294,54 @@ gh run cancel <run-id> --repo projectbluefin/dakota
 ```
 
 Cancel everything, let one build finish, then re-trigger if needed.
+
+### Stable release must move the versioned tag and alias together (2026-07-29)
+
+`execute-release.yml` cannot stop after promoting `:<FSDK_MINOR>-stable`.
+That channel tag comes from the pinned freedesktop-sdk junction ref, not from a
+separate Dakota version number. The stable alias has to move in the same release path, and any failure while
+syncing `:stable` must restore both destinations to their pre-release digests.
+
+Apply the same rule to `rollback-stable.yml`: move `:<FSDK_MINOR>-stable` and
+`:stable` as a pair for every supported stable variant (`dakota`,
+`dakota-nvidia`, `dakota-gaming`), then verify both tags point at the expected
+digest before declaring rollback complete.
+
+### Snapshot stable destinations independently and reconcile partial promotion (2026-07-29)
+
+Do not restore `:${FSDK_MINOR}-stable` from the previous `:stable` digest.
+Snapshot the versioned tag and the `:stable` alias independently for every
+supported variant before moving anything, then restore each destination from
+its own snapshot if a rollback path is needed.
+
+`reusable-execute-release.yml` is intentionally best-effort: it can leave some
+variants already promoted to `:${FSDK_MINOR}-stable` while returning failure for
+the overall job. The caller must reconcile `:stable` for the promoted subset
+before failing the workflow, otherwise the versioned stable tag and the stable
+alias drift apart for those variants.
+
+Treat `dakota` as required and the `continue-on-error` stable variants
+(`dakota-nvidia`, `dakota-gaming`) as optional only for recovery planning.
+If an optional SHA tag is absent, keep reconciling the variants whose digests
+are known instead of aborting the whole repair loop first.
+
+If any alias move or rollback move fails mid-loop, restore the entire
+snapshotted stable set (`:${FSDK_MINOR}-stable` and `:stable` for every
+supported variant), not just the variant that failed. Per-variant restore
+logic leaves earlier variants split when a later move fails.
+
+### Optional stable source resolution must retry before skipping (2026-07-29)
+
+The digest resolver that prepares `source_digests` for stable-tag repair
+cannot treat every `skopeo inspect` failure as "optional variant absent".
+Retry inspect failures first, and only skip an optional variant when the
+final failure is a classified manifest-absence response (for GHCR, exit
+status `2` plus `manifest unknown` / `name unknown` in the error text).
+
+Any other registry/auth/TLS failure must stop `execute-release.yml` before
+promotion/reconciliation proceeds. Otherwise the reusable release can still
+promote `:${FSDK_MINOR}-stable` for that variant while the caller lacks the
+expected digest needed to reconcile `:stable`, leaving the tag pair split.
 
 ### promote_sha recovery — when testing advances past the build SHA (2026-07-28)
 
@@ -303,7 +385,7 @@ execute. This handles both the normal (behind) and diverged cases:
 update-main-bookmark:
   needs: [freshness-check, execute]
   if: always() && needs.execute.result == 'success'
-  runs-on: ubuntu-latest
+  runs-on: ubuntu-24.04
   permissions:
     contents: write
   env:
@@ -415,12 +497,15 @@ image that was never legitimately published.
 
 ### What the workflow guarantees
 
-- `dakota:${target_sha}` and `dakota-nvidia:${target_sha}` both exist (pair
-  invariant — refuses to roll back a partial set).
-- Both images cosign-verify against the anchored
+- `dakota:${target_sha}`, `dakota-nvidia:${target_sha}`, and
+  `dakota-gaming:${target_sha}` all exist; stable rollback treats the default,
+  Nvidia, and gaming images as one supported stable set and refuses a partial
+  rollback.
+- All three images cosign-verify against the anchored
   `publish.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)` identity.
-- Tags are moved with `skopeo copy --preserve-digests --all`, so the digest
-  served by `:stable` is exactly the digest cosign signed.
+- Tags are moved with `skopeo copy --preserve-digests --all`, so the digests
+  served by `:<FSDK_MINOR>-stable` and `:stable` are exactly the digests cosign
+  signed.
 - A GitHub Release (`rollback-<sha>-<unix_ts>`, marked prerelease) is created
   to keep an audit trail of the operator, reason, timestamp, and digests.
 

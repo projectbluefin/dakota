@@ -35,7 +35,7 @@ permissions: read-all
 
 jobs:
   update-filemap:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write        # push branch for PR
       pull-requests: write   # gh pr create

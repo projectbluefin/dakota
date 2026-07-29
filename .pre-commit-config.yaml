@@ -20,7 +20,7 @@ repos:
       - id: no-floating-action-tags
         name: Block floating GitHub Action tags (external)
         language: pygrep
-        entry: 'uses:(?!.*projectbluefin/(actions|bonedigger|testsuite)/).*@(main|master|latest|v[0-9])'
+        entry: 'uses:(?!.*projectbluefin/(actions|bonedigger|testsuite)/).*@(main|master|l[a]test|v[0-9])'
         types: [yaml]
         files: '(^\.github/workflows/.*\.yml$|action\.yml$)'
       - id: no-sha-pins-for-internal-actions

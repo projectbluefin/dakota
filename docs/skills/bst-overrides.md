@@ -84,7 +84,7 @@ To completely replace an upstream element, create a local element at the same pa
 
 | Question | If yes → |
 |---|---|
-| Is the fix already in upstream's latest ref? | Bump junction ref instead |
+| Is the fix already in upstream's current ref? | Bump junction ref instead |
 | Will upstream accept a fix within the current cycle? | Submit PR upstream, add temporary patch with `Upstream-Status: Submitted` |
 | Is this dakota-specific (not appropriate upstream)? | Local override is justified; document why |
 | Is this a security backport? | Patch is justified; link to CVE and upstream fix |
@@ -107,8 +107,8 @@ Without an exit condition, the override becomes permanent maintenance debt with 
 # Check if a fix is already in GBM gnome-50:
 gh api repos/GNOME/gnome-build-meta/commits?sha=gnome-50 | jq '.[].commit.message' | grep -i <fix>
 
-# Check if fdsdk has the fix in their latest tag:
-gh api repos/freedesktop-sdk/freedesktop-sdk/releases/latest | jq '.tag_name'
+# Check if fdsdk has the fix in the current release tag:
+gh api repos/freedesktop-sdk/freedesktop-sdk/tags --jq '.[0].name'
 ```
 
 ## Common Rationalizations
@@ -155,15 +155,15 @@ alphabetical order is preserved without renaming `0005+`.
 ### `gnome-build-meta` currently has only one patch — it's not a typo (2026-06-07)
 
 `patches/gnome-build-meta/disable-lorry-mirrors.patch` is the only GBM patch. Dakota tracks
-the most recent GBM ref (latest nightly), which means most fixes are already upstream. The
+the most recent GBM ref (current nightly), which means most fixes are already upstream. The
 single-patch state is healthy — it means minimal maintenance debt.
 
 ### Verify upstream before adding a patch (2026-06-07)
 
 Before adding a new patch to `patches/<junction>/`:
 ```bash
-# Check if fdsdk already has the fix on their latest tag:
-gh api repos/freedesktop-sdk/freedesktop-sdk/releases/latest | jq '.tag_name'
+# Check if fdsdk already has the fix on the current release tag:
+gh api repos/freedesktop-sdk/freedesktop-sdk/tags --jq '.[0].name'
 
 # Check if GBM gnome-50 already has the fix:
 git -C ~/.cache/buildstream/sources/git_repo/<gbm-mirror>.git \

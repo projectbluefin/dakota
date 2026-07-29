@@ -25,7 +25,7 @@ jobs:
   # When gnome-build-meta cuts a stable branch (e.g. gnome-51 ~Sep 2026), update
   # track: master → track: gnome-51 in elements/gnome-build-meta.bst on next.
   track-core-junctions-next:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       pull-requests: write

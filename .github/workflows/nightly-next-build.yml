@@ -13,7 +13,8 @@ name: Nightly next build
 #   - this workflow fires                  03:00 UTC  (+6 h margin, US off-hours)
 #
 # The build triggered here runs through the normal build.yml → publish.yml
-# chain, so :next and :btw tags are updated automatically on success.
+# chain, so :next/:btw plus the FSDK-versioned next aliases update
+# automatically on success.
 
 on:
   schedule:
@@ -34,7 +35,7 @@ concurrency:
 jobs:
   dispatch:
     name: Trigger next branch build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       actions: write
       contents: read

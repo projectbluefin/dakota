@@ -26,13 +26,14 @@ dakota  (next→:next/:btw, rolling nightly, no stable promotion)
                                 iso (installation media)
 ```
 
-Each image repo pulls `ghcr.io/projectbluefin/common:latest` as a base layer.
+Each image repo pulls the `projectbluefin/common` base layer for its pinned
+FSDK line (for example `ghcr.io/projectbluefin/common:25.08-stable`).
 testsuite gates PR changes; stable promotion for Dakota is daily and automated (SHA freshness + cosign verify + boot-check).
 
 **Dakota image streams:**
-- `:testing` — `testing` branch, publishes on every BST-changing push (GHA-only changes filtered)
-- `:stable` — `main` (bookmark), promoted daily from `:testing` via `execute-release.yml` — no PR, no human approval
-- `:next` / `:btw` — `next` branch, GNOME 51 master, fully automated rolling nightly, **no promotion to stable ever**
+- `:testing` / `:<FSDK_MINOR>-testing` — `testing` branch, publishes on every BST-changing push (GHA-only changes filtered)
+- `:stable` / `:<FSDK_MINOR>-stable` plus immutable `:<FSDK_VERSION>` — `main` (bookmark), promoted daily from the tested `:testing` digest; `main` never builds independently
+- `:next` / `:<FSDK_MINOR>-next` and `:btw` / `:<FSDK_MINOR>-btw` — `next` branch, GNOME 51 master, fully automated rolling nightly with `:btw` pinned to the same digest as `:next`; **no promotion to stable ever**
 
 **`elements/bluefin/common.bst` strips bluefin-only content from common.** Any file added to `common/system_files/shared/` that does not apply to a fresh dakota install must be explicitly `rm -f`'d in the `install-commands` block of that element. Current stripped files: `rechunker-group-fix` script, service, and preset (chunka migration aid — not needed on fresh dakota).
 

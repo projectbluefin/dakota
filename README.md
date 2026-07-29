@@ -63,14 +63,14 @@ Comment `/claim` to take an issue. See [AGENTS.md](AGENTS.md) for the full contr
 
 ## Image streams
 
-| Tag | Stream | What it is |
+| Tags | Branch | What it is |
 |---|---|---|
-| `:stable` | Stable | GNOME 50 — production. Daily automated promotion from `:testing`. |
-| `:testing` | Dev | GNOME 50 — daily builds from `testing` branch. Boot-check gated. |
-| `:next` | Rolling | **GNOME master — the bleeding edge.** Tracks gnome-build-meta `master` daily. Auto-updates, zero maintenance. |
-| `:btw` | Rolling | Alias for `:next`. |
+| `:stable`, `:25.08-stable`, `:25.08.14` | `main` bookmark | GNOME 50 — production. `:stable` moves daily from the tested `:testing` digest; use the versioned tags when reproducibility matters. |
+| `:testing`, `:25.08-testing` | `testing` | GNOME 50 — development trunk. Daily builds from the branch that accepts BST-affecting work. |
+| `:next`, `:25.08-next` | `next` | **GNOME master — the bleeding edge.** Tracks gnome-build-meta `master` daily. |
+| `:btw`, `:25.08-btw` | `next` | Alias family for `:next`; `btw` always resolves to the same digest as `next`. |
 
-`:next` / `:btw` is the arch competitor stream — latest GNOME the moment it lands upstream, built from source with memory-safe defaults (sudo-rs, uutils-coreutils). If you want to run GNOME before everyone else and help find regressions before they reach stable, this is your image.
+`:next` / `:btw` is the arch competitor stream — newest GNOME the moment it lands upstream, built from source with memory-safe defaults (sudo-rs, uutils-coreutils). If you want to run GNOME before everyone else and help find regressions before they reach stable, this is your image.
 
 ```bash
 # Switch to the rolling stream
@@ -81,7 +81,7 @@ sudo bootc switch ghcr.io/projectbluefin/dakota:btw
 
 ## ISO Download
 
-[dakota-live-latest.iso](https://projectbluefin.dev/dakota-live-latest.iso) · [Checksum](https://projectbluefin.dev/dakota-live-latest.iso-CHECKSUM)
+[Stable release assets](https://github.com/projectbluefin/dakota/releases) · [All releases](https://github.com/projectbluefin/dakota/releases)
 
 
 ## Known gaps

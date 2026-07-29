@@ -164,16 +164,18 @@ Elements that install non-ELF payloads (plain text files, shell scripts, fonts, 
 
 When a remote BST build is slow or hits the workflow timeout, the first question is not "should we change the timeout again?" The first question is whether the generated BuildStream config is actually enabling remote execution and whether the run is progressing with remote cache activity. The 2026-07-06 investigation showed that a workflow can appear to be using the remote cache while still not dispatching expensive build actions to the remote execution service.
 
+**Current state:** The tracked workflow explicitly disables remote execution (`enable-remote-execution: "false"`), so a slow build today is expected to fail the RE-active checks below. The diagnosis first confirms the noncompliance, then drives the implementation fix; do not assume RE is present just because the job is running.
+
 Good evidence to gather before changing anything else:
 
-1. Confirm the workflow requests remote execution and writable caches.
-2. Confirm `buildstream-ci.conf` contains top-level `cache.storage-service` plus `remote-execution:`.
-3. Confirm BuildStream reports `Remote Execution Configuration`; `build.yml` enforces this automatically.
-4. On a real cache miss, look for `Waiting for the remote build to complete`. A warm artifact can complete without dispatching an action.
-5. Inspect the active element graph and the latest upstream nightly delta before making another workflow-only change.
-6. For backend diagnosis, inspect the rootful `cache-buildbox-casd-1` container on `ahmedadan@cache.projectbluefin.io`; old `kubectl -n buildbarn` instructions are obsolete.
+1. Confirm the workflow passes `enable-remote-execution: 'true'` to the generator.
+2. Confirm the generated `buildstream-ci.conf` contains a `remote-execution:` block.
+3. Confirm BuildStream startup reports "Remote Execution Configuration" in the build log.
+4. Confirm live BuildBarn worker actions are observed on scheduler-selected workers (`Waiting for the remote build to complete` in BuildStream logs, or `Action:` lines in BuildBarn worker logs).
+5. Inspect the build logs for remote cache activity (`Pulled artifact`, `Pulled source`, `does not have artifact/source cached`) and for evidence that the build is continuing past the initial fetch phase.
+6. If the build still stalls, inspect the active element graph and the current upstream nightly delta rather than making another workflow-only change.
 
-A missing config section or startup banner is an unacceptable runner-local/cache-only state. Fail closed rather than extending timeouts or adding a local fallback.
+A run that satisfies checks 1–2 but not 3–4 is in cache-only / runner-local mode and is an unacceptable operational state. Do not extend timeouts or merge until RE is actually executing actions on BuildBarn workers. A real fix must show up in the generated config and in the BuildStream logs as worker-executed actions.
 
 ### Ghost-lab input-root staging failure is a diagnosed RE failure, not a reason to disable RE (2026-07-07)
 

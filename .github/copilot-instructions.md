@@ -170,13 +170,12 @@ re-run the pre-flight until it is clean. Only then proceed.
 - "The stale build is for a different branch, it won't interfere" → **It uses the same runners and CAS. Cancel it.**
 - "I already cancelled one build, that's enough" → **Cancel ALL of them. Run the pre-flight again.**
 
-Independent BST **workflow runs** share the same remote executor and CAS. Never
-start a second build workflow while one is active. The four x86_64 matrix jobs inside
-one `build.yml` run are the intentional exception: they start together and are bounded
-by the BuildBox backend's four global action slots. Do not cancel matrix siblings or
-serialize them; their CAS payloads stay remote and BuildBox enforces capacity.
+Concurrent BST builds share the same `ubuntu-24.04` runner pool and the same remote CAS
+write bandwidth at `cache.projectbluefin.io:11002`. Two concurrent builds do not halve
+wall time — they more than double it and risk 6-hour timeouts with
+`Cached elements after warm: 0`.
 
-**One build workflow run, with its four coordinated variants. Field clear first.**
+**One build. Field clear first. No exceptions.**
 
 **Pre-flight is atomic:** cancel → verify clear → push/dispatch must complete in one
 uninterrupted sequence. Cancelling the active build and then not pushing the
@@ -192,9 +191,10 @@ lesson (2026-07-09).
 ## CI overview
 
 - **Schedule:** nightly at 13:00 UTC (after gnome-build-meta nightly ~08:00 UTC finish)
-- **Build triggers:** BST-affecting `push: testing`, daily schedule, or `workflow_dispatch` (not PR/merge-group)
-- **Remote build:** BuildBox execution + remote CAS at `cache.projectbluefin.io:11002` (mTLS — `CASD_CLIENT_CERT` + `CASD_CLIENT_KEY`)
-- **Image:** `ghcr.io/projectbluefin/dakota:{testing,stable,next,btw}` and `:<sha>` (`:latest` is never published)
+- **Publish triggers:** `merge_group`, `schedule`, `workflow_dispatch` (not `pull_request`)
+- **Remote cache:** `cache.projectbluefin.io:11002` (mTLS — `CASD_CLIENT_CERT` + `CASD_CLIENT_KEY`)
+- **Image:** moving aliases `ghcr.io/projectbluefin/dakota:{testing,stable,next,btw}`, versioned channels `:<FSDK_MINOR>-{testing,stable,next,btw}`, and immutable `:<FSDK_VERSION>` / `:<sha>` tags (the legacy rolling tag is never published)
+- **Publish/sign/attest permissions:** top-level `packages: write`, `attestations: write`, and `id-token: write`
 
 ## Key architecture
 

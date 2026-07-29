@@ -33,7 +33,7 @@ publish.yml (testing) → [workflow_run] → build-aarch64.yml
   └─ build-aarch64 job (ubuntu-24.04-arm, continue-on-error: true)
        ├─ BST build (no RE, enable-push: true)
        ├─ export + bootc lint
-       └─ push :aarch64 and :aarch64-<sha> to GHCR
+       └─ push :aarch64-<sha>, then direct-channel aliases if eligible
 
 execute-release.yml (after :stable is live)
   └─ create-multiarch-stable (continue-on-error: true)
@@ -53,25 +53,29 @@ execute-release.yml (after :stable is live)
 
 ## Triggers
 
-`build-aarch64.yml` has three triggers:
-- `push: testing/main` (BST-affecting paths only, same paths-ignore as `build.yml`)
-- `workflow_run` from `publish.yml` on `testing` — serializes ARM start after x86_64 CAS writes complete
-- `workflow_dispatch` — manual recovery / on-demand
+`build-aarch64.yml` has two triggers:
+- `workflow_run` from `publish.yml` on `testing` / `next` — serializes ARM start
+  after x86_64 CAS writes complete
+- `workflow_dispatch` — manual recovery / on-demand (`:aarch64-<sha>` only)
 
-The `workflow_run` trigger is the primary production path. `push` provides direct ARM builds on BST-affecting commits to `testing` or `main`.
+The `workflow_run` trigger is the primary production path. Manual dispatch is
+for recovery and should stay on immutable SHA tags unless a human explicitly
+promotes aliases later.
 
 ## Published Tags
 
 | Tag | When | Source |
 |---|---|---|
-| `:aarch64` | workflow_run from publish, dispatch | Latest successful aarch64 build from testing |
 | `:aarch64-<sha>` | workflow_run from publish, dispatch | Immutable per-commit aarch64 tag |
+| `:aarch64-<FSDK_VERSION>` / `:aarch64-<FSDK_MINOR>` | direct `workflow_run` publish on `testing` / `next` | Versioned ARM channel lineage |
+| `:aarch64` / `:aarch64-<FSDK_MINOR>-testing` | direct `workflow_run` publish on `testing` | Moving testing ARM aliases |
+| `:aarch64-next` / `:aarch64-btw` plus `-next` / `-btw` minor aliases | direct `workflow_run` publish on `next` | Moving rolling ARM aliases; `btw` mirrors `next` |
 | `:stable-multiarch` | execute-release, if :aarch64 present | Multi-arch index combining :stable + :aarch64 |
 
 ## Recovery
 
 ```bash
-# Re-trigger full aarch64 build
+# Re-trigger a SHA-pinned aarch64 build (manual dispatch stays immutable SHA-only)
 gh workflow run build-aarch64.yml --repo projectbluefin/dakota --ref testing
 ```
 
@@ -83,6 +87,22 @@ gh workflow run build-aarch64.yml --repo projectbluefin/dakota --ref testing
 | "ARM is ready, let's remove continue-on-error." | Only when aarch64 has the same reliability story as x86_64, and with explicit maintainer decision. |
 
 ## Lessons Learned
+
+### publish workflow_run must carry source_sha explicitly (2026-07-29)
+
+`build-aarch64.yml` cannot trust `github.event.workflow_run.head_sha` when the
+upstream `publish.yml` run came from `workflow_dispatch`. A manual publish
+recovery can republish an older `source_sha`, while the workflow-run payload
+still points at the dispatch ref's branch head.
+
+**Fix pattern:** have `publish.yml` upload a tiny `publish-context` artifact
+from a dedicated best-effort job (not `setup`) containing the resolved
+`source_sha`, `source_branch`, and channel tag, then download that artifact
+from `github.event.workflow_run.id` in `build-aarch64.yml`. Mark the download
+step best-effort too, then fail explicitly if the file is missing so ARM never
+guesses a SHA/channel. Move `:aarch64` / next aliases only when the upstream
+publish itself was a `workflow_run`; manual recovery stays immutable
+`:aarch64-<sha>` only.
 
 ### aarch64 decoupling via separate workflow (2026-06-23)
 

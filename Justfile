@@ -5,7 +5,10 @@ default:
 
 # ── Configuration ─────────────────────────────────────────────────────
 export image_name := env("BUILD_IMAGE_NAME", "dakota")
-export image_tag := env("BUILD_IMAGE_TAG", "latest")
+export image_tag := env("BUILD_IMAGE_TAG", "testing")
+fsdk_ref := shell("python3 -c 'from pathlib import Path; import re; print(re.search(r\"^\\s*ref:\\s*(\\S+)\", Path(\"elements/freedesktop-sdk.bst\").read_text(), re.M).group(1))'")
+fsdk_version := shell('printf "%s\n" "$1" | sed -E "s/^freedesktop-sdk-//; s/-[0-9]+-g[0-9a-f]{40}$//"', fsdk_ref)
+fsdk_minor := shell('printf "%s\n" "$1" | sed -E "s/^([0-9]+\\.[0-9]+).*/\\1/"', fsdk_version)
 
 # Gaming variant: adds the gaming/ stack and selects the OGC kernel.
 # Non-gaming variants use the freedesktop-sdk stable kernel. Applies to
@@ -26,7 +29,27 @@ export vm_cpus := env("VM_CPUS", "4")
 # OCI metadata (dynamic labels)
 export OCI_IMAGE_CREATED := env("OCI_IMAGE_CREATED", "")
 export OCI_IMAGE_REVISION := env("OCI_IMAGE_REVISION", "")
-export OCI_IMAGE_VERSION := env("OCI_IMAGE_VERSION", "latest")
+export OCI_IMAGE_VERSION := fsdk_version
+# Consume the export-time metadata tag via a real Just variable so local podman
+# tags can stay distinct from channel/SHA bootc metadata.
+oci_image_tag := env("OCI_IMAGE_TAG", image_tag)
+
+# Emit the deterministic FSDK and channel tag set derived from the pinned junction.
+[group('info')]
+tags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    printf '%s\n' \
+        "{{fsdk_version}}" \
+        "{{fsdk_minor}}" \
+        "{{fsdk_minor}}-testing" \
+        "{{fsdk_minor}}-stable" \
+        "{{fsdk_minor}}-next" \
+        "{{fsdk_minor}}-btw" \
+        testing \
+        stable \
+        next \
+        btw
 
 # ── BuildStream wrapper ──────────────────────────────────────────────
 # Runs any bst command inside the bst2 container via podman.
@@ -81,6 +104,10 @@ check-publish-workflow:
     python3 -m unittest scripts.test_check_publish_workflow
 
 [group('dev')]
+check-release-recovery-workflows:
+    python3 scripts/check_release_recovery_workflows.py
+
+[group('dev')]
 monitor-pipeline BUILD_RUN_ID="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -93,6 +120,7 @@ monitor-pipeline BUILD_RUN_ID="":
 [group('dev')]
 validate:
     just check-publish-workflow
+    just check-release-recovery-workflows
     just bst show --deps all oci/bluefin.bst
     just bst show --deps all oci/bluefin-nvidia.bst
 
@@ -174,8 +202,8 @@ patch-drift-check:
 #
 # Variant selects which top-level OCI element to build:
 #   all     → both default and nvidia, sequentially  (refs below)
-#   default → oci/bluefin.bst                        ({{image_name}}:{{image_tag}})
-#   nvidia  → oci/bluefin-nvidia.bst                 ({{image_name}}-nvidia:{{image_tag}})
+#   default → oci/bluefin.bst                        ({{image_name}}:testing)
+#   nvidia  → oci/bluefin-nvidia.bst                 ({{image_name}}-nvidia:testing)
 #
 # Usage:
 #   just build              # builds BOTH variants (default + nvidia)
@@ -184,7 +212,7 @@ patch-drift-check:
 #
 # When variant=all we run the per-variant build recursively so each one
 # also runs its own export, leaving two podman refs:
-# dakota:latest and dakota-nvidia:latest.
+# dakota:testing and dakota-nvidia:testing.
 [group('build')]
 build variant="all":
     #!/usr/bin/env bash
@@ -242,6 +270,26 @@ export variant="default":
     echo "==> Exporting OCI image ($ELEMENT → ${FINAL_NAME}:${FINAL_TAG})..."
     rm -rf .build-out
     just bst artifact checkout "$ELEMENT" --directory /src/.build-out
+    METADATA_TAG="{{oci_image_tag}}"
+
+    # Keep the checked-out OCI origin annotation aligned with the exported
+    # channel/SHA metadata. Local builds default to :testing; CI overrides
+    # OCI_IMAGE_TAG for :next, :stable, or immutable :SHA exports.
+    python3 - "${FINAL_NAME}" "${METADATA_TAG}" <<'PY'
+    import json
+    import sys
+    from pathlib import Path
+
+    image_name, image_tag = sys.argv[1:3]
+    index_path = Path(".build-out/index.json")
+    index = json.loads(index_path.read_text())
+    ref_name = f"ghcr.io/projectbluefin/{image_name}:{image_tag}"
+
+    for manifest in index.get("manifests", []):
+        manifest.setdefault("annotations", {})["org.opencontainers.image.ref.name"] = ref_name
+
+    index_path.write_text(json.dumps(index, indent=2) + "\n")
+    PY
 
     # Load the multi-layer OCI image and squash into a single layer.
     # BuildStream produces separate layers (platform + gnomeos + bluefin);
@@ -251,7 +299,7 @@ export variant="default":
     IMAGE_ID=$($SUDO_CMD podman pull -q oci:.build-out)
     rm -rf .build-out
 
-    # Build label arguments for dynamic OCI metadata
+    # Build label arguments for dynamic OCI metadata and FSDK provenance.
     LABEL_ARGS=""
     if [ -n "${OCI_IMAGE_CREATED}" ]; then
         LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.created=${OCI_IMAGE_CREATED}"
@@ -262,8 +310,10 @@ export variant="default":
     if [ -n "${OCI_IMAGE_VERSION}" ]; then
         LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.version=${OCI_IMAGE_VERSION}"
     fi
+    LABEL_ARGS="${LABEL_ARGS} --label io.projectbluefin.fsdk.version={{fsdk_version}} --label io.projectbluefin.fsdk.ref={{fsdk_ref}}"
 
-    # Squash, inject build-date VERSION_ID, and apply dynamic labels.
+    # Squash, inject build-date VERSION_ID, rewrite exported channel metadata,
+    # and apply dynamic labels.
     # BST has no string option type, so VERSION_ID is set to "0" in os-release.bst
     # and replaced here at export time — after the BST cache key is already fixed.
     # Reverts the buildah mount+commit approach from f8b80d4: buildah is not
@@ -272,12 +322,42 @@ export variant="default":
     # Fixes: projectbluefin/dakota#841 (boot failure on :testing 2026-06-13)
     DATE_TAG="$(date -u +%Y%m%d)"
     # shellcheck disable=SC2086
-    printf 'FROM %s\nRUN sed -i "s/^VERSION_ID=.*/VERSION_ID=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\\"%s\\"/" /usr/lib/os-release\n' "$IMAGE_ID" "$DATE_TAG" "$DATE_TAG" \
+    printf 'FROM %s\nRUN sed -i "s/^VERSION=.*/VERSION=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s/^VERSION_ID=.*/VERSION_ID=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s|\\"image-tag\\": \\"[^\\"]*\\"|\\"image-tag\\": \\"%s\\"|" /usr/share/ublue-os/image-info.json\n' "$IMAGE_ID" "$METADATA_TAG" "$METADATA_TAG" "$DATE_TAG" "$DATE_TAG" "$METADATA_TAG" \
         | $SUDO_CMD podman build --pull=never --security-opt label=type:unconfined_t --squash-all ${LABEL_ARGS} -t "${FINAL_NAME}:${FINAL_TAG}" -f - .
     $SUDO_CMD podman rmi "$IMAGE_ID" || true
 
     echo "==> Export complete. Image loaded as ${FINAL_NAME}:${FINAL_TAG}"
     $SUDO_CMD podman images | grep -E "{{image_name}}|REPOSITORY" || true
+
+[group('build')]
+verify-metadata image:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    SUDO_CMD=""
+    if [ "$(id -u)" -ne 0 ]; then
+        SUDO_CMD="sudo"
+    fi
+
+    inspect="$($SUDO_CMD podman image inspect "{{image}}")"
+    python3 - "$inspect" "{{fsdk_version}}" "{{fsdk_ref}}" <<'PY'
+    import json
+    import sys
+
+    labels = json.loads(sys.argv[1])[0]["Config"]["Labels"]
+    expected_version, expected_ref = sys.argv[2:]
+    expected = {
+        "org.opencontainers.image.version": expected_version,
+        "io.projectbluefin.fsdk.version": expected_version,
+        "io.projectbluefin.fsdk.ref": expected_ref,
+    }
+    missing = [key for key in expected if labels.get(key) != expected[key]]
+    if missing:
+        for key in missing:
+            print(f"metadata mismatch: {key}={labels.get(key)!r}, expected {expected[key]!r}", file=sys.stderr)
+        raise SystemExit(1)
+    print(f"container metadata verified: FSDK {expected_version}")
+    PY
 
 # Push exported image to a local zot registry for lab testing.
 [group('dev')]
@@ -318,7 +398,7 @@ clean:
 # Real image content changes happen in BuildStream elements and `just build`.
 [group('build')]
 build-containerfile $image_name=image_name:
-    sudo podman build --security-opt label=type:unconfined_t --squash-all -t "${image_name}:latest" .
+    sudo podman build --security-opt label=type:unconfined_t --squash-all -t "${image_name}:{{image_tag}}" .
 
 # ── bootc helper ─────────────────────────────────────────────────────
 [group('dev')]
@@ -499,7 +579,7 @@ boot-vm $base_dir=base_dir:
             --env "BOOT_MODE=${BOOT_MODE:-uefi}" \
             --env "ARGUMENTS=-snapshot" \
             --volume "${DISK}:${BOOT_MOUNT}" \
-            ghcr.io/qemus/qemu:latest
+            ghcr.io/qemus/qemu:7.42
     fi
 
 # ── Convert to qcow2 ──────────────────────────────────────────────────
@@ -527,7 +607,7 @@ convert-to-qcow2 $base_dir=base_dir:
         podman run --rm \
             -v "{{base_dir}}:/data" \
             --entrypoint qemu-img \
-            ghcr.io/qemus/qemu:latest \
+            ghcr.io/qemus/qemu:7.42 \
             convert -f raw -O qcow2 "/data/bootable.raw" "/data/bootable.qcow2"
     fi
     echo "==> Conversion complete: ${QCOW2}"
@@ -1096,7 +1176,7 @@ sbom variant="default":
     # actions/cache does not create the path on a cold cache miss; podman
     # refuses to start (exit 125) if the host-side directory is absent.
     mkdir -p "${HOME}/.cache/pip"
-    # Pinned to commit 0706fec3 (2026-04-01) — latest main, includes element
+    # Pinned to commit 0706fec3 (2026-04-01) — current main at pin time, includes element
     # names in SPDX output (issue #9 fix). Switch to a versioned PyPI release
     # once the project publishes one.
     podman run --rm \
@@ -1138,15 +1218,15 @@ sbom variant="default":
 # ── Verify supply-chain signatures ───────────────────────────────────
 # Verify cosign signature + SBOM referrer + SLSA attestation for a
 # pushed image. Requires: cosign, oras, gh CLI.
-# Usage: just verify                           (uses IMAGE_REGISTRY/IMAGE_NAME:latest)
-#        just verify ghcr.io/projectbluefin/dakota:latest
+# Usage: just verify                           (uses IMAGE_REGISTRY/IMAGE_NAME:testing)
+#        just verify ghcr.io/projectbluefin/dakota:testing
 [group('test')]
 verify image_ref="":
     #!/usr/bin/env bash
     set -euo pipefail
 
     IMAGE="{{image_ref}}"
-    [ -z "$IMAGE" ] && IMAGE="ghcr.io/projectbluefin/dakota:latest"
+    [ -z "$IMAGE" ] && IMAGE="ghcr.io/projectbluefin/dakota:testing"
 
     echo "==> Verifying supply-chain security for: ${IMAGE}"
     echo ""

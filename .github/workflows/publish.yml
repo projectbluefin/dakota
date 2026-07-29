@@ -37,12 +37,15 @@ jobs:
   # ── Resolve context ───────────────────────────────────────────────────────
   # Single source of truth for SHA and trigger event, shared by all downstream jobs.
   setup:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       sha: ${{ steps.context.outputs.sha }}
       event: ${{ steps.context.outputs.event }}
       branch: ${{ steps.context.outputs.branch }}
       testing_tag: ${{ steps.context.outputs.testing_tag }}
+      export_tag: ${{ steps.context.outputs.export_tag }}
+      fsdk_version: ${{ steps.fsdk.outputs.fsdk_version }}
+      fsdk_minor: ${{ steps.fsdk.outputs.fsdk_minor }}
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
@@ -56,20 +59,21 @@ jobs:
         id: context
         run: |
           if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+            SHA="${{ github.event.workflow_run.head_sha }}"
             echo "event=${{ github.event.workflow_run.event }}" >> "$GITHUB_OUTPUT"
             BRANCH="${{ github.event.workflow_run.head_branch }}"
           elif [[ -n "${{ inputs.source_sha }}" ]]; then
-            echo "sha=${{ inputs.source_sha }}" >> "$GITHUB_OUTPUT"
+            SHA="${{ inputs.source_sha }}"
             echo "event=${{ github.event_name }}" >> "$GITHUB_OUTPUT"
             BRANCH="${{ github.ref_name }}"
           else
-            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            SHA="${{ github.sha }}"
             echo "event=${{ github.event_name }}" >> "$GITHUB_OUTPUT"
             BRANCH="${{ github.ref_name }}"
           fi
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
-          # Derive the :testing tag from the branch name.
+          # Derive the exported channel tag from the branch name.
           # Only trunk branches (direct pushes / schedule) advance stream tags.
           # Merge-queue builds (gh-readonly-queue/**) publish an immutable :SHA
           # tag only — they must NOT move public stream tags before the commit lands.
@@ -77,13 +81,69 @@ jobs:
           # next     → :next     (rolling GNOME master / bleeding edge)
           # queue/** → (empty)   :SHA only, no stream tag
           if [[ "$BRANCH" == "next" ]]; then
-            echo "testing_tag=next" >> "$GITHUB_OUTPUT"
+            EXPORT_TAG="next"
           elif [[ "$BRANCH" == "testing" ]]; then
-            echo "testing_tag=testing" >> "$GITHUB_OUTPUT"
+            EXPORT_TAG="testing"
           else
             # merge-queue or other refs: publish :SHA tag only, do NOT move stream tags
+            EXPORT_TAG="$SHA"
+          fi
+          if [[ "$BRANCH" == "next" || "$BRANCH" == "testing" ]]; then
+            echo "testing_tag=${EXPORT_TAG}" >> "$GITHUB_OUTPUT"
+          else
             echo "testing_tag=" >> "$GITHUB_OUTPUT"
           fi
+          echo "export_tag=${EXPORT_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ steps.context.outputs.sha }}
+
+      - name: Setup runner
+        uses: projectbluefin/actions/bootc-build/setup-runner@v1
+        with:
+          storage-backend: btrfs
+          update-podman: true
+          install-tools: '["just"]'
+
+      - name: Resolve FSDK tags from Justfile
+        id: fsdk
+        run: |
+          set -euo pipefail
+          mapfile -t TAGS < <(just tags)
+          if [ "${#TAGS[@]}" -lt 2 ]; then
+            echo "ERROR: just tags did not emit the expected FSDK version and minor"
+            exit 1
+          fi
+          echo "fsdk_version=${TAGS[0]}" >> "$GITHUB_OUTPUT"
+          echo "fsdk_minor=${TAGS[1]}" >> "$GITHUB_OUTPUT"
+
+  # ── Best-effort ARM handoff ──────────────────────────────────────────────
+  # The publish-context artifact is consumed only by build-aarch64.yml. Keep
+  # it outside setup so an artifact-service failure cannot block x86 publish.
+  publish-context:
+    needs: setup
+    runs-on: ubuntu-26.04
+    continue-on-error: true
+    steps:
+      - name: Upload aarch64 publish context
+        env:
+          CONTEXT_DIR: ${{ runner.temp }}/publish-context
+        run: |
+          set -euo pipefail
+          mkdir -p "${CONTEXT_DIR}"
+          cat > "${CONTEXT_DIR}/metadata.env" <<EOF
+          source_sha=${{ needs.setup.outputs.sha }}
+          source_branch=${{ needs.setup.outputs.branch }}
+          source_event=${{ needs.setup.outputs.event }}
+          testing_tag=${{ needs.setup.outputs.testing_tag }}
+          EOF
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: publish-context
+          path: ${{ runner.temp }}/publish-context/metadata.env
+          retention-days: 1
 
   # ── Export, sign, attest ─────────────────────────────────────────────────
   # Pulls artifact from remote CAS, pushes :$sha, signs and attests.
@@ -91,7 +151,7 @@ jobs:
   # in parallel with promote rather than blocking it.
   publish-image:
     needs: setup
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     # Variant matrix: default and NVIDIA publish in parallel from the shared
     # BST artifact cache. NVIDIA is `continue-on-error: true` so its failure
@@ -166,11 +226,18 @@ jobs:
         env:
           BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          BUILD_IMAGE_TAG: ${{ needs.setup.outputs.export_tag }}
           BUILD_GAMING: ${{ matrix.gaming || 'false' }}
           OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}
+          OCI_IMAGE_TAG: ${{ needs.setup.outputs.export_tag }}
           OCI_IMAGE_REVISION: ${{ needs.setup.outputs.sha }}
-          OCI_IMAGE_VERSION: latest
+          OCI_IMAGE_VERSION: ${{ needs.setup.outputs.fsdk_version }}
         run: just export ${{ matrix.export_variant || matrix.variant }}
+
+      - name: Verify container metadata
+        env:
+          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
+        run: just verify-metadata "localhost/${BUILD_IMAGE_NAME}:${{ needs.setup.outputs.export_tag }}"
 
       - name: Chunkify image layers
         # Use the repository's compiled fakecap helper. The shared chunka action
@@ -178,11 +245,12 @@ jobs:
         # this stage take hours for Dakota's 8–9 GiB images.
         env:
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
-        run: just chunkify "localhost/${BUILD_IMAGE_NAME}:latest"
+        run: just chunkify "localhost/${BUILD_IMAGE_NAME}:${{ needs.setup.outputs.export_tag }}"
 
       - name: Validate with bootc container lint
         env:
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
+          BUILD_IMAGE_TAG: ${{ needs.setup.outputs.export_tag }}
         run: just lint
 
       - name: Login to GHCR
@@ -201,9 +269,10 @@ jobs:
           BUILD_SHA: ${{ needs.setup.outputs.sha }}
         run: |
           LOCAL_IMAGE="${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
+          LOCAL_TAG="${{ needs.setup.outputs.export_tag }}"
           IMAGE="${{ env.IMAGE_REGISTRY }}/${LOCAL_IMAGE}"
 
-          sudo podman tag "localhost/${LOCAL_IMAGE}:latest" "${IMAGE}:${BUILD_SHA}"
+          sudo podman tag "localhost/${LOCAL_IMAGE}:${LOCAL_TAG}" "${IMAGE}:${BUILD_SHA}"
 
           PUSH_OK=false
           for attempt in 1 2 3; do
@@ -215,26 +284,24 @@ jobs:
           done
           $PUSH_OK || { echo "ERROR: all push attempts failed for :${BUILD_SHA}"; exit 1; }
 
-          DIGEST=$(cat /tmp/digest.txt)
-          if ! [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "ERROR: malformed digest in digestfile: '${DIGEST}'"
-            exit 1
-          fi
-
-          # Advisory only; must never fail the job.
-          for attempt in $(seq 1 18); do
+          # GHCR can briefly return manifest unknown immediately after a push.
+          # Do not let downstream smoke/release workflows race that visibility lag.
+          # 36 × 10 s = 6 min — observed GHCR lag can exceed 120 s on large pushes.
+          for attempt in $(seq 1 36); do
             if skopeo inspect --no-tags \
                 "docker://${IMAGE}:${BUILD_SHA}" > /dev/null 2>&1; then
-              echo "Anonymous tag :${BUILD_SHA} visible (attempt ${attempt})"
+              echo "Verified immutable tag :${BUILD_SHA} is readable (attempt ${attempt})"
               break
             fi
-            if [ "$attempt" -eq 18 ]; then
-              echo "::warning::GHCR has not exposed :${BUILD_SHA} anonymously after 3 min; continuing — the hard gate is the authenticated digest read"
+            if [ "$attempt" -eq 36 ]; then
+              echo "ERROR: GHCR never exposed :${BUILD_SHA} after push"
+              exit 1
             fi
+            echo "Waiting for GHCR to expose :${BUILD_SHA} (attempt ${attempt}/36)..."
             sleep 10
           done
 
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "digest=$(cat /tmp/digest.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Install oras
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
@@ -250,29 +317,6 @@ jobs:
           generate-sbom: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Uploaded after signing: the artifact means pushed AND signed.
-      - name: Write digest artifact
-        env:
-          BUILD_SHA: ${{ needs.setup.outputs.sha }}
-        run: |
-          mkdir -p "${RUNNER_TEMP}/digest-artifact"
-          jq -n \
-            --arg variant "${{ matrix.variant }}" \
-            --arg image   "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}" \
-            --arg sha     "${BUILD_SHA}" \
-            --arg digest  "${{ steps.push.outputs.digest }}" \
-            --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{schema: 1, variant: $variant, image: $image, sha: $sha, digest: $digest, created: $created}' \
-            > "${RUNNER_TEMP}/digest-artifact/digest.json"
-
-      - name: Upload digest artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: digest-${{ matrix.variant }}
-          path: ${{ runner.temp }}/digest-artifact/digest.json
-          retention-days: 30
-          if-no-files-found: error
-
   # ── Generate and attach SBOM ──────────────────────────────────────────────
   # Runs outside the critical path to :testing. Failures here must not block
   # publish/promotion; stable release notes already regenerate SBOM inline in
@@ -282,7 +326,7 @@ jobs:
   # repeated runs skip the GitLab git fetch entirely.
   publish-sbom:
     needs: [setup, publish-image]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -303,7 +347,6 @@ jobs:
       contents: read
       packages: write
       id-token: write
-      actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -366,14 +409,20 @@ jobs:
       - name: Install oras
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
 
+      # Re-derive the image digest via skopeo so this job has no runtime
+      # dependency on publish-image job outputs (avoids matrix output wiring).
       - name: Resolve image digest
         id: digest
-        uses: ./.github/actions/resolve-image-digest
-        with:
-          artifact-name: digest-${{ matrix.variant }}
-          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
-          build-sha: ${{ needs.setup.outputs.sha }}
-          registry-creds: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
+        env:
+          BUILD_SHA: ${{ needs.setup.outputs.sha }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
+          DIGEST=$(skopeo inspect \
+            "docker://${IMAGE}:${BUILD_SHA}" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['Digest'])")
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Attach SBOM
         id: sbom-attach
@@ -400,99 +449,140 @@ jobs:
           cosign sign -y \
             "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}@${SBOM_DIGEST}"
 
-  # ── Promote :testing ──────────────────────────────────────────────────────
-  # Applies the stream tag to the digest recorded by publish-image.
+  # ── Promote testing/next tags ─────────────────────────────────────────────
+  # Direct testing/next builds move FSDK-derived versioned tags plus the public
+  # channel aliases. Merge-queue refs stay SHA-only and never move stream tags.
   # Uses skopeo copy for server-side re-tagging: layers never leave the registry,
   # saving the 20–25 min round-trip of the previous podman pull→tag→push approach.
-  # --preserve-digests keeps the promoted tag pointing at the signed manifest digest.
-  # NVIDIA is continue-on-error so a failing NVIDIA promote does not
-  # prevent the default :testing from landing.
+  # --preserve-digests keeps every promoted tag pointing at the signed digest.
+  # NVIDIA is continue-on-error so a failing NVIDIA promote does not prevent the
+  # default variant from landing.
   promote:
     needs: [setup, publish-image]
     if: >-
       needs.publish-image.result == 'success' &&
       needs.setup.outputs.testing_tag != '' &&
       github.event_name == 'workflow_run'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
         include:
-          - variant: default
-            image_suffix: ''
+          - image_suffix: ''
             continue: false
-          - variant: nvidia
-            image_suffix: '-nvidia'
+          - image_suffix: '-nvidia'
             continue: true
-          - variant: gaming
-            image_suffix: '-gaming'
+          - image_suffix: '-gaming'
             continue: true
-          - variant: nvidia-gaming
-            image_suffix: '-nvidia-gaming'
+          - image_suffix: '-nvidia-gaming'
             continue: true
     continue-on-error: ${{ matrix.continue }}
     permissions:
       contents: write
       packages: write
-      actions: read
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Resolve source digest
-        id: digest
-        uses: ./.github/actions/resolve-image-digest
-        with:
-          artifact-name: digest-${{ matrix.variant }}
-          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
-          build-sha: ${{ needs.setup.outputs.sha }}
-          registry-creds: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
-
-      - name: Promote :${{ needs.setup.outputs.sha }} to :${{ needs.setup.outputs.testing_tag }}
+      - name: Promote :${{ needs.setup.outputs.sha }} to versioned and alias tags
         env:
-          TESTING_TAG: ${{ needs.setup.outputs.testing_tag }}
+          BUILD_SHA: ${{ needs.setup.outputs.sha }}
+          CHANNEL_TAG: ${{ needs.setup.outputs.testing_tag }}
+          FSDK_VERSION: ${{ needs.setup.outputs.fsdk_version }}
+          FSDK_MINOR: ${{ needs.setup.outputs.fsdk_minor }}
           GH_ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
+          set -euo pipefail
           IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
-          PUSH_OK=false
-          for attempt in 1 2 3; do
-            skopeo copy \
-              --preserve-digests \
-              --src-creds "$GH_ACTOR:$GH_TOKEN" \
-              --dest-creds "$GH_ACTOR:$GH_TOKEN" \
-              "docker://${IMAGE}@${DIGEST}" \
-              "docker://${IMAGE}:${TESTING_TAG}" && { PUSH_OK=true; break; }
-            echo "skopeo copy attempt ${attempt} failed for :${TESTING_TAG}, retrying in 5s..."
-            [ "$attempt" -lt 3 ] && sleep 5
-          done
-          $PUSH_OK || { echo "ERROR: all copy attempts failed for :${TESTING_TAG}"; exit 1; }
+          inspect_digest() {
+            local tag="$1"
+            skopeo inspect --no-tags \
+              "docker://${IMAGE}:${tag}" \
+              | jq -r '.Digest'
+          }
 
-          PROMOTED=$(skopeo inspect --no-tags --creds "$GH_ACTOR:$GH_TOKEN" \
-            "docker://${IMAGE}:${TESTING_TAG}" | jq -r '.Digest')
-          if [ "$PROMOTED" != "$DIGEST" ]; then
-            echo "ERROR: :${TESTING_TAG} points at ${PROMOTED}, expected ${DIGEST}"
-            exit 1
-          fi
+          wait_for_readable() {
+            local tag="$1"
+            for attempt in $(seq 1 36); do
+              if skopeo inspect --no-tags \
+                  "docker://${IMAGE}:${tag}" > /dev/null 2>&1; then
+                echo "Verified :${tag} is readable in GHCR (attempt ${attempt})"
+                return 0
+              fi
+              if [ "$attempt" -eq 36 ]; then
+                echo "ERROR: :${tag} is not readable in GHCR"
+                return 1
+              fi
+              echo "Waiting for GHCR to expose :${tag} (attempt ${attempt}/36)..."
+              sleep 10
+            done
+          }
 
-      - name: Push :btw alias (next stream only)
-        if: needs.setup.outputs.testing_tag == 'next'
-        env:
-          GH_ACTOR: ${{ github.actor }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DIGEST: ${{ steps.digest.outputs.digest }}
-        run: |
-          IMAGE="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
-          PUSH_OK=false
-          for attempt in 1 2 3; do
-            skopeo copy \
-              --preserve-digests \
-              --src-creds "$GH_ACTOR:$GH_TOKEN" \
-              --dest-creds "$GH_ACTOR:$GH_TOKEN" \
-              "docker://${IMAGE}@${DIGEST}" \
-              "docker://${IMAGE}:btw" && { PUSH_OK=true; break; }
-            echo "skopeo copy attempt ${attempt} failed for :btw, retrying in 5s..."
-            [ "$attempt" -lt 3 ] && sleep 5
+          copy_tag() {
+            local tag="$1"
+            local immutable="${2:-false}"
+
+            if [ "${immutable}" = "true" ] && skopeo inspect --no-tags \
+                "docker://${IMAGE}:${tag}" > /dev/null 2>&1; then
+              echo "Skipping existing immutable tag :${tag} ($(inspect_digest "${tag}"))"
+              return 0
+            fi
+
+            local push_ok=false
+            for attempt in 1 2 3; do
+              skopeo copy \
+                --preserve-digests \
+                --src-creds "$GH_ACTOR:$GH_TOKEN" \
+                --dest-creds "$GH_ACTOR:$GH_TOKEN" \
+                "docker://${IMAGE}:${BUILD_SHA}" \
+                "docker://${IMAGE}:${tag}" && { push_ok=true; break; }
+              echo "skopeo copy attempt ${attempt} failed for :${tag}, retrying in 5s..."
+              [ "$attempt" -lt 3 ] && sleep 5
+            done
+            [ "${push_ok}" = "true" ] || {
+              echo "ERROR: all copy attempts failed for :${tag}"
+              exit 1
+            }
+
+            wait_for_readable "${tag}"
+
+            local digest
+            digest="$(inspect_digest "${tag}")"
+            if [ "${digest}" != "${SOURCE_DIGEST}" ]; then
+              echo "ERROR: :${tag} digest=${digest}, expected ${SOURCE_DIGEST}"
+              exit 1
+            fi
+          }
+
+          wait_for_readable "${BUILD_SHA}"
+          SOURCE_DIGEST="$(inspect_digest "${BUILD_SHA}")"
+          echo "Promoting ${IMAGE}:${BUILD_SHA} (${SOURCE_DIGEST}) for channel ${CHANNEL_TAG}"
+
+          copy_tag "${FSDK_VERSION}" true
+          copy_tag "${FSDK_MINOR}"
+
+          declare -a channel_tags=()
+          case "${CHANNEL_TAG}" in
+            testing)
+              channel_tags=("${FSDK_MINOR}-testing" "testing")
+              ;;
+            next)
+              channel_tags=("${FSDK_MINOR}-next" "${FSDK_MINOR}-btw" "next" "btw")
+              ;;
+            *)
+              echo "ERROR: unsupported direct channel tag '${CHANNEL_TAG}'"
+              exit 1
+              ;;
+          esac
+
+          for tag in "${channel_tags[@]}"; do
+            copy_tag "${tag}"
           done
-          $PUSH_OK || { echo "ERROR: all copy attempts failed for :btw"; exit 1; }
+
+          declare -a verify_tags=("${FSDK_MINOR}" "${channel_tags[@]}")
+          for tag in "${verify_tags[@]}"; do
+            digest="$(inspect_digest "${tag}")"
+            if [ "${digest}" != "${SOURCE_DIGEST}" ]; then
+              echo "ERROR: :${tag} digest=${digest}, expected ${SOURCE_DIGEST}"
+              exit 1
+            fi
+            echo "Verified :${tag} -> ${digest}"
+          done

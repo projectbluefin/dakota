@@ -2,9 +2,11 @@
 
 ## Supported Versions
 
-The `latest` tag on `ghcr.io/projectbluefin/dakota` always reflects the
-current supported release. Older builds identified by their commit SHA are
-not actively maintained for security updates.
+The moving `stable` alias and the matching `25.08-stable` channel tag on
+`ghcr.io/projectbluefin/dakota` reflect the current supported release line.
+Immutable FSDK tags such as `25.08.14` and older commit-SHA builds remain
+verifiable snapshots, but they are not actively maintained for security
+updates once the supported stable line advances.
 
 ## Reporting a Vulnerability
 
@@ -42,8 +44,8 @@ Verify the image signature:
 ```bash
 cosign verify \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github.com/projectbluefin/dakota/.github/workflows/publish.yml@refs/heads/main$' \
-  ghcr.io/projectbluefin/dakota:stable
+  --certificate-identity-regexp '^https://github.com/projectbluefin/dakota/.github/workflows/publish.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)$' \
+  ghcr.io/projectbluefin/dakota:25.08-stable
 ```
 
 Verify the SLSA provenance:
@@ -51,6 +53,6 @@ Verify the SLSA provenance:
 cosign verify-attestation \
   --type https://slsa.dev/provenance/v1 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github.com/projectbluefin/dakota/.github/workflows/publish.yml@refs/heads/main$' \
-  ghcr.io/projectbluefin/dakota:stable
+  --certificate-identity-regexp '^https://github.com/projectbluefin/dakota/.github/workflows/publish.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)$' \
+  ghcr.io/projectbluefin/dakota:25.08-stable
 ```

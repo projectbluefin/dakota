@@ -13,7 +13,7 @@ permissions: read-all
 jobs:
   analyze-python:
     name: Analyze Python (CodeQL)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       security-events: write
       contents: read
@@ -35,7 +35,7 @@ jobs:
 
   actionlint:
     name: Lint workflow bash (actionlint + shellcheck)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
 

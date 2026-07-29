@@ -30,7 +30,7 @@ env:
 
 jobs:
   track:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       pull-requests: write
@@ -152,7 +152,7 @@ jobs:
           private-key: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}
 
       - name: Setup Just
-        uses: taiki-e/install-action@065d6a08a14e61e89fb0a4c10eecdbdef39c7d8e # v2
+        uses: taiki-e/install-action@18b1216eba7f8039b0f8d131d5473787f0edce68 # v2
         with:
           tool: just
 
@@ -296,7 +296,7 @@ jobs:
           fi
 
   track-tarballs:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       pull-requests: write
@@ -319,7 +319,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Just
-        uses: taiki-e/install-action@065d6a08a14e61e89fb0a4c10eecdbdef39c7d8e # v2
+        uses: taiki-e/install-action@18b1216eba7f8039b0f8d131d5473787f0edce68 # v2
         with:
           tool: just
 
@@ -333,12 +333,12 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          LATEST_VERSION=$(gh api repos/ublue-os/brew/releases --jq '.[0].tag_name // empty' 2>/dev/null | sed 's/^v//' || true)
-          if [ -z "$LATEST_VERSION" ]; then
+          UPSTREAM_VERSION=$(gh api repos/ublue-os/brew/releases --jq '[.[] | select(.draft == false and .prerelease == false)][0].tag_name // empty' 2>/dev/null | sed 's/^v//' || true)
+          if [ -z "$UPSTREAM_VERSION" ]; then
             echo "No ublue-os/brew releases found yet, skipping."
             exit 0
           fi
-          echo "Latest brew version: $LATEST_VERSION"
+          echo "Current upstream brew version: $UPSTREAM_VERSION"
 
           BST_FILE="elements/bluefin/brew-tarball.bst"
           # Collect all unique versions present in the file; both arches should always match
@@ -350,18 +350,18 @@ jobs:
           CURRENT_VERSION=$(echo "$VERSIONS" | head -1)
           echo "Current version: $CURRENT_VERSION"
 
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
+          if [ "$UPSTREAM_VERSION" = "$CURRENT_VERSION" ]; then
             echo "brew-tarball is already up to date."
             exit 0
           fi
 
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|download/${CURRENT_VERSION}/|download/${LATEST_VERSION}/|g" "$BST_FILE"
+          echo "Updating: $CURRENT_VERSION -> $UPSTREAM_VERSION"
+          sed -i "s|download/${CURRENT_VERSION}/|download/${UPSTREAM_VERSION}/|g" "$BST_FILE"
           just bst -o arch x86_64 source track bluefin/brew-tarball.bst
           just bst -o arch aarch64 source track bluefin/brew-tarball.bst
 
           BRANCH="auto/track-brew-tarball"
-          TITLE="chore(deps): update brew-tarball ${CURRENT_VERSION} -> ${LATEST_VERSION}"
+          TITLE="chore(deps): update brew-tarball ${CURRENT_VERSION} -> ${UPSTREAM_VERSION}"
 
           git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
@@ -370,12 +370,12 @@ jobs:
           git checkout -f testing
 
           {
-            echo "## brew-tarball update: \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`"
+            echo "## brew-tarball update: \`${CURRENT_VERSION}\` → \`${UPSTREAM_VERSION}\`"
             echo ""
             echo "| | |"
             echo "| --- | --- |"
             echo "| **Source** | [ublue-os/brew](https://github.com/ublue-os/brew) |"
-            echo "| **Version** | \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\` |"
+            echo "| **Version** | \`${CURRENT_VERSION}\` → \`${UPSTREAM_VERSION}\` |"
             echo "| **Releases** | [https://github.com/ublue-os/brew/releases](https://github.com/ublue-os/brew/releases) |"
             echo ""
             echo "---"
@@ -398,7 +398,7 @@ jobs:
         run: |
           WALL_RELEASE=$(gh api repos/ublue-os/artwork/releases \
             --jq '[.[] | select(.tag_name | startswith("bluefin-"))][0].tag_name // empty')
-          echo "Latest wallpaper release: $WALL_RELEASE"
+          echo "Current wallpaper release: $WALL_RELEASE"
 
           if [ -z "$WALL_RELEASE" ] || [ "$WALL_RELEASE" = "null" ]; then
             echo "No bluefin wallpaper releases found, skipping."
@@ -449,30 +449,30 @@ jobs:
           fi
           echo "PR: $PR_URL"
 
-      - name: Update gum
+      - name: Update fzf
         continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          LATEST_VERSION=$(gh api repos/charmbracelet/gum/releases/latest --jq '.tag_name' | sed 's/^v//')
-          echo "Latest gum version: $LATEST_VERSION"
+          UPSTREAM_VERSION=$(gh api repos/junegunn/fzf/releases --jq '[.[] | select(.draft == false and .prerelease == false)][0].tag_name' | sed 's/^v//')
+          echo "Current upstream fzf version: $UPSTREAM_VERSION"
 
-          BST_FILE="elements/bluefin/gum.bst"
+          BST_FILE="elements/bluefin/fzf.bst"
           CURRENT_VERSION=$(grep -oP 'download/v\K[0-9.]+' "$BST_FILE" | head -1)
           echo "Current version: $CURRENT_VERSION"
 
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
-            echo "gum is already up to date."
+          if [ "$UPSTREAM_VERSION" = "$CURRENT_VERSION" ]; then
+            echo "fzf is already up to date."
             exit 0
           fi
 
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|v${CURRENT_VERSION}/gum_${CURRENT_VERSION}|v${LATEST_VERSION}/gum_${LATEST_VERSION}|g" "$BST_FILE"
-          just bst -o arch x86_64 source track bluefin/gum.bst
-          just bst -o arch aarch64 source track bluefin/gum.bst
+          echo "Updating: $CURRENT_VERSION -> $UPSTREAM_VERSION"
+          sed -i "s|v${CURRENT_VERSION}/fzf-${CURRENT_VERSION}|v${UPSTREAM_VERSION}/fzf-${UPSTREAM_VERSION}|g" "$BST_FILE"
+          just bst -o arch x86_64 source track bluefin/fzf.bst
+          just bst -o arch aarch64 source track bluefin/fzf.bst
 
-          BRANCH="auto/track-gum"
-          TITLE="chore(deps): update gum v${CURRENT_VERSION} -> v${LATEST_VERSION}"
+          BRANCH="auto/track-fzf"
+          TITLE="chore(deps): update fzf v${CURRENT_VERSION} -> v${UPSTREAM_VERSION}"
 
           git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
@@ -481,14 +481,122 @@ jobs:
           git checkout -f testing
 
           {
-            echo "## gum update: \`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\`"
+            echo "## fzf update: \`v${CURRENT_VERSION}\` → \`v${UPSTREAM_VERSION}\`"
+            echo ""
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| **Source** | [junegunn/fzf](https://github.com/junegunn/fzf) |"
+            echo "| **Version** | \`v${CURRENT_VERSION}\` → \`v${UPSTREAM_VERSION}\` |"
+            echo "| **Changelog** | [https://github.com/junegunn/fzf/releases/tag/v${UPSTREAM_VERSION}](https://github.com/junegunn/fzf/releases/tag/v${UPSTREAM_VERSION}) |"
+            echo "| **Compare** | [v${CURRENT_VERSION}...v${UPSTREAM_VERSION}](https://github.com/junegunn/fzf/compare/v${CURRENT_VERSION}...v${UPSTREAM_VERSION}) |"
+            echo ""
+            echo "---"
+            echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
+          } > /tmp/pr-body.md
+
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$EXISTING_PR" ]; then
+            gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
+            PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
+          else
+            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
+          fi
+          echo "PR: $PR_URL"
+
+      - name: Update glow
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          UPSTREAM_VERSION=$(gh api repos/charmbracelet/glow/releases --jq '[.[] | select(.draft == false and .prerelease == false)][0].tag_name' | sed 's/^v//')
+          echo "Current upstream glow version: $UPSTREAM_VERSION"
+
+          BST_FILE="elements/bluefin/glow.bst"
+          CURRENT_VERSION=$(grep -oP 'download/v\K[0-9.]+' "$BST_FILE" | head -1)
+          echo "Current version: $CURRENT_VERSION"
+
+          if [ "$UPSTREAM_VERSION" = "$CURRENT_VERSION" ]; then
+            echo "glow is already up to date."
+            exit 0
+          fi
+
+          echo "Updating: $CURRENT_VERSION -> $UPSTREAM_VERSION"
+          sed -i "s|v${CURRENT_VERSION}/glow_${CURRENT_VERSION}|v${UPSTREAM_VERSION}/glow_${UPSTREAM_VERSION}|g" "$BST_FILE"
+          just bst -o arch x86_64 source track bluefin/glow.bst
+          just bst -o arch aarch64 source track bluefin/glow.bst
+
+          BRANCH="auto/track-glow"
+          TITLE="chore(deps): update glow v${CURRENT_VERSION} -> v${UPSTREAM_VERSION}"
+
+          git checkout -B "$BRANCH" origin/testing
+          git add "$BST_FILE"
+          git commit -m "$TITLE"
+          git push --force-with-lease origin "$BRANCH"
+          git checkout -f testing
+
+          {
+            echo "## glow update: \`v${CURRENT_VERSION}\` → \`v${UPSTREAM_VERSION}\`"
+            echo ""
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| **Source** | [charmbracelet/glow](https://github.com/charmbracelet/glow) |"
+            echo "| **Version** | \`v${CURRENT_VERSION}\` → \`v${UPSTREAM_VERSION}\` |"
+            echo "| **Changelog** | [https://github.com/charmbracelet/glow/releases/tag/v${UPSTREAM_VERSION}](https://github.com/charmbracelet/glow/releases/tag/v${UPSTREAM_VERSION}) |"
+            echo "| **Compare** | [v${CURRENT_VERSION}...v${UPSTREAM_VERSION}](https://github.com/charmbracelet/glow/compare/v${CURRENT_VERSION}...v${UPSTREAM_VERSION}) |"
+            echo ""
+            echo "---"
+            echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
+          } > /tmp/pr-body.md
+
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$EXISTING_PR" ]; then
+            gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
+            PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
+          else
+            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
+          fi
+          echo "PR: $PR_URL"
+
+      - name: Update gum
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          UPSTREAM_VERSION=$(gh api repos/charmbracelet/gum/releases --jq '[.[] | select(.draft == false and .prerelease == false)][0].tag_name' | sed 's/^v//')
+          echo "Current upstream gum version: $UPSTREAM_VERSION"
+
+          BST_FILE="elements/bluefin/gum.bst"
+          CURRENT_VERSION=$(grep -oP 'download/v\K[0-9.]+' "$BST_FILE" | head -1)
+          echo "Current version: $CURRENT_VERSION"
+
+          if [ "$UPSTREAM_VERSION" = "$CURRENT_VERSION" ]; then
+            echo "gum is already up to date."
+            exit 0
+          fi
+
+          echo "Updating: $CURRENT_VERSION -> $UPSTREAM_VERSION"
+          sed -i "s|v${CURRENT_VERSION}/gum_${CURRENT_VERSION}|v${UPSTREAM_VERSION}/gum_${UPSTREAM_VERSION}|g" "$BST_FILE"
+          just bst -o arch x86_64 source track bluefin/gum.bst
+          just bst -o arch aarch64 source track bluefin/gum.bst
+
+          BRANCH="auto/track-gum"
+          TITLE="chore(deps): update gum v${CURRENT_VERSION} -> v${UPSTREAM_VERSION}"
+
+          git checkout -B "$BRANCH" origin/testing
+          git add "$BST_FILE"
+          git commit -m "$TITLE"
+          git push --force-with-lease origin "$BRANCH"
+          git checkout -f testing
+
+          {
+            echo "## gum update: \`v${CURRENT_VERSION}\` → \`v${UPSTREAM_VERSION}\`"
             echo ""
             echo "| | |"
             echo "| --- | --- |"
             echo "| **Source** | [charmbracelet/gum](https://github.com/charmbracelet/gum) |"
-            echo "| **Version** | \`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\` |"
-            echo "| **Changelog** | [https://github.com/charmbracelet/gum/releases/tag/v${LATEST_VERSION}](https://github.com/charmbracelet/gum/releases/tag/v${LATEST_VERSION}) |"
-            echo "| **Compare** | [v${CURRENT_VERSION}...v${LATEST_VERSION}](https://github.com/charmbracelet/gum/compare/v${CURRENT_VERSION}...v${LATEST_VERSION}) |"
+            echo "| **Version** | \`v${CURRENT_VERSION}\` → \`v${UPSTREAM_VERSION}\` |"
+            echo "| **Changelog** | [https://github.com/charmbracelet/gum/releases/tag/v${UPSTREAM_VERSION}](https://github.com/charmbracelet/gum/releases/tag/v${UPSTREAM_VERSION}) |"
+            echo "| **Compare** | [v${CURRENT_VERSION}...v${UPSTREAM_VERSION}](https://github.com/charmbracelet/gum/compare/v${CURRENT_VERSION}...v${UPSTREAM_VERSION}) |"
             echo ""
             echo "---"
             echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
@@ -508,24 +616,24 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          LATEST_VERSION=$(gh api repos/wmww/gtk4-layer-shell/releases/latest --jq '.tag_name' | sed 's/^v//')
-          echo "Latest gtk4-layer-shell version: $LATEST_VERSION"
+          UPSTREAM_VERSION=$(gh api repos/wmww/gtk4-layer-shell/releases --jq '[.[] | select(.draft == false and .prerelease == false)][0].tag_name' | sed 's/^v//')
+          echo "Current upstream gtk4-layer-shell version: $UPSTREAM_VERSION"
 
           BST_FILE="elements/bluefin/gtk4-layer-shell.bst"
           CURRENT_VERSION=$(grep -oP 'tags/v\K[0-9]+\.[0-9]+\.[0-9]+' "$BST_FILE" | head -1)
           echo "Current version: $CURRENT_VERSION"
 
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
+          if [ "$UPSTREAM_VERSION" = "$CURRENT_VERSION" ]; then
             echo "gtk4-layer-shell is already up to date."
             exit 0
           fi
 
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|tags/v${CURRENT_VERSION}|tags/v${LATEST_VERSION}|g" "$BST_FILE"
+          echo "Updating: $CURRENT_VERSION -> $UPSTREAM_VERSION"
+          sed -i "s|tags/v${CURRENT_VERSION}|tags/v${UPSTREAM_VERSION}|g" "$BST_FILE"
           just bst source track bluefin/gtk4-layer-shell.bst
 
           BRANCH="auto/track-gtk4-layer-shell"
-          TITLE="chore(deps): update gtk4-layer-shell v${CURRENT_VERSION} -> v${LATEST_VERSION}"
+          TITLE="chore(deps): update gtk4-layer-shell v${CURRENT_VERSION} -> v${UPSTREAM_VERSION}"
 
           git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
@@ -534,14 +642,14 @@ jobs:
           git checkout -f testing
 
           {
-            echo "## gtk4-layer-shell update: \`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\`"
+            echo "## gtk4-layer-shell update: \`v${CURRENT_VERSION}\` → \`v${UPSTREAM_VERSION}\`"
             echo ""
             echo "| | |"
             echo "| --- | --- |"
             echo "| **Source** | [wmww/gtk4-layer-shell](https://github.com/wmww/gtk4-layer-shell) |"
-            echo "| **Version** | \`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\` |"
-            echo "| **Changelog** | [https://github.com/wmww/gtk4-layer-shell/releases/tag/v${LATEST_VERSION}](https://github.com/wmww/gtk4-layer-shell/releases/tag/v${LATEST_VERSION}) |"
-            echo "| **Compare** | [v${CURRENT_VERSION}...v${LATEST_VERSION}](https://github.com/wmww/gtk4-layer-shell/compare/v${CURRENT_VERSION}...v${LATEST_VERSION}) |"
+            echo "| **Version** | \`v${CURRENT_VERSION}\` → \`v${UPSTREAM_VERSION}\` |"
+            echo "| **Changelog** | [https://github.com/wmww/gtk4-layer-shell/releases/tag/v${UPSTREAM_VERSION}](https://github.com/wmww/gtk4-layer-shell/releases/tag/v${UPSTREAM_VERSION}) |"
+            echo "| **Compare** | [v${CURRENT_VERSION}...v${UPSTREAM_VERSION}](https://github.com/wmww/gtk4-layer-shell/compare/v${CURRENT_VERSION}...v${UPSTREAM_VERSION}) |"
             echo ""
             echo "---"
             echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
@@ -561,25 +669,25 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          LATEST_VERSION=$(gh api repos/tailscale/tailscale/releases/latest --jq '.tag_name' | sed 's/^v//')
-          echo "Latest tailscale version: $LATEST_VERSION"
+          UPSTREAM_VERSION=$(gh api repos/tailscale/tailscale/releases --jq '[.[] | select(.draft == false and .prerelease == false)][0].tag_name' | sed 's/^v//')
+          echo "Current upstream tailscale version: $UPSTREAM_VERSION"
 
           BST_FILE="elements/bluefin/tailscale.bst"
           CURRENT_VERSION=$(grep -oP 'tailscale_\K[0-9][0-9.]+(?=_amd64)' "$BST_FILE" | head -1)
           echo "Current version: $CURRENT_VERSION"
 
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
+          if [ "$UPSTREAM_VERSION" = "$CURRENT_VERSION" ]; then
             echo "tailscale is already up to date."
             exit 0
           fi
 
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|tailscale_${CURRENT_VERSION}_|tailscale_${LATEST_VERSION}_|g" "$BST_FILE"
+          echo "Updating: $CURRENT_VERSION -> $UPSTREAM_VERSION"
+          sed -i "s|tailscale_${CURRENT_VERSION}_|tailscale_${UPSTREAM_VERSION}_|g" "$BST_FILE"
           just bst -o arch x86_64 source track bluefin/tailscale.bst
           just bst -o arch aarch64 source track bluefin/tailscale.bst
 
           BRANCH="auto/track-tailscale"
-          TITLE="chore(deps): update tailscale ${CURRENT_VERSION} -> ${LATEST_VERSION}"
+          TITLE="chore(deps): update tailscale ${CURRENT_VERSION} -> ${UPSTREAM_VERSION}"
 
           git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
@@ -588,14 +696,14 @@ jobs:
           git checkout -f testing
 
           {
-            echo "## tailscale update: \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`"
+            echo "## tailscale update: \`${CURRENT_VERSION}\` → \`${UPSTREAM_VERSION}\`"
             echo ""
             echo "| | |"
             echo "| --- | --- |"
             echo "| **Source** | [tailscale/tailscale](https://github.com/tailscale/tailscale) |"
-            echo "| **Version** | \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\` |"
-            echo "| **Changelog** | [https://github.com/tailscale/tailscale/releases/tag/v${LATEST_VERSION}](https://github.com/tailscale/tailscale/releases/tag/v${LATEST_VERSION}) |"
-            echo "| **Compare** | [v${CURRENT_VERSION}...v${LATEST_VERSION}](https://github.com/tailscale/tailscale/compare/v${CURRENT_VERSION}...v${LATEST_VERSION}) |"
+            echo "| **Version** | \`${CURRENT_VERSION}\` → \`${UPSTREAM_VERSION}\` |"
+            echo "| **Changelog** | [https://github.com/tailscale/tailscale/releases/tag/v${UPSTREAM_VERSION}](https://github.com/tailscale/tailscale/releases/tag/v${UPSTREAM_VERSION}) |"
+            echo "| **Compare** | [v${CURRENT_VERSION}...v${UPSTREAM_VERSION}](https://github.com/tailscale/tailscale/compare/v${CURRENT_VERSION}...v${UPSTREAM_VERSION}) |"
             echo ""
             echo "---"
             echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
@@ -615,25 +723,25 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          LATEST_VERSION=$(gh api repos/ublue-os/uupd/releases/latest --jq '.tag_name')
-          echo "Latest uupd version: $LATEST_VERSION"
+          UPSTREAM_VERSION=$(gh api repos/ublue-os/uupd/releases --jq '[.[] | select(.draft == false and .prerelease == false)][0].tag_name')
+          echo "Current upstream uupd version: $UPSTREAM_VERSION"
 
           BST_FILE="elements/bluefin/uupd.bst"
           CURRENT_VERSION=$(grep -oP 'download/\Kv[^/]+' "$BST_FILE" | head -1)
           echo "Current version: $CURRENT_VERSION"
 
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
+          if [ "$UPSTREAM_VERSION" = "$CURRENT_VERSION" ]; then
             echo "uupd is already up to date."
             exit 0
           fi
 
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|download/${CURRENT_VERSION}/|download/${LATEST_VERSION}/|g" "$BST_FILE"
+          echo "Updating: $CURRENT_VERSION -> $UPSTREAM_VERSION"
+          sed -i "s|download/${CURRENT_VERSION}/|download/${UPSTREAM_VERSION}/|g" "$BST_FILE"
           just bst -o arch x86_64 source track bluefin/uupd.bst
           just bst -o arch aarch64 source track bluefin/uupd.bst
 
           BRANCH="auto/track-uupd"
-          TITLE="chore(deps): update uupd ${CURRENT_VERSION} -> ${LATEST_VERSION}"
+          TITLE="chore(deps): update uupd ${CURRENT_VERSION} -> ${UPSTREAM_VERSION}"
 
           git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
@@ -642,14 +750,14 @@ jobs:
           git checkout -f testing
 
           {
-            echo "## uupd update: \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`"
+            echo "## uupd update: \`${CURRENT_VERSION}\` → \`${UPSTREAM_VERSION}\`"
             echo ""
             echo "| | |"
             echo "| --- | --- |"
             echo "| **Source** | [ublue-os/uupd](https://github.com/ublue-os/uupd) |"
-            echo "| **Version** | \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\` |"
-            echo "| **Changelog** | [https://github.com/ublue-os/uupd/releases/tag/${LATEST_VERSION}](https://github.com/ublue-os/uupd/releases/tag/${LATEST_VERSION}) |"
-            echo "| **Compare** | [${CURRENT_VERSION}...${LATEST_VERSION}](https://github.com/ublue-os/uupd/compare/${CURRENT_VERSION}...${LATEST_VERSION}) |"
+            echo "| **Version** | \`${CURRENT_VERSION}\` → \`${UPSTREAM_VERSION}\` |"
+            echo "| **Changelog** | [https://github.com/ublue-os/uupd/releases/tag/${UPSTREAM_VERSION}](https://github.com/ublue-os/uupd/releases/tag/${UPSTREAM_VERSION}) |"
+            echo "| **Compare** | [${CURRENT_VERSION}...${UPSTREAM_VERSION}](https://github.com/ublue-os/uupd/compare/${CURRENT_VERSION}...${UPSTREAM_VERSION}) |"
             echo ""
             echo "---"
             echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
@@ -669,24 +777,24 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          LATEST_VERSION=$(gh api repos/ryanoasis/nerd-fonts/releases/latest --jq '.tag_name')
-          echo "Latest nerd-fonts version: $LATEST_VERSION"
+          UPSTREAM_VERSION=$(gh api repos/ryanoasis/nerd-fonts/releases --jq '[.[] | select(.draft == false and .prerelease == false)][0].tag_name')
+          echo "Current upstream nerd-fonts version: $UPSTREAM_VERSION"
 
           BST_FILE="elements/bluefin/jetbrains-mono-nerd-font.bst"
           CURRENT_VERSION=$(grep -oP 'download/\Kv[^/]+' "$BST_FILE" | head -1)
           echo "Current version: $CURRENT_VERSION"
 
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
+          if [ "$UPSTREAM_VERSION" = "$CURRENT_VERSION" ]; then
             echo "jetbrains-mono-nerd-font is already up to date."
             exit 0
           fi
 
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|download/${CURRENT_VERSION}/|download/${LATEST_VERSION}/|g" "$BST_FILE"
+          echo "Updating: $CURRENT_VERSION -> $UPSTREAM_VERSION"
+          sed -i "s|download/${CURRENT_VERSION}/|download/${UPSTREAM_VERSION}/|g" "$BST_FILE"
           just bst source track bluefin/jetbrains-mono-nerd-font.bst
 
           BRANCH="auto/track-jetbrains-mono-nerd-font"
-          TITLE="chore(deps): update jetbrains-mono-nerd-font ${CURRENT_VERSION} -> ${LATEST_VERSION}"
+          TITLE="chore(deps): update jetbrains-mono-nerd-font ${CURRENT_VERSION} -> ${UPSTREAM_VERSION}"
 
           git checkout -B "$BRANCH" origin/testing
           git add "$BST_FILE"
@@ -695,14 +803,14 @@ jobs:
           git checkout -f testing
 
           {
-            echo "## jetbrains-mono-nerd-font update: \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`"
+            echo "## jetbrains-mono-nerd-font update: \`${CURRENT_VERSION}\` → \`${UPSTREAM_VERSION}\`"
             echo ""
             echo "| | |"
             echo "| --- | --- |"
             echo "| **Source** | [ryanoasis/nerd-fonts](https://github.com/ryanoasis/nerd-fonts) |"
-            echo "| **Version** | \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\` |"
-            echo "| **Changelog** | [https://github.com/ryanoasis/nerd-fonts/releases/tag/${LATEST_VERSION}](https://github.com/ryanoasis/nerd-fonts/releases/tag/${LATEST_VERSION}) |"
-            echo "| **Compare** | [${CURRENT_VERSION}...${LATEST_VERSION}](https://github.com/ryanoasis/nerd-fonts/compare/${CURRENT_VERSION}...${LATEST_VERSION}) |"
+            echo "| **Version** | \`${CURRENT_VERSION}\` → \`${UPSTREAM_VERSION}\` |"
+            echo "| **Changelog** | [https://github.com/ryanoasis/nerd-fonts/releases/tag/${UPSTREAM_VERSION}](https://github.com/ryanoasis/nerd-fonts/releases/tag/${UPSTREAM_VERSION}) |"
+            echo "| **Compare** | [${CURRENT_VERSION}...${UPSTREAM_VERSION}](https://github.com/ryanoasis/nerd-fonts/compare/${CURRENT_VERSION}...${UPSTREAM_VERSION}) |"
             echo ""
             echo "---"
             echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
@@ -721,7 +829,7 @@ jobs:
   # freedesktop-sdk.bst overrides reference gnome-build-meta.bst elements directly.
   # Both must land in one commit. No auto-merge — requires human review.
   track-core-junctions:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       pull-requests: write
@@ -744,7 +852,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Just
-        uses: taiki-e/install-action@065d6a08a14e61e89fb0a4c10eecdbdef39c7d8e # v2
+        uses: taiki-e/install-action@18b1216eba7f8039b0f8d131d5473787f0edce68 # v2
         with:
           tool: just
 

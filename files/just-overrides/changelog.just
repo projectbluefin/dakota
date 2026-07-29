@@ -11,20 +11,14 @@ changelogs:
 
     # If stable or gts, get changelogs from Github Releases
     if [[ "$TAG" =~ gts$|stable$ ]]; then
-        DATE="$(grep -oP "OSTREE_VERSION=.*\d{2}\.\K\d{8}" /etc/os-release)"
+        DATE="$(grep -oP "OSTREE_VERSION=.*\d{2}\.\K\d{8}[.0-9]*" /etc/os-release)"
         CONTENT="$(curl -Ls "https://api.github.com/repos/projectbluefin/dakota/releases" | jq -r ".[] | select(.tag_name==\"${TAG}-${DATE}\") | .body")"
     fi
 
-    # Render with glow when available (brew-preinstall), otherwise plain output.
-    # glow was moved from the BST image to Homebrew's cli.Brewfile in 49382c5.
-    if command -v glow &>/dev/null; then
-        RENDER=(glow -p)
-    else
-        RENDER=(cat)
-    fi
+    # Display Content with Glow, otherwise fallback to the current Dakota release notes
     if [[ -n "${CONTENT:-}" ]]; then
-        echo "$CONTENT" | "${RENDER[@]}"
+        echo "$CONTENT" | glow -p
     else
         echo "WARN: Could not find a release specific to your image"
-        curl -Ls "https://api.github.com/repos/projectbluefin/dakota/releases/latest" | jq -r ".body" | "${RENDER[@]}"
+        curl -Ls "https://api.github.com/repos/projectbluefin/dakota/releases?per_page=1" | jq -r '.[0].body' | glow -p
     fi

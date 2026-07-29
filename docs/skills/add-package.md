@@ -144,7 +144,7 @@ Unlike install commands where `%{version}` expands correctly, BuildStream does N
 
 The `sadko4u/lsp-plugins` GitHub repo (redirects to `lsp-plugins/lsp-plugins`) switched to a modular
 build system in the 1.2.x series that runs `make fetch` to download ~12 submodules at build time.
-The 1.1.x series (latest: 1.1.26) is monolithic and BST-safe. Use 1.1.x for BST packaging.
+The 1.1.x series (current vetted release: 1.1.26) is monolithic and BST-safe. Use 1.1.x for BST packaging.
 
 Build LV2 only (no UI, no JACK, no standalone):
 
@@ -173,3 +173,11 @@ junction. If a Shell extension needs the GTK3 introspection ABI, build with `-Dg
 (depends on `gnome-build-meta.bst:sdk/gtk+-3.bst`); upstream's VTE is GTK4-only. Push demo
 binaries and unversioned `.so` linker symlinks to the `devel` split so `bluefin-runtime`'s
 compose (which excludes `devel`) keeps only the `.typelib` + versioned `.so.N`.
+
+### Verify pinned junctions before adding a local tool (2026-07-29)
+
+When a requested utility is absent from the staged `gnome-build-meta` and
+`freedesktop-sdk` trees, add a small local element from the upstream release
+source instead of patching a junction. Pin the upstream tag and commit, wire the
+element into `elements/bluefin/deps.bst`, and keep only the runtime files the
+consumer needs.

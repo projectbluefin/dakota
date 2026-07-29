@@ -9,7 +9,7 @@
 #     with:
 #       tool: git-cliff
 #   - name: Generate changelog
-#     run: git cliff --latest --strip header > CHANGELOG.md
+#     run: git cliff --tag "$RELEASE_TAG" --strip header > CHANGELOG.md
 
 [changelog]
 header = ""

@@ -44,9 +44,9 @@ Use when you need product/repo context before planning work, when someone asks w
 - The validation gate is: `bootc upgrade` on test hardware succeeds + reboot + GDM active.
 - CI green is not sufficient. Hardware confirmation is.
 
-**Production image = `ghcr.io/projectbluefin/dakota:stable`.**
-- Streams: `:testing` (on every BST-affecting push to `testing`), `:stable` (daily automated via `execute-release.yml` — no human approval)
-- Rolling nightly stream: `:next` / `:btw` (GNOME 51 master — see below)
+**Production image = `ghcr.io/projectbluefin/dakota:stable` or the matching `:<FSDK_MINOR>-stable`.**
+- Streams: `:testing` / `:<FSDK_MINOR>-testing` (on every BST-affecting push to `testing`), `:stable` / `:<FSDK_MINOR>-stable` (daily automated via `execute-release.yml` — no human approval)
+- Rolling nightly stream: `:next` / `:btw` plus `:<FSDK_MINOR>-next` / `:<FSDK_MINOR>-btw` (GNOME 51 master — see below)
 - When someone says "is X in the image", check the GHCR image via `skopeo inspect` or `podman run --rm` — not a local machine unless explicitly asked.
 
 **Verify hypothesis before stating root cause.**
@@ -60,16 +60,16 @@ freedesktop-sdk provides glibc/systemd/kernel, gnome-build-meta provides GNOME S
 
 **Key positioning:** Dakota is a **curated subset** of production Bluefin, not a 1:1 clone. It intentionally includes things production Bluefin doesn't have (sudo-rs, uutils-coreutils, GNOME nightly) and intentionally omits things that don't make sense for a from-source build (Nvidia drivers, ZFS, enterprise AD/Kerberos).
 
-Published image: `ghcr.io/projectbluefin/dakota:{testing,stable,next,btw}`
+Published image: `ghcr.io/projectbluefin/dakota:{testing,stable,next,btw}`, `ghcr.io/projectbluefin/dakota:<FSDK_MINOR>-<channel>`, and immutable `ghcr.io/projectbluefin/dakota:<FSDK_VERSION>`
 
 ## Image Streams
 
-| Tag | Branch | GNOME | Cadence | Stability |
+| Tags | Branch | GNOME | Cadence | Stability |
 |-----|--------|-------|---------|-----------|
-| `:testing` | `testing` | GNOME 50 (stable) | Every BST-affecting merge | boot-check gated |
-| `:stable` | `main` (bookmark) | GNOME 50 (stable) | Daily automated (when :testing != :stable) | Production |
-| `:next` | `next` | GNOME 51 (master) | On junction bump (~nightly) | Experimental |
-| `:btw` | `next` | GNOME 51 (master) | Same as `:next`, nvidia variant | Experimental |
+| `:testing`, `:<FSDK_MINOR>-testing` | `testing` | GNOME 50 (stable) | Every BST-affecting merge | boot-check gated development trunk |
+| `:stable`, `:<FSDK_MINOR>-stable`, `:<FSDK_VERSION>` | `main` (bookmark) | GNOME 50 (stable) | Daily automated (when :testing != :stable) | Production |
+| `:next`, `:<FSDK_MINOR>-next` | `next` | GNOME 51 (master) | On junction bump (~nightly) | Experimental |
+| `:btw`, `:<FSDK_MINOR>-btw` | `next` | GNOME 51 (master) | Same digest as `:next` | Experimental alias |
 
 ### `:next` / `:btw` — Rolling GNOME 51 stream
 
@@ -109,7 +109,7 @@ that Dakota follows bluefin's dnf/Containerfile overlay model.
 |---|---|---|---|
 | **Base** | freedesktop-sdk + gnome-build-meta (from source) | Fedora Silverblue (pre-built RPMs) | CentOS Stream 10 (pre-built RPMs) |
 | **Build system** | BuildStream 2 (hermetic sandbox builds) | Containerfile + `dnf install` | Containerfile + `dnf install` |
-| **Desktop** | GNOME (nightly/latest) | GNOME (Fedora's version) | GNOME 48 (pinned) |
+| **Desktop** | GNOME (nightly/current) | GNOME (Fedora's version) | GNOME 48 (pinned) |
 | **Kernel** | freedesktop-sdk kernel | Fedora kernel + akmods | CentOS kernel + akmods |
 | **Update model** | `bootc` (native) | `rpm-ostree` (migrating to bootc) | `bootc` (native) |
 | **Package count** | ~20 Bluefin-specific elements | ~80 base + ~60 DX RPMs | ~80 base + DX/GDX RPMs |
@@ -126,7 +126,7 @@ Production Bluefin images are **Containerfile-based overlays** — they start wi
 | **sudo-rs** (Rust sudo) | Memory-safe sudo replacement |
 | **uutils-coreutils** (Rust coreutils) | Memory-safe coreutils |
 | **Built entirely from source** | Reproducible, auditable, no RPM dependency |
-| **GNOME nightly** | Latest GNOME, ahead of Fedora |
+| **GNOME nightly** | Newest GNOME, ahead of Fedora |
 | **riscv64 support** | Neither bluefin nor bluefin-lts supports this |
 
 ## Gap Analysis

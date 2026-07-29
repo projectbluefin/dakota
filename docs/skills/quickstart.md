@@ -128,8 +128,8 @@ A successful local validation path is:
 1. `just validate`
 2. `just bst artifact checkout oci/bluefin.bst --directory /src/.build-out`
 3. `podman pull -q oci:.build-out`
-4. `podman build ... -t dakota:latest`
-5. `podman run ... dakota:latest bootc container lint`
+4. `podman build ... -t dakota:testing`
+5. `podman run ... dakota:testing bootc container lint`
 
 This is a local-environment workaround, not a repo change.
 

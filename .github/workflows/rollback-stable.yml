@@ -1,10 +1,11 @@
-name: Rollback :stable
+name: Rollback stable channel tags
 
-# One-button rollback for ghcr.io/projectbluefin/dakota{,-nvidia}:stable when a
-# promoted image is bad. Mirrors the publish/promotion supply-chain checks:
-#   1. Inspect the target SHA-pinned images exist.
+# One-button rollback for the stable tag pair on
+# ghcr.io/projectbluefin/dakota{,-nvidia,-gaming} when a promoted image is bad.
+# Mirrors the publish/promotion supply-chain checks:
+#   1. Inspect the target SHA-pinned images exist and derive the FSDK minor.
 #   2. cosign verify them against the anchored publish.yml identity.
-#   3. skopeo copy --preserve-digests --all into :stable.
+#   3. skopeo copy --preserve-digests --all into :<FSDK_MINOR>-stable and :stable.
 #   4. Rebuild :stable-multiarch from the verified images.
 #
 # workflow_dispatch only. Defaults to dry_run=true — humans must opt-in to
@@ -43,12 +44,14 @@ concurrency:
 jobs:
   verify:
     name: Verify rollback target
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     outputs:
+      fsdk_minor: ${{ steps.digests.outputs.fsdk_minor }}
       dakota_digest: ${{ steps.digests.outputs.dakota_digest }}
       nvidia_digest: ${{ steps.digests.outputs.nvidia_digest }}
+      gaming_digest: ${{ steps.digests.outputs.gaming_digest }}
       aarch64_digest: ${{ steps.aarch64.outputs.aarch64_digest }}
       aarch64_present: ${{ steps.aarch64.outputs.present }}
     env:
@@ -65,7 +68,7 @@ jobs:
       - name: Install cosign
         run: |
           set -euo pipefail
-          curl -fsSL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 \
+          curl -fsSL https://github.com/sigstore/cosign/releases/download/v3.1.2/cosign-linux-amd64 \
             -o "$RUNNER_TEMP/cosign"
           sudo install -m 0755 "$RUNNER_TEMP/cosign" /usr/local/bin/cosign
           cosign version
@@ -75,35 +78,63 @@ jobs:
         run: |
           set -euo pipefail
 
-          # dakota
-          if ! skopeo inspect --no-tags \
-              "docker://ghcr.io/projectbluefin/dakota:${TARGET_SHA}" > /tmp/dakota.json 2>&1; then
-            echo "::error::ghcr.io/projectbluefin/dakota:${TARGET_SHA} not found in GHCR."
-            cat /tmp/dakota.json
-            exit 1
-          fi
-          DAKOTA_DIGEST=$(jq -r '.Digest' /tmp/dakota.json)
+          inspect_image() {
+            local image="$1"
+            local error_message="$2"
+            local inspect_json
+            if ! inspect_json=$(skopeo inspect --no-tags \
+                "docker://ghcr.io/projectbluefin/${image}:${TARGET_SHA}" 2>&1); then
+              echo "::error::${error_message}"
+              printf '%s\n' "${inspect_json}"
+              exit 1
+            fi
+            printf '%s\n' "${inspect_json}"
+          }
+
+          DAKOTA_JSON=$(inspect_image \
+            dakota \
+            "ghcr.io/projectbluefin/dakota:${TARGET_SHA} not found in GHCR.")
+          DAKOTA_DIGEST=$(jq -r '.Digest' <<<"${DAKOTA_JSON}")
           if [ -z "$DAKOTA_DIGEST" ] || [ "$DAKOTA_DIGEST" = "null" ]; then
             echo "::error::Failed to resolve digest for dakota:${TARGET_SHA}"
             exit 1
           fi
-          echo "dakota_digest=${DAKOTA_DIGEST}" >> "$GITHUB_OUTPUT"
-          echo "dakota:${TARGET_SHA} → ${DAKOTA_DIGEST}"
-
-          # dakota-nvidia — pair invariant: both must exist
-          if ! skopeo inspect --no-tags \
-              "docker://ghcr.io/projectbluefin/dakota-nvidia:${TARGET_SHA}" > /tmp/nvidia.json 2>&1; then
-            echo "::error::ghcr.io/projectbluefin/dakota-nvidia:${TARGET_SHA} not found. dakota and dakota-nvidia must be promoted as a pair — refusing to roll back a partial set."
-            cat /tmp/nvidia.json
+          FSDK_VERSION=$(jq -r '.Labels["io.projectbluefin.fsdk.version"] // .Labels["org.opencontainers.image.version"] // empty' <<<"${DAKOTA_JSON}")
+          if [ -z "$FSDK_VERSION" ]; then
+            echo "::error::Failed to resolve io.projectbluefin.fsdk.version for dakota:${TARGET_SHA}"
             exit 1
           fi
-          NVIDIA_DIGEST=$(jq -r '.Digest' /tmp/nvidia.json)
+          FSDK_MINOR=$(printf '%s\n' "$FSDK_VERSION" | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
+          if [ -z "$FSDK_MINOR" ]; then
+            echo "::error::Failed to derive FSDK minor from version ${FSDK_VERSION}"
+            exit 1
+          fi
+          echo "fsdk_minor=${FSDK_MINOR}" >> "$GITHUB_OUTPUT"
+          echo "dakota_digest=${DAKOTA_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "dakota:${TARGET_SHA} → ${DAKOTA_DIGEST}"
+          echo "Resolved FSDK version ${FSDK_VERSION} → minor ${FSDK_MINOR}"
+
+          NVIDIA_JSON=$(inspect_image \
+            dakota-nvidia \
+            "ghcr.io/projectbluefin/dakota-nvidia:${TARGET_SHA} not found. dakota, dakota-nvidia, and dakota-gaming must be rolled back as a set — refusing to roll back a partial stable channel.")
+          NVIDIA_DIGEST=$(jq -r '.Digest' <<<"${NVIDIA_JSON}")
           if [ -z "$NVIDIA_DIGEST" ] || [ "$NVIDIA_DIGEST" = "null" ]; then
             echo "::error::Failed to resolve digest for dakota-nvidia:${TARGET_SHA}"
             exit 1
           fi
           echo "nvidia_digest=${NVIDIA_DIGEST}" >> "$GITHUB_OUTPUT"
           echo "dakota-nvidia:${TARGET_SHA} → ${NVIDIA_DIGEST}"
+
+          GAMING_JSON=$(inspect_image \
+            dakota-gaming \
+            "ghcr.io/projectbluefin/dakota-gaming:${TARGET_SHA} not found. dakota, dakota-nvidia, and dakota-gaming must be rolled back as a set — refusing to roll back a partial stable channel.")
+          GAMING_DIGEST=$(jq -r '.Digest' <<<"${GAMING_JSON}")
+          if [ -z "$GAMING_DIGEST" ] || [ "$GAMING_DIGEST" = "null" ]; then
+            echo "::error::Failed to resolve digest for dakota-gaming:${TARGET_SHA}"
+            exit 1
+          fi
+          echo "gaming_digest=${GAMING_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "dakota-gaming:${TARGET_SHA} → ${GAMING_DIGEST}"
 
       - name: Verify cosign signature on dakota:${{ inputs.target_sha }}
         env:
@@ -125,18 +156,28 @@ jobs:
             --certificate-oidc-issuer "$COSIGN_ISSUER" \
             "ghcr.io/projectbluefin/dakota-nvidia@${NVIDIA_DIGEST}"
 
+      - name: Verify cosign signature on dakota-gaming:${{ inputs.target_sha }}
+        env:
+          GAMING_DIGEST: ${{ steps.digests.outputs.gaming_digest }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
+            --certificate-oidc-issuer "$COSIGN_ISSUER" \
+            "ghcr.io/projectbluefin/dakota-gaming@${GAMING_DIGEST}"
+
       - name: Inspect and verify aarch64 component (if include_multiarch)
         id: aarch64
         if: ${{ inputs.include_multiarch }}
         run: |
           set -euo pipefail
-          if ! skopeo inspect --no-tags \
-              "docker://ghcr.io/projectbluefin/dakota:aarch64-${TARGET_SHA}" > /tmp/arm.json 2>&1; then
+          if ! ARM_JSON=$(skopeo inspect --no-tags \
+              "docker://ghcr.io/projectbluefin/dakota:aarch64-${TARGET_SHA}" 2>&1); then
             echo "::error::include_multiarch=true but ghcr.io/projectbluefin/dakota:aarch64-${TARGET_SHA} not found. Set include_multiarch=false to revert x86_64 only, or pick a target_sha that has a published aarch64 image."
-            cat /tmp/arm.json
+            printf '%s\n' "${ARM_JSON}"
             exit 1
           fi
-          AARCH64_DIGEST=$(jq -r '.Digest' /tmp/arm.json)
+          AARCH64_DIGEST=$(jq -r '.Digest' <<<"${ARM_JSON}")
           if [ -z "$AARCH64_DIGEST" ] || [ "$AARCH64_DIGEST" = "null" ]; then
             echo "::error::Failed to resolve digest for dakota:aarch64-${TARGET_SHA}"
             exit 1
@@ -152,8 +193,10 @@ jobs:
 
       - name: Verify summary
         env:
+          FSDK_MINOR: ${{ steps.digests.outputs.fsdk_minor }}
           DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota_digest }}
           NVIDIA_DIGEST: ${{ steps.digests.outputs.nvidia_digest }}
+          GAMING_DIGEST: ${{ steps.digests.outputs.gaming_digest }}
           AARCH64_DIGEST: ${{ steps.aarch64.outputs.aarch64_digest }}
           REASON: ${{ inputs.reason }}
           DRY_RUN: ${{ inputs.dry_run }}
@@ -166,8 +209,10 @@ jobs:
             echo "- **reason:** ${REASON}"
             echo "- **dry_run:** \`${DRY_RUN}\`"
             echo "- **include_multiarch:** \`${INCLUDE_MULTIARCH}\`"
+            echo "- **stable tag pair:** \`:${FSDK_MINOR}-stable\`, \`:stable\`"
             echo "- **dakota digest:** \`${DAKOTA_DIGEST}\`"
             echo "- **dakota-nvidia digest:** \`${NVIDIA_DIGEST}\`"
+            echo "- **dakota-gaming digest:** \`${GAMING_DIGEST}\`"
             if [ -n "${AARCH64_DIGEST:-}" ]; then
               echo "- **aarch64 digest:** \`${AARCH64_DIGEST}\`"
             fi
@@ -176,18 +221,20 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   rollback:
-    name: Move :stable tags
+    name: Move stable channel tags
     needs: verify
     if: ${{ !inputs.dry_run }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
       id-token: write
     env:
       TARGET_SHA: ${{ inputs.target_sha }}
+      FSDK_MINOR: ${{ needs.verify.outputs.fsdk_minor }}
       DAKOTA_DIGEST: ${{ needs.verify.outputs.dakota_digest }}
       NVIDIA_DIGEST: ${{ needs.verify.outputs.nvidia_digest }}
+      GAMING_DIGEST: ${{ needs.verify.outputs.gaming_digest }}
       AARCH64_DIGEST: ${{ needs.verify.outputs.aarch64_digest }}
     steps:
       - name: Install skopeo
@@ -204,34 +251,122 @@ jobs:
           set -euo pipefail
           echo "$GH_TOKEN" | skopeo login ghcr.io --username "$GH_ACTOR" --password-stdin
 
-      - name: Revert dakota:stable to target_sha
+      - name: Revert versioned stable tags and aliases to target_sha
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          skopeo copy --preserve-digests --all \
-            "docker://ghcr.io/projectbluefin/dakota:${TARGET_SHA}" \
-            "docker://ghcr.io/projectbluefin/dakota:stable"
+          VERSIONED_TAG="${FSDK_MINOR}-stable"
+          images=(dakota dakota-nvidia dakota-gaming)
+          declare -A target_digests=(
+            [dakota]="${DAKOTA_DIGEST}"
+            [dakota-nvidia]="${NVIDIA_DIGEST}"
+            [dakota-gaming]="${GAMING_DIGEST}"
+          )
+          declare -A previous_versioned_digests
+          declare -A previous_stable_digests
 
-      - name: Revert dakota-nvidia:stable to target_sha
-        run: |
-          set -euo pipefail
-          skopeo copy --preserve-digests --all \
-            "docker://ghcr.io/projectbluefin/dakota-nvidia:${TARGET_SHA}" \
-            "docker://ghcr.io/projectbluefin/dakota-nvidia:stable"
+          inspect_optional_digest() {
+            local image="$1"
+            local tag="$2"
+            local inspect_json
+            if inspect_json=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/${image}:${tag}" 2>/dev/null); then
+              jq -r '.Digest' <<<"${inspect_json}"
+            else
+              echo ""
+            fi
+          }
 
-      - name: Verify reverted :stable digests match target
-        run: |
-          set -euo pipefail
-          dakota_now=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:stable" | jq -r .Digest)
-          if [ "$dakota_now" != "$DAKOTA_DIGEST" ]; then
-            echo "::error::dakota:stable digest=$dakota_now, expected $DAKOTA_DIGEST"
+          inspect_digest() {
+            local image="$1"
+            local tag="$2"
+            skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/${image}:${tag}" | jq -r '.Digest'
+          }
+
+          restore_tag() {
+            local image="$1"
+            local tag="$2"
+            local previous_digest="$3"
+            if [ -z "${previous_digest}" ]; then
+              if skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/${image}:${tag}" > /dev/null 2>&1; then
+                if ! skopeo delete \
+                  --creds "$GH_ACTOR:$GH_TOKEN" \
+                  "docker://ghcr.io/projectbluefin/${image}:${tag}"; then
+                  echo "::warning::Failed to delete newly-created ${image}:${tag} during rollback"
+                  return 1
+                fi
+              fi
+              return 0
+            fi
+
+            if ! skopeo copy --preserve-digests --all \
+              --src-creds "$GH_ACTOR:$GH_TOKEN" \
+              --dest-creds "$GH_ACTOR:$GH_TOKEN" \
+              "docker://ghcr.io/projectbluefin/${image}@${previous_digest}" \
+              "docker://ghcr.io/projectbluefin/${image}:${tag}"; then
+              echo "::warning::Failed to restore ${image}:${tag} to ${previous_digest}"
+              return 1
+            fi
+
+            restored_digest="$(inspect_optional_digest "${image}" "${tag}")"
+            if [ "${restored_digest}" != "${previous_digest}" ]; then
+              echo "::warning::${image}:${tag} restored to ${restored_digest:-<absent>}, expected ${previous_digest}"
+              return 1
+            fi
+          }
+
+          restore_all_snapshots() {
+            local failed=0
+            for image in "${images[@]}"; do
+              restore_tag "${image}" "${VERSIONED_TAG}" "${previous_versioned_digests[$image]:-}" || failed=1
+              restore_tag "${image}" stable "${previous_stable_digests[$image]:-}" || failed=1
+            done
+            return "${failed}"
+          }
+
+          abort_and_restore() {
+            local message="$1"
+            echo "::error::${message}"
+            if ! restore_all_snapshots; then
+              echo "::warning::Failed to fully restore the snapshotted stable tag set after rollback failed."
+            fi
             exit 1
-          fi
-          nvidia_now=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota-nvidia:stable" | jq -r .Digest)
-          if [ "$nvidia_now" != "$NVIDIA_DIGEST" ]; then
-            echo "::error::dakota-nvidia:stable digest=$nvidia_now, expected $NVIDIA_DIGEST"
-            exit 1
-          fi
-          echo "Both :stable tags now point at the verified target digests."
+          }
+
+          move_tag_to_target() {
+            local image="$1"
+            local tag="$2"
+            skopeo copy --preserve-digests --all \
+              --src-creds "$GH_ACTOR:$GH_TOKEN" \
+              --dest-creds "$GH_ACTOR:$GH_TOKEN" \
+              "docker://ghcr.io/projectbluefin/${image}:${TARGET_SHA}" \
+              "docker://ghcr.io/projectbluefin/${image}:${tag}"
+
+            digest="$(inspect_digest "${image}" "${tag}")"
+            if [ "${digest}" != "${target_digests[$image]}" ]; then
+              echo "::error::${image}:${tag} digest=${digest}, expected ${target_digests[$image]}"
+              return 1
+            fi
+          }
+
+          for image in "${images[@]}"; do
+            previous_versioned_digests["${image}"]="$(inspect_optional_digest "${image}" "${VERSIONED_TAG}")"
+            previous_stable_digests["${image}"]="$(inspect_optional_digest "${image}" stable)"
+            echo "Snapshot ${image}:${VERSIONED_TAG}=${previous_versioned_digests[$image]:-<absent>} ${image}:stable=${previous_stable_digests[$image]:-<absent>}"
+          done
+
+          for image in "${images[@]}"; do
+            if ! move_tag_to_target "${image}" "${VERSIONED_TAG}"; then
+              abort_and_restore "Failed to move ${image}:${VERSIONED_TAG} to ${target_digests[$image]}"
+            fi
+            if ! move_tag_to_target "${image}" stable; then
+              abort_and_restore "Failed to move ${image}:stable to ${target_digests[$image]}"
+            fi
+            echo "${image}:${VERSIONED_TAG} and ${image}:stable now point at ${target_digests[$image]}"
+          done
+
+          echo "Stable channel tags now point at the verified target digests."
 
       - name: Login to GHCR (podman)
         if: ${{ inputs.include_multiarch && needs.verify.outputs.aarch64_present == 'true' }}
@@ -263,16 +398,18 @@ jobs:
     name: Record rollback in audit trail
     needs: [verify, rollback]
     if: ${{ always() && !inputs.dry_run && needs.rollback.result == 'success' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TARGET_SHA: ${{ inputs.target_sha }}
+      FSDK_MINOR: ${{ needs.verify.outputs.fsdk_minor }}
       REASON: ${{ inputs.reason }}
       ACTOR: ${{ github.actor }}
       DAKOTA_DIGEST: ${{ needs.verify.outputs.dakota_digest }}
       NVIDIA_DIGEST: ${{ needs.verify.outputs.nvidia_digest }}
+      GAMING_DIGEST: ${{ needs.verify.outputs.gaming_digest }}
       AARCH64_DIGEST: ${{ needs.verify.outputs.aarch64_digest }}
       INCLUDE_MULTIARCH: ${{ inputs.include_multiarch }}
     steps:
@@ -296,12 +433,13 @@ jobs:
             echo ""
             echo "## Reverted digests"
             echo ""
-            echo "| Image | Tag | Digest |"
-            echo "|---|---|---|"
-            echo "| dakota | :stable | \`${DAKOTA_DIGEST}\` |"
-            echo "| dakota-nvidia | :stable | \`${NVIDIA_DIGEST}\` |"
+            echo "| Image | Versioned tag | Alias | Digest |"
+            echo "|---|---|---|---|"
+            echo "| dakota | :${FSDK_MINOR}-stable | :stable | \`${DAKOTA_DIGEST}\` |"
+            echo "| dakota-nvidia | :${FSDK_MINOR}-stable | :stable | \`${NVIDIA_DIGEST}\` |"
+            echo "| dakota-gaming | :${FSDK_MINOR}-stable | :stable | \`${GAMING_DIGEST}\` |"
             if [ "${INCLUDE_MULTIARCH}" = "true" ] && [ -n "${AARCH64_DIGEST}" ]; then
-              echo "| dakota (aarch64) | :stable-multiarch | \`${AARCH64_DIGEST}\` |"
+              echo "| dakota (aarch64) | — | :stable-multiarch | \`${AARCH64_DIGEST}\` |"
             fi
             echo ""
             echo "All digests were cosign-verified against \`publish.yml@refs/heads/testing\` before tags were moved."
@@ -337,8 +475,10 @@ jobs:
             echo "- **actor:** @${ACTOR}"
             echo "- **timestamp:** ${TS_HUMAN}"
             echo "- **reason:** ${REASON}"
+            echo "- **stable tag pair:** \`:${FSDK_MINOR}-stable\`, \`:stable\`"
             echo "- **dakota digest:** \`${DAKOTA_DIGEST}\`"
             echo "- **dakota-nvidia digest:** \`${NVIDIA_DIGEST}\`"
+            echo "- **dakota-gaming digest:** \`${GAMING_DIGEST}\`"
             if [ "${INCLUDE_MULTIARCH}" = "true" ] && [ -n "${AARCH64_DIGEST}" ]; then
               echo "- **aarch64 digest:** \`${AARCH64_DIGEST}\`"
             fi

@@ -44,7 +44,7 @@ env:
 jobs:
   boot-test:
     name: Boot aarch64 image in VM
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     timeout-minutes: 60
     steps:
       - name: Resolve image ref

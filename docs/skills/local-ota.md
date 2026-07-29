@@ -45,7 +45,7 @@ Manual fallback:
 sudo podman run -d --name egg-registry --replace \
   -p 5000:5000 \
   -v egg-registry-data:/var/lib/registry \
-  ghcr.io/project-zot/zot-minimal-linux-amd64:latest
+  ghcr.io/project-zot/zot-minimal-linux-amd64:v2.1.18
 ```
 
 The `egg-registry-data` volume persists across reboots. Verify it's bound to `0.0.0.0:5000` (not just localhost):
@@ -93,8 +93,8 @@ just boot-fast     # ephemeral VM via virtiofs (requires virtiofsd)
 just boot-vm       # standard QEMU VM with display
 
 # 5. On the test machine — switch to local registry (first time only)
-sudo bootc switch 10.0.2.2:5000/dakota:latest          # QEMU
-sudo bootc switch <build-host-ip>:5000/dakota:latest   # Physical
+sudo bootc switch 10.0.2.2:5000/dakota:testing          # QEMU
+sudo bootc switch <build-host-ip>:5000/dakota:testing   # Physical
 
 # 6. Subsequent upgrades
 sudo bootc upgrade
@@ -114,7 +114,7 @@ journalctl -p err --since boot   # check for boot errors
 ## Reverting to GHCR
 
 ```bash
-sudo bootc switch ghcr.io/projectbluefin/dakota:latest
+sudo bootc switch ghcr.io/projectbluefin/dakota:stable
 sudo systemctl reboot
 ```
 
@@ -161,7 +161,7 @@ Do not use `--compression-format=zstd:chunked` for local registry pushes. It bre
 just push-local localhost:5000
 
 # Wrong — breaks composefs
-sudo podman push --compression-format=zstd:chunked localhost:5000/dakota:latest
+sudo podman push --compression-format=zstd:chunked localhost:5000/dakota:testing
 ```
 
 ### bootc switch same-content trap

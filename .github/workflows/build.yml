@@ -14,6 +14,9 @@ on:
   # default branch in repo settings for this to target testing.
   schedule:
     - cron: "0 13 * * *"
+  # Manual recovery runs on testing; nightly-next-build.yml dispatches this
+  # same workflow on the next branch so publish.yml can move the next/btw
+  # aliases and their FSDK-versioned channel tags.
   workflow_dispatch:
 
 permissions: read-all
@@ -29,7 +32,7 @@ concurrency:
 jobs:
   verify-default-branch:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -46,7 +49,7 @@ jobs:
   build:
     needs: [verify-default-branch]
     if: (!cancelled()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 350
     # The BuildBox backend has four action slots. Start every image variant
     # together; the backend remains the global execution-capacity limit.
