@@ -209,6 +209,12 @@ Heavy build contributors:
 
 ## Lessons Learned
 
+### Intel Framework hid_sensor_hub karg is obsolete on kernel 6.8+ (2026-07-30)
+
+In pre-6.8 kernels, `module_blacklist=hid_sensor_hub` was used to work around ambient light sensor (ALS) conflicts with keyboard brightness shortcuts on Intel Framework laptops. On Kernel 6.8+, brightness keys are handled natively upstream. Blacklisting `hid_sensor_hub` disables ALS and breaks power supply/battery state transitions (`cros_ec` / `upower`), causing an immediate hard off when unplugging the AC power adapter (dakota#1247).
+
+The fix belongs in `projectbluefin/common`: remove `/usr/lib/bootc/kargs.d/framework-intel.toml` and clean up legacy kargs in `10-framework.sh`.
+
 ### zstd:chunked compression is incompatible with bootc composefs (2026-06-07)
 
 Attempting to push with `--compression-format=zstd:chunked` or via skopeo after chunkah rechunking fails with "unexpected EOF reading tar entry" at the composefs layer. After `chunkah build → podman load`, the only working push path is plain `podman push`. Do not reintroduce skopeo, oci-dir workarounds, or zstd:chunked flags for post-chunkah pushes. See projectbluefin/dakota#119 for the investigation.
