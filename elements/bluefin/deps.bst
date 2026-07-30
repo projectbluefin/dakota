@@ -22,6 +22,7 @@ depends:
   - bluefin/umotd.bst
 
   - bluefin/common.bst
+  - bluefin/user-avatars.bst
   - bluefin/just-overrides.bst
   - bluefin/firstboot-date.bst
   - bluefin/firstboot-services.bst
