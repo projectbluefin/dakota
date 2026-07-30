@@ -67,6 +67,38 @@ sudo podman run --rm --privileged --pid=host --ipc=host \
 
 Then attach the resulting raw file on the host and continue with QEMU boot checks.
 
+## Diagnosing E2E Failures That Live Upstream
+
+Dakota does not own any behave/step code — `tests/`, `steps/`, and the rerun
+retry logic all live in `projectbluefin/testsuite`. When an E2E/smoke run
+fails with an error that looks like GNOME Shell JS or Python step code
+(`AttributeError`, `TypeError: ... is undefined`, `ConfigError: No steps
+directory`), do not assume Dakota's workflow wiring is at fault. Check the
+upstream testsuite first:
+
+1. **Confirm the failure is current, not historical.** `gh run view <id>
+   --repo projectbluefin/dakota --log-failed` gives the exact traceback and
+   commit under test. A failure from weeks ago may already be fixed upstream.
+2. **Diff the pinned tag against testsuite `main`:**
+   ```bash
+   gh api repos/projectbluefin/testsuite/compare/v1...main --jq '{ahead,behind}'
+   ```
+   `ahead: 0` means the `@v1` floating tag Dakota calls (`e2e.yml`,
+   `run-testsuite.yml`) already includes everything on `main` — there is
+   nothing to re-pin.
+3. **Only if `v1` is behind `main`** is there a real Dakota-side action: open
+   an issue/PR against `projectbluefin/actions` (or ping testsuite
+   maintainers) to move the tag, per the "pin once in the wrapper" rule above.
+4. **If the tag is current, re-run the workflow** (`workflow_dispatch` on
+   `e2e.yml`, or wait for the next `publish-smoke.yml` run) to get a fresh
+   result before concluding anything is still broken.
+
+This was the resolution path for [dakota#627](https://github.com/projectbluefin/dakota/issues/627)
+(`eval_js` AttributeError, undefined `_do_not_disturb`, and a behave rerun
+`ConfigError`) — all three were already fixed in `projectbluefin/testsuite`
+`main`, and the `@v1` tag Dakota consumes was already even with `main`, so no
+Dakota workflow change was needed.
+
 ## Observational Smoke Rule
 
 A reusable-workflow call job cannot be made truly non-blocking with
