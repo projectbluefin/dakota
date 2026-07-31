@@ -23,6 +23,7 @@ depends:
   - bluefin/umotd.bst
 
   - bluefin/common.bst
+  - bluefin/user-avatars.bst
   - bluefin/just-overrides.bst
   - bluefin/zswap-config.bst
   - bluefin/swapfile.bst

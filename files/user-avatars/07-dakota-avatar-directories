@@ -1,0 +1,17 @@
+# Restore the Bluefin dinosaur avatar icons in the GNOME "Users" account-picture
+# picker (fixes: projectbluefin/dakota#353).
+#
+# bluefin-common ships Bluefin's custom (dinosaur-themed) avatars under a
+# `bluefin/` category subdirectory: system_files/bluefin/usr/share/pixmaps/faces/bluefin/*.jpg
+# (installed here as /usr/share/pixmaps/faces/bluefin/*.jpg by bluefin/common.bst).
+#
+# gnome-control-center's avatar chooser (panels/system/users/cc-avatar-chooser.c)
+# and gnome-initial-setup's account page only enumerate files directly inside
+# <datadir>/pixmaps/faces/ — they never recurse into subdirectories. Without an
+# explicit avatar-directories setting, both silently fall back to Fedora/GNOME's
+# stock (near-empty) pixmaps/faces dir and Bluefin's avatars never appear.
+#
+# Setting org.gnome.desktop.interface avatar-directories tells both UIs to scan
+# our bluefin/ subdirectory explicitly.
+[org/gnome/desktop/interface]
+avatar-directories=['/usr/share/pixmaps/faces/bluefin']
