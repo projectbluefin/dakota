@@ -152,7 +152,7 @@ jobs:
           private-key: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}
 
       - name: Setup Just
-        uses: taiki-e/install-action@18b1216eba7f8039b0f8d131d5473787f0edce68 # v2
+        uses: taiki-e/install-action@6a1bd70eaac3c8bdf093356838d7ee09fda951cf # v2
         with:
           tool: just
 
@@ -319,7 +319,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Just
-        uses: taiki-e/install-action@18b1216eba7f8039b0f8d131d5473787f0edce68 # v2
+        uses: taiki-e/install-action@6a1bd70eaac3c8bdf093356838d7ee09fda951cf # v2
         with:
           tool: just
 
@@ -852,7 +852,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Just
-        uses: taiki-e/install-action@18b1216eba7f8039b0f8d131d5473787f0edce68 # v2
+        uses: taiki-e/install-action@6a1bd70eaac3c8bdf093356838d7ee09fda951cf # v2
         with:
           tool: just
 

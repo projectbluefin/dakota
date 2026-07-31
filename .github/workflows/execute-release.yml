@@ -165,7 +165,7 @@ jobs:
             fi
           }
 
-          for image in dakota dakota-nvidia dakota-gaming; do
+          for image in dakota dakota-nvidia dakota-gaming dakota-nvidia-gaming; do
             versioned_digest="$(inspect_optional_digest "${image}" "${VERSIONED_TAG}")"
             stable_digest="$(inspect_optional_digest "${image}" stable)"
             snapshots=$(jq -c \
@@ -198,7 +198,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          variant_policy='{"dakota":{"required":true},"dakota-nvidia":{"required":false},"dakota-gaming":{"required":false}}'
+          variant_policy='{"dakota":{"required":true},"dakota-nvidia":{"required":false},"dakota-gaming":{"required":false},"dakota-nvidia-gaming":{"required":false}}'
           source_digests='{}'
           optional_missing='[]'
 
@@ -256,7 +256,7 @@ jobs:
             done
           }
 
-          for image in dakota dakota-nvidia dakota-gaming; do
+          for image in dakota dakota-nvidia dakota-gaming dakota-nvidia-gaming; do
             required=$(jq -r --arg image "${image}" '.[$image].required' <<<"${variant_policy}")
             if source_digest="$(resolve_source_digest "${image}" "${required}")"; then
               :
@@ -302,7 +302,8 @@ jobs:
         [
           {"image":"dakota","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"${{ needs.freshness-check.outputs.fsdk_minor }}-stable"},
           {"image":"dakota-nvidia","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"${{ needs.freshness-check.outputs.fsdk_minor }}-stable"},
-          {"image":"dakota-gaming","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"${{ needs.freshness-check.outputs.fsdk_minor }}-stable"}
+          {"image":"dakota-gaming","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"${{ needs.freshness-check.outputs.fsdk_minor }}-stable"},
+          {"image":"dakota-nvidia-gaming","source_tag":"${{ needs.freshness-check.outputs.build_sha }}","target_tag":"${{ needs.freshness-check.outputs.fsdk_minor }}-stable"}
         ]
       cosign_identity_regexp: ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)$
       # fast_forward_branch omitted: handled by update-main-bookmark job below,
@@ -348,7 +349,7 @@ jobs:
           set -euo pipefail
 
           VERSIONED_TAG="${FSDK_MINOR}-stable"
-          images=(dakota dakota-nvidia dakota-gaming)
+          images=(dakota dakota-nvidia dakota-gaming dakota-nvidia-gaming)
           declare -A expected_digests
           declare -A snapshot_versioned_digests
           declare -A snapshot_stable_digests
@@ -616,7 +617,7 @@ jobs:
         id: digests
         run: |
           set -euo pipefail
-          for image in dakota dakota-nvidia dakota-gaming; do
+          for image in dakota dakota-nvidia dakota-gaming dakota-nvidia-gaming; do
             digest=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/${image}:stable" \
               | jq -r '.Digest' | cut -c1-19)
             echo "${image}=${digest}" >> "$GITHUB_OUTPUT"
@@ -628,6 +629,7 @@ jobs:
           DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota }}
           NVIDIA_DIGEST: ${{ steps.digests.outputs.dakota-nvidia }}
           GAMING_DIGEST: ${{ steps.digests.outputs.dakota-gaming }}
+          NVIDIA_GAMING_DIGEST: ${{ steps.digests.outputs.dakota-nvidia-gaming }}
         run: |
           set -euo pipefail
           TAG=$(gh release list --repo "${{ github.repository }}" --limit 1 --json tagName --jq '.[0].tagName')
@@ -641,6 +643,7 @@ jobs:
             "| \`dakota\` | \`:${FSDK_MINOR}-stable\` | \`:stable\` | \`${DAKOTA_DIGEST}\` |" \
             "| \`dakota-nvidia\` | \`:${FSDK_MINOR}-stable\` | \`:stable\` | \`${NVIDIA_DIGEST}\` |" \
             "| \`dakota-gaming\` | \`:${FSDK_MINOR}-stable\` | \`:stable\` | \`${GAMING_DIGEST}\` |" \
+            "| \`dakota-nvidia-gaming\` | \`:${FSDK_MINOR}-stable\` | \`:stable\` | \`${NVIDIA_GAMING_DIGEST}\` |" \
             '' \
             '---' \
             '')
@@ -783,7 +786,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
           VERSIONED_TAG="${FSDK_MINOR}-stable"
-          for image in dakota dakota-nvidia dakota-gaming; do
+          for image in dakota dakota-nvidia dakota-gaming dakota-nvidia-gaming; do
             promoted_digest=$(skopeo inspect --no-tags \
               "docker://ghcr.io/projectbluefin/${image}:${BUILD_SHA}" | jq -r .Digest)
             for tag in "${VERSIONED_TAG}" stable; do
@@ -841,6 +844,15 @@ jobs:
         uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
         with:
           package-name: dakota-gaming
+          package-type: container
+          min-versions-to-keep: 100
+          delete-only-untagged-versions: 'true'
+        continue-on-error: true
+
+      - name: Prune untagged GHCR versions for dakota-nvidia-gaming
+        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+        with:
+          package-name: dakota-nvidia-gaming
           package-type: container
           min-versions-to-keep: 100
           delete-only-untagged-versions: 'true'

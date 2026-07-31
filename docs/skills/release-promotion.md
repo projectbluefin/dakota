@@ -24,6 +24,11 @@ testing (trunk) → build.yml → publish.yml → :testing tag
 
 `main` is a release bookmark only. It is fast-forwarded by `execute-release.yml` after each successful promotion. Do not open PRs against `main`.
 
+Stable promotion advances all four x86 variants together: `dakota`,
+`dakota-nvidia`, `dakota-gaming`, and `dakota-nvidia-gaming`. A missing or
+unverified SHA-pinned variant must fail promotion instead of leaving the stable
+variant set partially updated.
+
 Do not conflate "publish is healthy" with "stable promotion is healthy".
 
 ## When to Use
@@ -430,10 +435,12 @@ flow (issue 1073). The key differences:
 
 ### Keep stable variant lists aligned
 
-When adding an image variant to stable promotion, update the reusable release
-matrix, release-note digest collection, post-release digest verification, and
-untagged package cleanup together. The release workflow can otherwise promote
-only part of the variant set or report success without verifying the new image.
+The stable x86 set is `dakota`, `dakota-nvidia`, `dakota-gaming`, and
+`dakota-nvidia-gaming`. When adding or removing an image variant, update the
+reusable release matrix, release-note digest collection and table, post-release
+digest verification, and untagged package cleanup together. The release
+workflow can otherwise promote only part of the variant set or report success
+without verifying the new image.
 
 ## Rollback
 

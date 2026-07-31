@@ -201,14 +201,14 @@ jobs:
         id: timestamp
         run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-      # update-podman: true — newer podman from Ubuntu resolute for bst2 + push.
-      # Note: setup-runner btrfs does not expose loopback-free; watch for disk
-      # pressure and upstream the option if needed.
+      # Use the runner's Podman stack with native rootful overlay storage.
+      # FUSE-backed storage below chunkify's kernel overlay can return ESTALE.
       - name: Setup runner
         uses: projectbluefin/actions/bootc-build/setup-runner@v1
         with:
           storage-backend: btrfs
           update-podman: true
+          native-overlay: true
           install-tools: '["just"]'
 
       # Fetch-only BST config — pull artifact from remote CAS, no build/push
@@ -358,6 +358,7 @@ jobs:
         with:
           storage-backend: btrfs
           update-podman: true
+          native-overlay: true
           install-tools: '["just"]'
 
       # BST config for remote CAS — buildstream-sbom calls bst show --deps all

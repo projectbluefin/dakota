@@ -204,16 +204,23 @@ In a bootc/OSTree-based immutable OS like Dakota, `/etc` is mutable, user-owned,
 2. **Inject Bootc Kernel Arguments**: Install kargs TOML files directly under `/usr/lib/bootc/kargs.d/` (e.g. `/usr/lib/bootc/kargs.d/20-zswap.toml`). Bootc automatically reads these on switch/upgrade and applies them.
 3. **Vendor Sysctl parameters**: Store system defaults under `/usr/lib/sysctl.d/*.conf` (e.g. `60-swappiness.conf`) instead of `/etc/sysctl.conf`.
 
-### Never install a real directory at a GL/ extension path from a layer (2026-07-18)
+### Preserve FDSDK GL merge symlinks when adding vendor backends (2026-07-18; updated 2026-07-29)
 
-In the composed image, several paths under `%{libdir}/GL/` are symlinks into
-the Mesa GL extension tree (e.g. `GL/glvnd/egl_vendor.d ->
-../default/glvnd/egl_vendor.d`). A layer that installs a real directory at
-one of those paths shadows the symlink at OCI merge time and evicts the
-files behind it — installing an EGL vendor ICD to
-`%{libdir}/GL/glvnd/egl_vendor.d/` removed Mesa's `50_mesa.json` from
-GLVND's view and with it the llvmpipe fallback. Vendor ICDs belong in
-`/etc/glvnd/egl_vendor.d` (fdsdk's libglvnd searches only `/etc/glvnd` and
-the GL extension dir — never `/usr/share/glvnd`). The same shadowing hazard
-applies to any `GL/` path: check with `ls -ld` on a composed image before
-choosing an install location under `GL/`.
+In the composed image, paths under `%{libdir}/GL/` are symlinks into the Mesa
+GL extension tree. A layer that installs a real directory at one of those
+paths shadows the symlink at OCI merge time and evicts the Mesa files behind
+it.
+
+Two load-bearing examples:
+
+- `GL/glvnd/egl_vendor.d -> ../default/glvnd/egl_vendor.d`: install vendor
+  ICDs in `/etc/glvnd/egl_vendor.d`; fdsdk's libglvnd searches `/etc/glvnd`
+  and the GL extension directory, not `/usr/share/glvnd`.
+- `GL/lib/gbm -> ../default/lib/gbm`: install an NVIDIA GBM backend in
+  `GL/default/lib/gbm`, not `GL/lib/gbm`. Replacing this symlink hides Mesa's
+  `dri_gbm.so`; Intel/AMD iGPU + NVIDIA dGPU laptops then fall back to the
+  connector-less NVIDIA GPU and show a black GDM screen.
+
+Final NVIDIA OCI assembly must assert that `GL/lib/gbm` remains a symlink and
+that both `dri_gbm.so` and `nvidia-drm_gbm.so` resolve through it. Check the
+composed path with `ls -ld` before choosing any install location under `GL/`.

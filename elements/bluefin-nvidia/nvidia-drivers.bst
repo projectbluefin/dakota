@@ -175,11 +175,12 @@ config:
             ln -sf "$target" "$LIBDIR/${subdir}${name}"
             ;;
         G)
-            # Relocated to the backend dir freedesktop-sdk's Mesa
-            # compiles into libgbm; the link IS the backend (its
-            # entrypoints live in the target library).
-            install -d "$LIBDIR/GL/lib/gbm"
-            ln -sf "../../../$target" "$LIBDIR/GL/lib/gbm/$name"
+            # FDSDK exposes GL/lib/gbm as a symlink to the Mesa extension's
+            # GL/default/lib/gbm. Install into that target: creating a real
+            # GL/lib/gbm here shadows Mesa's dri_gbm.so on hybrid systems.
+            GBM_DIR="$LIBDIR/GL/default/lib/gbm"
+            install -d "$GBM_DIR"
+            ln -srf "$LIBDIR/$target" "$GBM_DIR/$name"
             ;;
         esac
     done
