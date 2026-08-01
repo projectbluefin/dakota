@@ -6,7 +6,7 @@
 |---|---|---|
 | `validate` | `pull_request` | `bst show` — graph + patch check (~15 min) |
 | `e2e` | `pull_request` when `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf` changed | Smoke test in QEMU via projectbluefin/testsuite |
-| `build` | `push: testing` (BST-affecting paths), `workflow_dispatch`, `schedule: daily 13:00 UTC` — skips on `pull_request`/`merge_group` | Four x86 variants concurrently through remote BuildBox execution; artifacts land in the remote CAS |
+| `build` | `push: testing/next` (paths-ignore: `.github/workflows/**`, `docs/**`, `**.md`, `AGENTS.md`), `merge_group`, `workflow_dispatch`, `schedule: daily 13:00 UTC` — skips on `pull_request` | Full OCI build (~60–90 min) |
 | `build-aarch64` | `push: testing/main` (BST-affecting paths only), `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch` | ARM64 — fully decoupled, never blocks release |
 
 ## Publish pipeline (publish.yml)
@@ -15,20 +15,19 @@
 
 ```
 build.yml (testing|next) → [workflow_run] → publish.yml
-                                             setup → publish-image → promote (:testing or :next)
-                                                                  └→ publish-sbom (parallel)
+                                             setup → publish-image → boot-check → promote (:testing or :next)
+                                                                  └──────────→ publish-sbom (parallel)
 ```
 
 | Job | What |
 |---|---|
 | `setup` | Resolves SHA, trigger event, and branch |
-| `publish-image` | Exports from CAS; rechunks; pushes `:$sha` and records the manifest digest from podman's digestfile; anonymous tag visibility is warning-only; signs + attests; uploads `digest-<variant>` artifact |
-| `promote` | Downloads `digest-<variant>`, `skopeo copy` by digest → `:testing`, verifies the promoted tag matches; falls back to an authenticated `:$sha` inspect if the artifact is missing |
-| `publish-sbom` | Generates SBOM; resolves the image digest from `digest-<variant>` (same fallback); attaches via oras; signs SBOM (parallel with promote) |
+| `publish-image` | Exports from CAS; runs `chunka@v1` to rechunk; pushes `:$sha`; signs + attests |
+| `boot-check` | Hard gate — image must boot before `:testing` is promoted |
+| `promote` | `skopeo copy` `:$sha` → `:testing` (only runs after boot-check passes) |
+| `publish-sbom` | Generates SBOM; attaches via oras; signs SBOM (runs in parallel with promote) |
 
-`promote` depends only on `publish-image`, not on SBOM — saves 10–15 min on the critical path.
-
-**Digest contract:** a successful push plus podman's `--digestfile` digest is the receipt; no stage re-reads GHCR to rediscover what was pushed. The digest travels via per-variant `digest-<variant>` workflow artifacts, consumed everywhere through the shared `.github/actions/resolve-image-digest` action (artifact preferred, authenticated `:sha` inspect fallback). The few remaining registry reads (stable comparison, promote post-copy verify) are authenticated and digest-based. Anonymous tag reads are advisory only — GHCR's anonymous path is eventually consistent and lagged past a 6-minute poll twice on 2026-07-28/29. Artifacts are immutable per run: re-running a single `publish-image` job that already uploaded its artifact may fail the upload; re-run the whole workflow instead.
+`promote` depends only on `publish-image` + `boot-check`, not on SBOM — saves 10–15 min on the critical path.
 
 **Critical ordering:** `publish.yml` pulls the OCI artifact from CAS. The artifact is only in CAS if `build.yml` ran first for that SHA. Always dispatch `build.yml --ref testing` (or let push trigger it) before manually dispatching `publish.yml`.
 
@@ -38,13 +37,12 @@ build.yml (testing|next) → [workflow_run] → publish.yml
 
 ```
 push to testing (BST-affecting) or daily 13:00 UTC schedule
-  → build.yml → publish.yml → :testing
+  → build.yml → publish.yml → boot-check → :testing
   → execute-release.yml (workflow_run from publish on testing)
-       → freshness check: digest from the publish run's digest-default artifact
-         (authenticated :$sha inspect as fallback) vs :stable digest
+       → SHA freshness check (:testing SHA vs :stable SHA)
            → skip if equal (already up to date)
-           → cosign verify
-           → skopeo copy :$sha → :stable (reusable workflow)
+           → cosign verify :testing
+           → skopeo copy :testing → :stable
            → fast-forward main bookmark
            → GitHub Release created
 ```
@@ -53,7 +51,7 @@ push to testing (BST-affecting) or daily 13:00 UTC schedule
 
 ## Schedule
 
-Build fires daily at 13:00 UTC, on BST-affecting pushes to `testing`, and through `workflow_dispatch`. The nightly-next dispatcher invokes the same workflow explicitly on `next`; PR and merge-queue events do not run it.
+Build fires daily at 13:00 UTC (`schedule:` in `build.yml`), plus on every BST-affecting push to `testing` or `next`, `merge_group`, and `workflow_dispatch`.
 
 ## Remote execution and cache
 

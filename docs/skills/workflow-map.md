@@ -83,12 +83,11 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 
 | Workflow | Owns | Normal trigger |
 |---|---|---|
-| `.github/workflows/build.yml` | BST build into remote CAS | `push: testing` (BST + CI-build-path files), `workflow_dispatch`, `schedule: daily 13:00 UTC`. `validate` lives in `validate.yml`; this workflow does not run on `pull_request` or `merge_group`. |
+| `.github/workflows/build.yml` | BST build into remote CAS | `push: testing/next` (paths-ignore: docs, workflows, md, `files/scripts/**`), `merge_group`, `workflow_dispatch`, `schedule: daily 13:00 UTC`. `validate` job runs on `pull_request` only; `build` job skips `pull_request`. |
 | `.github/workflows/build-aarch64.yml` | aarch64 OCI build + GHCR push | `push: testing/main` (BST-affecting paths), `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch`. Fully decoupled — never in `needs:` of publish/promote/release. |
 | `.github/workflows/publish.yml` | export, sign, boot-check, promote tags | `workflow_run` from build |
 | `.github/workflows/publish-smoke.yml` | observational smoke only | `workflow_run` from publish |
 | `.github/workflows/e2e.yml` | PR-facing testsuite check | `pull_request` |
-| `.github/workflows/lab-check.yml` | MergeRaptor-owned `testing-lab / dakota` Check Run for the Kubernetes lab | `repository_dispatch: lab-check` |
 | `.github/workflows/execute-release.yml` | SHA freshness check → cosign verify → stable release | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch`. Skips if `:testing` digest equals `:stable` digest. |
 | `.github/workflows/sync-next-from-main.yml` | merge main into next (preserve junction refs) | `push: main`, `workflow_dispatch` |
 | ~~`promote-testing-to-main.yml`~~ | DELETED | Was: `push: testing`, schedule, manual |

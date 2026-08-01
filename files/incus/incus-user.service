@@ -1,0 +1,15 @@
+[Unit]
+Description=Incus - user UI daemon
+Documentation=https://linuxcontainers.org/incus/docs/main/
+After=incus.socket
+
+[Service]
+ExecStart=/usr/bin/incus-user
+KillMode=process
+TimeoutStartSec=600s
+TimeoutStopSec=30s
+Restart=on-failure
+
+[Install]
+Also=incus-user.socket
+WantedBy=multi-user.target

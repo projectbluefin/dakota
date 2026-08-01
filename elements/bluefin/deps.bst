@@ -22,6 +22,7 @@ depends:
   - bluefin/umotd.bst
 
   - bluefin/common.bst
+  - bluefin/user-avatars.bst
   - bluefin/just-overrides.bst
   - bluefin/zswap-config.bst
   - bluefin/firstboot-date.bst
@@ -76,3 +77,8 @@ depends:
   - bluefin/migrate-var-home-passwd.bst
 
   - gnome-build-meta.bst:gnomeos-deps/snapd.bst
+
+  # Incus — system container & VM manager. Pulls in its from-source native
+  # stack (cowsql/raft/libuv, liblxc, lxcfs) via runtime-depends; the QEMU /
+  # dnsmasq / nftables / storage tooling it needs already lives in the junctions.
+  - bluefin/incus.bst

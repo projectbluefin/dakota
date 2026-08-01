@@ -97,3 +97,4 @@ The `build-aarch64` job was originally in `build.yml` with `if: false` (disabled
 ### Publish skips after docs-only commits (2026-06-22)
 
 When all recent commits on `testing` are paths-ignored (docs/AGENTS.md only), no automatic build fires and `:testing` goes stale. Recovery: manual `workflow_dispatch` on `build.yml` targeting `testing`. After the build, `publish.yml` fires automatically, which then triggers `build-aarch64.yml`.
+

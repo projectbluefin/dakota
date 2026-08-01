@@ -1,0 +1,12 @@
+[Unit]
+Description=Incus - control socket
+Documentation=https://linuxcontainers.org/incus/docs/main/
+
+[Socket]
+ListenStream=/run/incus/unix.socket
+SocketMode=0660
+SocketGroup=incus-admin
+Service=incus.service
+
+[Install]
+WantedBy=sockets.target
