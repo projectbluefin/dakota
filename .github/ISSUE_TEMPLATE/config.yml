@@ -1,14 +1,11 @@
 blank_issues_enabled: true
 contact_links:
-  - name: "Dakota Flow — work queue"
-    url: https://github.com/orgs/projectbluefin/projects/4
-    about: "Left-to-right board showing every issue from New to Shipped. Find something to work on."
-  - name: "Dakota Development — full table"
-    url: https://github.com/orgs/projectbluefin/projects/3
-    about: "Detailed table with priority, size, area, and epic fields."
-  - name: "Contribution guide"
-    url: https://github.com/projectbluefin/dakota/blob/main/AGENTS.md
-    about: "Build, validation, and workflow rules — read before opening a PR."
-  - name: "Feedback loop"
-    url: https://github.com/projectbluefin/dakota/blob/main/docs/feedback-loop.md
-    about: "How users, contributors, and the ghost lab close the loop together."
+  - name: "Questions and troubleshooting"
+    url: https://github.com/ublue-os/bluefin/discussions
+    about: "Not sure it is a bug? Ask here first — most questions are answered faster than issues."
+  - name: "todo.projectbluefin.io — the work board"
+    url: https://github.com/orgs/projectbluefin/projects/2
+    about: "Every open issue, left to right, from triage to shipped. Find something to work on."
+  - name: "Contributing guide"
+    url: https://docs.projectbluefin.io/contributing
+    about: "How the project is built and how to get a change merged."
