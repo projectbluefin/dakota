@@ -35,6 +35,7 @@ If your first draft says "use dnf", "edit the Containerfile", or "enable a COPR"
 | Clear stuck queue or conflicting chore PRs | `docs/skills/merge-queue.md` |
 | Work on issues, triage, or Actionadon | `docs/skills/actionadon.md` |
 | Understand what Dakota is | `docs/skills/overview.md` |
+| Touch host Homebrew integration or debug a broken brew prefix | `docs/skills/host-homebrew.md` |
 | Write ujust recipes | `.github/skills/ujust-recipes.md` |
 | Work on the installer | `docs/skills/installer.md` |
 | Review a pull request | `docs/workflow.md` + `docs/pr-checklist.md` + `docs/skills/pr-review.md` |
