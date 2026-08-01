@@ -1,0 +1,73 @@
+name: "Report something"
+description: "Bugs, requests, hardware results, and package pins all start here."
+labels: ["1-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## The fastest way to file is from the machine itself
+
+        ```bash
+        ujust report
+        ```
+
+        It collects your image, kernel, hardware, and failed units, then files
+        the issue for you. Use this form only if you cannot run that command.
+
+  - type: markdown
+    attributes:
+      value: |
+        ## What happens after you submit
+
+        This repository runs on a small, fixed set of labels. Automation moves
+        them; you never need to set one yourself.
+
+        | Label | What it means |
+        |---|---|
+        | `1-triage` | Filed. A human is reading it. |
+        | `2-discussing` | Needs a decision or a clearer spec before anyone builds it. |
+        | `3-human-queue` | Accepted, queued for a person. |
+        | `3-clanker-queue` | Accepted, queued for an automated agent. |
+        | `4-review` | A pull request exists and is being reviewed. |
+        | `blocked` / `hold` | Waiting on something, or paused on purpose. |
+
+        Your issue closes when a pull request saying `Closes #NNN` merges.
+        There are no slash commands and nothing for you to claim.
+
+        The clearer the finish line you describe, the sooner it can be picked
+        up. Vague reports sit in triage.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: "What happened, or what do you want?"
+      description: "Be specific. For a bug, say what you saw and what you expected."
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: "Reproduction or evidence"
+      description: |
+        Exact steps, logs, or a `ujust report` gist URL.
+        Hardware results: name the device and the exact image digest or tag.
+        Pin requests: link the Bodhi update for the last known-good version.
+    validations:
+      required: true
+
+  - type: input
+    id: image
+    attributes:
+      label: "Image and version"
+      description: "Output of `bootc status -v` or the tag you booted. Skip if not applicable."
+      placeholder: "ghcr.io/projectbluefin/bluefin:stable"
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: "Extra context"
+    validations:
+      required: false
