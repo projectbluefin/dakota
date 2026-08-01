@@ -25,6 +25,12 @@ depends:
 public:
   bst:
     integration-commands:
+      # Overwrite the zram-generator config from gnomeos-deps/zram-generator.bst.
+      # An element-level override loses the staging-order overlap (see
+      # docs/skills/buildstream.md); integration commands run after all staging,
+      # so this is the deterministic winner. No [zramN] section = no zram device.
+      - printf '# zram disabled; Dakota swaps via zswap + /var/swap/swapfile\n' > /usr/lib/systemd/zram-generator.conf
+
       - rm -rfv /boot /run
 
       # Required for bootc to create the image

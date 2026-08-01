@@ -186,10 +186,10 @@ Running `ldconfig` after `build-oci` has no effect. Running `build-oci` before `
 
 When a remote CAS/object cache reuses the wrong content for a layer digest/size tuple, the safest fix is to change the layer contents in a targeted way instead of only changing workflow timeouts or element keys. A small manual element that installs a versioned marker file into the compose layer keeps the fix in the layer boundary and avoids turning the final OCI script into a broad rebuild path.
 
-### Stateless bootc configurations must reside in /usr (like /usr/lib/systemd/ and /usr/lib/bootc/kargs.d/) rather than /etc (2026-07-01)
+### Stateless bootc configurations must reside in /usr (like /usr/lib/systemd/ and /usr/lib/bootc/kargs.d/) rather than /etc (2026-07-01; corrected 2026-07-31)
 
 In a bootc/OSTree-based immutable OS like Dakota, `/etc` is mutable, user-owned, and must remain completely stateless. Baking default system configs into `/etc` at build time is an anti-pattern. Instead:
-1. **Disable ZRAM**: Override `zram-generator` by copying an empty `zram-generator.conf` to `/usr/lib/systemd/zram-generator.conf` (via `just-overrides.bst`) and whitelist it. Since this is in `/usr/lib`, it cleanly preempts the generator from creating devices without cluttering `/etc`.
+1. **Disable ZRAM**: Overwrite `/usr/lib/systemd/zram-generator.conf` with a no-device config from an *integration command* in `oci/layers/bluefin-stack.bst`. The original approach — installing an empty conf from `just-overrides.bst` with an overlap-whitelist — shipped with zram still enabled: the whitelist only permits the overlap, and staging order let the junction's `gnomeos-deps/zram-generator.bst` copy win (#1131 regression). Integration commands run after all staging, so they are the deterministic override point for junction-owned `/usr` files. The `/usr`-not-`/etc` guidance itself still stands.
 2. **Inject Bootc Kernel Arguments**: Install kargs TOML files directly under `/usr/lib/bootc/kargs.d/` (e.g. `/usr/lib/bootc/kargs.d/20-zswap.toml`). Bootc automatically reads these on switch/upgrade and applies them.
 3. **Vendor Sysctl parameters**: Store system defaults under `/usr/lib/sysctl.d/*.conf` (e.g. `60-swappiness.conf`) instead of `/etc/sysctl.conf`.
 

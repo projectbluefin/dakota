@@ -1,0 +1,12 @@
+# Activated via a static swap.target.wants symlink, not a preset: system
+# presets are only applied on first boot (empty machine-id), so a preset would
+# never enable this on already-installed machines.
+[Unit]
+Description=Swapfile (zswap backing store)
+Requires=bluefin-swapfile-init.service
+After=bluefin-swapfile-init.service
+# If init skipped creation (disk too small), skip activation cleanly.
+ConditionPathExists=/var/swap/swapfile
+
+[Swap]
+What=/var/swap/swapfile

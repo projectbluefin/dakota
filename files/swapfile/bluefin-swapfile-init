@@ -1,0 +1,55 @@
+#!/bin/sh
+# Create the disk-backed swapfile that zswap fronts (see bluefin/zswap-config.bst).
+# Idempotent: exits successfully if the swapfile already exists or the disk is
+# too small; removes a partially written file so the next boot retries.
+set -eu
+
+SWAPDIR=/var/swap
+SWAPFILE="${SWAPDIR}/swapfile"
+
+[ -e "${SWAPFILE}" ] && exit 0
+
+# min(MemTotal / 2, 8192) MiB
+mem_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+size_mib=$((mem_kib / 2048))
+[ "${size_mib}" -gt 8192 ] && size_mib=8192
+
+mkdir -p -m 0700 "${SWAPDIR}"
+
+# Skip (not fail) when /var can't hold the swapfile plus a 1 GiB margin.
+# stat, not df: uutils df (shipped via uutils-coreutils.bst) rejects
+# -P combined with --output, and stat -f avoids parsing tabular output.
+# Ordered before the fstype check so `just swap-audit` exercises this
+# arithmetic when it runs the script inside the (overlayfs) image.
+free_mib=$(( $(stat -f -c '%a' "${SWAPDIR}") * $(stat -f -c '%S' "${SWAPDIR}") / 1048576 ))
+if [ "${free_mib}" -lt $((size_mib + 1024)) ]; then
+    echo "bluefin-swapfile-init: ${free_mib} MiB free on /var, need $((size_mib + 1024)) MiB; skipping swapfile creation"
+    exit 0
+fi
+
+# Skip on filesystems that can't back a swapfile (e.g. the virtiofs root of
+# bcvk/testsuite ephemeral VMs, where swapon would fail the .swap unit).
+fstype=$(stat -f -c %T "${SWAPDIR}")
+case "${fstype}" in
+    xfs|btrfs|ext2/ext3) ;;
+    *)
+        echo "bluefin-swapfile-init: ${fstype} does not support swapfiles; skipping"
+        exit 0
+        ;;
+esac
+
+cleanup() { rm -f "${SWAPFILE}"; }
+trap cleanup EXIT
+
+touch "${SWAPFILE}"
+chmod 0600 "${SWAPFILE}"
+# btrfs requires NOCOW for swapfiles; must be set while the file is empty.
+# Fails harmlessly on xfs.
+chattr +C "${SWAPFILE}" 2>/dev/null || true
+# dd, not fallocate: xfs and btrfs reject preallocated (unwritten) extents
+# at swapon time ("swapfile has holes").
+dd if=/dev/zero of="${SWAPFILE}" bs=1M count="${size_mib}" conv=fsync status=none
+mkswap "${SWAPFILE}"
+
+trap - EXIT
+echo "bluefin-swapfile-init: created ${size_mib} MiB swapfile at ${SWAPFILE}"

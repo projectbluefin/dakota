@@ -6,6 +6,11 @@ description: |
   The vm.swappiness=100 sysctl instructs the kernel to treat anonymous and file-backed
   memory with parity, routing swap I/O through high-speed zswap cache.
 
+  No zswap.zpool karg: kernel 7.x removed the parameter (zsmalloc is the only
+  backend). The backing swap device zswap fronts is provided by
+  bluefin/swapfile.bst; zram is disabled via an integration command in
+  oci/layers/bluefin-stack.bst.
+
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 
@@ -20,7 +25,6 @@ config:
     kargs = [
         "zswap.enabled=1",
         "zswap.compressor=zstd",
-        "zswap.zpool=zsmalloc",
         "zswap.max_pool_percent=20",
         "zswap.shrinker_enabled=1",
     ]

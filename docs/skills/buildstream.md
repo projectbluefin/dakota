@@ -173,3 +173,13 @@ public:
 ```
 
 *Note: Replacing base system files destroys the base mappings. Whenever possible, prefer injecting changes dynamically via a hook (e.g., in `common.bst`) rather than completely replacing junction files.*
+
+**A whitelist is not precedence.** `overlap-whitelist` only silences the overlap
+error — the file that survives is decided by staging order, and a dakota element
+can lose to a junction element. This shipped as a real regression: the empty
+`zram-generator.conf` from `just-overrides.bst` was whitelisted but lost to
+`gnomeos-deps/zram-generator.bst`, so images ran zram *and* zswap together
+(#1131). To deterministically replace a junction-owned file, overwrite it in an
+`integration-commands` block (e.g. `oci/layers/bluefin-stack.bst`), which runs
+after all elements are staged — and add a CI assertion on the composed image
+(`just swap-audit`) so a silent flip cannot ship again.

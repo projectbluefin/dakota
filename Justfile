@@ -1006,6 +1006,7 @@ boot-test: _ensure-bcvk
         "graphical.target:systemctl is-active graphical.target"
         "gdm:systemctl is-active gdm"
         "bootc:bootc status"
+        "no-zram:test ! -e /sys/block/zram0"
     )
 
     PASS=0
@@ -1200,3 +1201,60 @@ lint:
     $SUDO_CMD podman run --rm --privileged --pull=never \
         "{{image_name}}:{{image_tag}}" \
         bootc container lint
+
+# ── Swap audit ───────────────────────────────────────────────────────
+# Assert the image's swap architecture: zram disabled, zswap kargs present,
+# swapfile units wired. Guards against the #1131 overlap regression where the
+# upstream zram-generator config silently won over the intended override.
+[group('test')]
+swap-audit:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Use sudo unless already root
+    SUDO_CMD=""
+    if [ "$(id -u)" -ne 0 ]; then
+        SUDO_CMD="sudo"
+    fi
+
+    echo "==> Auditing swap/zram configuration in {{image_name}}:{{image_tag}}..."
+    $SUDO_CMD podman run --rm --pull=never \
+        "{{image_name}}:{{image_tag}}" \
+        bash -c '
+        set -uo pipefail
+        STATUS=0
+        fail() { echo "FAIL: $1" >&2; STATUS=1; }
+
+        if grep -q "^\[zram" /usr/lib/systemd/zram-generator.conf 2>/dev/null; then
+            fail "/usr/lib/systemd/zram-generator.conf still defines a zram device"
+        fi
+        if compgen -G "/etc/systemd/zram-generator.conf*" > /dev/null; then
+            fail "unexpected zram-generator config under /etc"
+        fi
+
+        KARGS=/usr/lib/bootc/kargs.d/20-zswap.toml
+        if [ ! -f "$KARGS" ]; then
+            fail "$KARGS missing"
+        else
+            grep -q "zswap.enabled=1" "$KARGS" || fail "zswap.enabled=1 karg missing"
+            # kernel 7.x removed the zswap.zpool parameter
+            grep -q "zpool" "$KARGS" && fail "dead zswap.zpool karg present"
+        fi
+
+        [ -f /usr/lib/systemd/system/var-swap-swapfile.swap ] \
+            || fail "var-swap-swapfile.swap unit missing"
+        [ -L /usr/lib/systemd/system/swap.target.wants/var-swap-swapfile.swap ] \
+            || fail "swap.target.wants/var-swap-swapfile.swap symlink missing"
+        [ -x /usr/libexec/bluefin-swapfile-init ] \
+            || fail "/usr/libexec/bluefin-swapfile-init missing or not executable"
+
+        # Actually run it. The container overlayfs cannot back a swapfile so it
+        # exits early, but only after sizing and the free-space arithmetic --
+        # which is where a broken coreutils invocation would surface. Presence
+        # checks alone shipped exactly such a bug once.
+        /usr/libexec/bluefin-swapfile-init \
+            || fail "bluefin-swapfile-init exited non-zero"
+
+        [ "$STATUS" -eq 0 ] && echo "PASS: swap/zram configuration OK"
+        exit "$STATUS"
+        '

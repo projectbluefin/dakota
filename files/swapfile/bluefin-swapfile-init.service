@@ -1,0 +1,18 @@
+# DefaultDependencies=no: with default deps this unit gains After=sysinit.target,
+# while swap.target (via var-swap-swapfile.swap -> this unit) must complete
+# before sysinit.target — an ordering cycle systemd would break by dropping the
+# swap unit.
+[Unit]
+Description=Create swapfile backing store for zswap
+DefaultDependencies=no
+RequiresMountsFor=/var/swap
+After=systemd-remount-fs.service
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Writing up to 8 GiB with dd can exceed the default 90s on slow media.
+TimeoutStartSec=15min
+ExecStart=/usr/libexec/bluefin-swapfile-init
