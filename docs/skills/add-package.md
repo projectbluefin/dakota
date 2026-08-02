@@ -123,6 +123,25 @@ install-commands:
 
 ## Lessons Learned
 
+### CMake 4 rejects pre-3.5 policy versions; set a package-local floor (2026-08-02)
+
+CMake 4 removed compatibility with policy versions older than 3.5, so pinned
+releases whose `CMakeLists.txt` declares `cmake_minimum_required(VERSION 3.4)`
+fail before configuration. If upstream has fixed the declaration but has not
+published a newer release, use CMake's packager-facing compatibility variable
+through the BuildStream CMake plugin's per-element `cmake-local` variable:
+
+```yaml
+variables:
+  cmake-local: >-
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+```
+
+Keep the override package-local; do not lower policy behavior globally. Prefer a
+newer fixed upstream release when one exists, and remove the override after the
+source bump. This follows the CMake 4.0 release notes' **Deprecated and Removed
+Features** section and the official `CMAKE_POLICY_VERSION_MINIMUM` documentation.
+
 ### `strip-binaries: ""` is required for all non-ELF staging directories (2026-06-07)
 
 BST's default behavior calls `strip` on every binary in the staging area. If an element installs any file that is not a valid ELF binary (fonts, config files, shell scripts, pre-built tarballs, .so stubs), the build fails at the strip step with an obscure error. Always set `strip-binaries: ""` in the element's `variables:` block for:

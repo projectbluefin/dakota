@@ -18,6 +18,7 @@ depends:
 
 variables:
   cmake-local: >-
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     -DCMAKE_INSTALL_MANDIR=%{mandir}
 
 config:
