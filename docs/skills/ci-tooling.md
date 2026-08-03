@@ -377,6 +377,15 @@ If a reusable automerge workflow matches PRs by `head_sha`, it must listen to th
 
 **Symptom:** open dependency PRs stay mergeable and green but never get `autoMergeRequest` set.
 
+## Lessons Learned
+
+### Python script tests must stay wired to a Just recipe (2026-08-03)
+
+Dakota script safeguards only protect CI when tests run through the same command
+developers and CI invoke. When adding a new `scripts/test_*.py` module, wire it
+into `just check-publish-workflow` immediately. Unwired tests are dead code
+during review and CI.
+
 ## Red Flags
 
 - `permissions: {}` on a reusable workflow caller
