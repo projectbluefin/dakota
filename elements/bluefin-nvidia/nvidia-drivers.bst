@@ -40,12 +40,12 @@ depends:
 
 sources:
 - kind: remote
-  url: nvidia:XFree86/Linux-x86_64/610.43.02/NVIDIA-Linux-x86_64-610.43.02.run
-  ref: 3034a054bb4cdf7752ff8dc272564cb105513804bff53538945901b16ca77463
-  filename: NVIDIA-Linux-x86_64-610.43.02.run
+  url: nvidia:XFree86/Linux-x86_64/610.57.04/NVIDIA-Linux-x86_64-610.57.04.run
+  ref: b2e935c66b83bb00c0c857bc8e0ee0fd52de9286b40c9cc1eec29a7ce7eb116d
+  filename: NVIDIA-Linux-x86_64-610.57.04.run
 
 variables:
-  nvidia-version: '610.43.02'
+  nvidia-version: '610.57.04'
   strip-binaries: ''
 
 config:
@@ -257,6 +257,51 @@ config:
         fi
     done
 
+    # Per-application quirk database. libnvidia-glcore has the path
+    # compiled in version-stamped, so it cannot be relocated.
+    awk '$3 == "APPLICATION_PROFILE" { print $1 }' .manifest | \
+    while read -r f; do
+        if [ ! -f "$f" ]; then
+            echo "ERROR: .manifest lists $f but it is not in the payload" >&2
+            exit 1
+        fi
+        install -Dm644 "$f" "%{install-root}%{datadir}/nvidia/$f"
+    done
+    # Vacuous if the manifest stops declaring these rows, and the loss
+    # would be silent.
+    if [ ! -f "%{install-root}%{datadir}/nvidia/nvidia-application-profiles-%{nvidia-version}-rc" ]; then
+        echo "ERROR: application profiles were not installed" >&2
+        exit 1
+    fi
+
+    # OptiX data blob; libnvoptix.so (OPENGL_LIB, above) fails at init
+    # without it.
+    if [ ! -f nvoptix.bin ]; then
+        echo "ERROR: nvoptix.bin missing from driver payload" >&2
+        exit 1
+    fi
+    install -Dm644 nvoptix.bin "%{install-root}%{datadir}/nvidia/nvoptix.bin"
+
+    # DLSS/frame-gen under Proton: the PE halves dxvk-nvapi loads, to
+    # nvidia-installer's default <opengl-libdir>/nvidia/wine. The ELF
+    # half (libnvidia-ngx.so) comes from TYPE selection above.
+    WINEDIR="$LIBDIR/nvidia/wine"
+    install -d "$WINEDIR"
+    awk '$3 == "WINE_LIB" && $4 == "NATIVE" { print $1 }' .manifest | \
+    while read -r f; do
+        if [ ! -f "$f" ]; then
+            echo "ERROR: .manifest lists $f but it is not in the payload" >&2
+            exit 1
+        fi
+        install -Dm755 "$f" "$WINEDIR/$f"
+    done
+    for f in nvngx.dll _nvngx.dll; do
+        if [ ! -f "$WINEDIR/$f" ]; then
+            echo "ERROR: expected NGX Wine library $f was not installed" >&2
+            exit 1
+        fi
+    done
+
     # GSP firmware: Turing+ offloads work to a chip-internal RISC-V
     # core; nvidia.ko loads the firmware at probe time.
     if [ -d firmware ]; then
@@ -313,6 +358,26 @@ config:
         install -Dm644 "$d/nvidia-suspend-nofreeze.conf" \
             "$SYSTEMD_DIR/system/$(basename "$d")/nvidia-suspend-nofreeze.conf"
     done
+
+    # nvidia-powerd (Dynamic Boost) is inert without all three: unit,
+    # D-Bus policy to own nvidia.powerd.server, and its data table.
+    # nvidia-dbus.conf is typed DOCUMENTATION, so TYPE selection above
+    # can never pick it up. Absent from the preset below but still
+    # enabled: no catch-all preset rule exists, so systemd's default
+    # policy enables anything with [Install]. That's fine - it exits 0
+    # on hardware without Dynamic Boost, so nothing lands in failed.
+    for f in systemd/system/nvidia-powerd.service nvidia-dbus.conf dlsnetparams.csv; do
+        if [ ! -f "$f" ]; then
+            echo "ERROR: $f missing from driver payload" >&2
+            exit 1
+        fi
+    done
+    install -Dm644 systemd/system/nvidia-powerd.service \
+        "$SYSTEMD_DIR/system/nvidia-powerd.service"
+    install -Dm644 nvidia-dbus.conf \
+        "%{install-root}%{datadir}/dbus-1/system.d/nvidia-dbus.conf"
+    install -Dm644 dlsnetparams.csv \
+        "%{install-root}%{datadir}/nvidia/nvidia-powerd/dlsnetparams.csv"
 
     # NVIDIA's SLA permits redistribution of the userspace libs only if
     # the EULA travels with them.
