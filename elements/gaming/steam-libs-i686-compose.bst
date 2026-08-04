@@ -50,6 +50,12 @@ build-depends:
 - freedesktop-sdk.bst:cross-compilers/freedesktop-sdk-i686.bst:components/libva.bst
 - freedesktop-sdk.bst:cross-compilers/freedesktop-sdk-i686.bst:components/libvdpau.bst
 - freedesktop-sdk.bst:cross-compilers/freedesktop-sdk-i686.bst:extensions/mesa/mesa.bst
+# 32-bit Vulkan loader so 32-bit Vulkan clients (and Mesa's zink GL driver)
+# can reach the 32-bit ICDs: Mesa's radv/anv below, NVIDIA's from
+# bluefin-nvidia/nvidia-drivers.bst COMPAT32 rows. The loader's
+# EXTRASYSCONFDIR is libdir-scoped, so the i686 build searches
+# /usr/lib/i386-linux-gnu/GL/vulkan/icd.d on its own.
+- freedesktop-sdk.bst:cross-compilers/freedesktop-sdk-i686.bst:components/vulkan-icd-loader.bst
 - freedesktop-sdk.bst:cross-compilers/freedesktop-sdk-i686.bst:components/xorg-lib-ice.bst
 - freedesktop-sdk.bst:cross-compilers/freedesktop-sdk-i686.bst:components/xorg-lib-sm.bst
 - gaming/steam-libs-i686-compat.bst
@@ -88,7 +94,10 @@ public:
       - "/usr/lib/i386-linux-gnu/*.so*"
       - "/usr/lib/i386-linux-gnu/pulseaudio/*.so*"
 
-      # Mesa GL provider and the minimal software/virtio DRI stack needed for GLX.
+      # Mesa GL provider and the complete DRI driver stack. The hardware
+      # drivers (radeonsi, iris, nouveau, ...) must ship too: exporting only
+      # the software/virtio subset left 32-bit GL games (e.g. Half-Life) on
+      # llvmpipe when running on metal, while VMs looked fine via virtio_gpu.
       - "/usr/lib/i386-linux-gnu/GL/default/lib/libGLX_mesa.so*"
       - "/usr/lib/i386-linux-gnu/GL/default/lib/libEGL_mesa.so*"
       - "/usr/lib/i386-linux-gnu/GL/default/lib/libEGL_indirect.so*"
@@ -97,12 +106,20 @@ public:
       - "/usr/lib/i386-linux-gnu/GL/default/lib/libgbm.so*"
       - "/usr/lib/i386-linux-gnu/GL/default/lib/libLLVM.so*"
       - "/usr/lib/i386-linux-gnu/GL/default/lib/libdrm*.so*"
-      - "/usr/lib/i386-linux-gnu/GL/default/lib/dri/libdril_dri.so"
-      - "/usr/lib/i386-linux-gnu/GL/default/lib/dri/virtio_gpu_dri.so"
-      - "/usr/lib/i386-linux-gnu/GL/default/lib/dri/kms_swrast_dri.so"
-      - "/usr/lib/i386-linux-gnu/GL/default/lib/dri/swrast_dri.so"
-      - "/usr/lib/i386-linux-gnu/GL/default/lib/dri/zink_dri.so"
+      - "/usr/lib/i386-linux-gnu/GL/default/lib/dri/*.so"
       - "/usr/lib/i386-linux-gnu/GL/default/share/glvnd/**"
+
+      # 32-bit Vulkan: Mesa ICDs (radv/anv/lvp) and their manifests. The ICD
+      # JSONs live under GL/default/lib/vulkan/icd.d; GL/default/vulkan holds
+      # the fdsdk-layout symlinks into lib/ and share/. GL/vulkan itself is
+      # created by gaming/steam-libs-i686-compat.bst — the i686 loader's
+      # EXTRASYSCONFDIR expects %{libdir}/GL/vulkan/icd.d, and unlike x86_64
+      # no extension glue provides that link for the i386 tree.
+      - "/usr/lib/i386-linux-gnu/GL/default/lib/libvulkan_*.so*"
+      - "/usr/lib/i386-linux-gnu/GL/default/lib/vulkan/**"
+      - "/usr/lib/i386-linux-gnu/GL/default/vulkan/**"
+      - "/usr/lib/i386-linux-gnu/GL/default/share/vulkan/**"
+      - "/usr/lib/i386-linux-gnu/GL/vulkan"
 
       # GLVND/GLX/EGL runtime
       - "/usr/lib/i386-linux-gnu/libEGL.so*"

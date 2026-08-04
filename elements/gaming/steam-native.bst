@@ -107,7 +107,7 @@ config:
     # This keeps libraries such as libxcb.so.1 and libxcb-shm.so.0 ABI-compatible.
     export LD_LIBRARY_PATH="/usr/lib/i386-linux-gnu/GL/default/lib:/usr/lib/i386-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-    exec "$LAUNCHSTEAMDIR/$STEAMBOOTSTRAP" ${log_opened+-srt-logger-opened} -cef-disable-gpu "$@"
+    exec "$LAUNCHSTEAMDIR/$STEAMBOOTSTRAP" ${log_opened+-srt-logger-opened} "$@"
     '''
     if old not in text:
         raise SystemExit('failed to locate Steam bootstrap exec block')

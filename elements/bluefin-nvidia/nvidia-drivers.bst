@@ -116,74 +116,91 @@ config:
     set -euo pipefail
     cd extracted
     LIBDIR="%{install-root}%{libdir}"
-    install -d "$LIBDIR" "$LIBDIR/vdpau"
+    LIBDIR32="%{install-root}/usr/lib/i386-linux-gnu"
+    install -d "$LIBDIR" "$LIBDIR/vdpau" "$LIBDIR32" "$LIBDIR32/vdpau"
 
     # Libraries and their symlinks come from the .run's .manifest (the
-    # same metadata nvidia-installer uses), selected by TYPE so new
-    # libraries flow in on driver bumps. Not selected: GLVND/GLX/EGL
-    # client libs (system libglvnd comes from freedesktop-sdk),
-    # OPENCL_WRAPPER (ocl-icd owns libOpenCL), Wine/Xorg-module/
-    # installer internals, and all COMPAT32 rows (no 32-bit multilib).
+    # same metadata nvidia-installer uses), selected by TYPE and ARCH so
+    # new libraries flow in on driver bumps. NATIVE rows install to
+    # %{libdir}; COMPAT32 rows (payload files under 32/) install to
+    # /usr/lib/i386-linux-gnu so 32-bit GL/Vulkan games get hardware
+    # rendering — gaming/steam-libs-i686.bst ships the 32-bit GLVND and
+    # Vulkan loader that dispatch to them. Not selected: GLVND/GLX/EGL
+    # client libs (system libglvnd comes from freedesktop-sdk natively,
+    # gaming/steam-libs-i686.bst for 32-bit), OPENCL_WRAPPER (ocl-icd
+    # owns libOpenCL), Wine/Xorg-module/installer internals, and the
+    # COMPAT32 GBM backend symlink (compositors are 64-bit; nothing
+    # loads a 32-bit GBM backend).
     # Row shape: <name> <mode> <TYPE> <ARCH> [subdir/] [target] MODULE:<tag>
     # awk normalizes rows to fixed columns and flags anything it cannot
     # classify, so a changed manifest format fails the build loudly.
     # SONAME links the manifest does not declare are created by ldconfig
     # at compose integration time.
-    awk '
-        BEGIN {
-            n = split("OPENGL_LIB CUDA_LIB NVCUVID_LIB ENCODEAPI_LIB" \
-                      " UTILITY_LIB TLS_LIB OPENCL_LIB VDPAU_LIB", a, " ")
-            for (i = 1; i <= n; i++) isfile[a[i]] = 1
-            n = split("OPENGL_SYMLINK CUDA_SYMLINK NVCUVID_LIB_SYMLINK" \
-                      " ENCODEAPI_LIB_SYMLINK UTILITY_LIB_SYMLINK" \
-                      " OPENCL_LIB_SYMLINK VDPAU_SYMLINK" \
-                      " GBM_BACKEND_LIB_SYMLINK", b, " ")
-            for (i = 1; i <= n; i++) islink[b[i]] = 1
-        }
-        NF >= 4 && $2 ~ /^[0-9]+$/ && $4 == "NATIVE" && ($3 in isfile || $3 in islink) {
-            subdir = "-"; target = "-"; bad = 0
-            for (i = 5; i <= NF; i++) {
-                if ($i ~ /^MODULE:/ || $i == "/") continue
-                else if ($i ~ /\/$/) subdir = $i
-                else if (target == "-") target = $i
-                else bad = 1
+    install_manifest_arch() {
+        arch="$1"
+        destdir="$2"
+        awk -v arch="$arch" '
+            BEGIN {
+                n = split("OPENGL_LIB CUDA_LIB NVCUVID_LIB ENCODEAPI_LIB" \
+                          " UTILITY_LIB TLS_LIB OPENCL_LIB VDPAU_LIB", a, " ")
+                for (i = 1; i <= n; i++) isfile[a[i]] = 1
+                n = split("OPENGL_SYMLINK CUDA_SYMLINK NVCUVID_LIB_SYMLINK" \
+                          " ENCODEAPI_LIB_SYMLINK UTILITY_LIB_SYMLINK" \
+                          " OPENCL_LIB_SYMLINK VDPAU_SYMLINK" \
+                          " GBM_BACKEND_LIB_SYMLINK", b, " ")
+                for (i = 1; i <= n; i++) islink[b[i]] = 1
             }
-            if (bad || ($3 in islink && target == "-") ||
-                ($3 == "GBM_BACKEND_LIB_SYMLINK" && target ~ /\//)) {
-                print "E", $0
-                next
-            }
-            kind = ($3 in isfile) ? "F" : ($3 == "GBM_BACKEND_LIB_SYMLINK" ? "G" : "L")
-            print kind, $1, subdir, target
-        }' .manifest | \
-    while read -r kind name subdir target; do
-        [ "$subdir" = "-" ] && subdir=""
-        case "$kind" in
-        E)
-            echo "ERROR: unparseable .manifest row: $name $subdir $target" >&2
-            exit 1
-            ;;
-        F)
-            if [ ! -f "$name" ]; then
-                echo "ERROR: .manifest lists $name but it is not in the payload" >&2
+            NF >= 4 && $2 ~ /^[0-9]+$/ && $4 == arch && ($3 in isfile || $3 in islink) {
+                if ($3 == "GBM_BACKEND_LIB_SYMLINK" && arch != "NATIVE") next
+                subdir = "-"; target = "-"; bad = 0
+                for (i = 5; i <= NF; i++) {
+                    if ($i ~ /^MODULE:/ || $i == "/") continue
+                    else if ($i ~ /\/$/) subdir = $i
+                    else if (target == "-") target = $i
+                    else bad = 1
+                }
+                if (bad || ($3 in islink && target == "-") ||
+                    ($3 == "GBM_BACKEND_LIB_SYMLINK" && target ~ /\//)) {
+                    print "E", $0
+                    next
+                }
+                kind = ($3 in isfile) ? "F" : ($3 == "GBM_BACKEND_LIB_SYMLINK" ? "G" : "L")
+                print kind, $1, subdir, target
+            }' .manifest | \
+        while read -r kind name subdir target; do
+            [ "$subdir" = "-" ] && subdir=""
+            # COMPAT32 file rows name the payload path under ./32/; the
+            # installed name is the basename either way.
+            base="${name#./32/}"
+            case "$kind" in
+            E)
+                echo "ERROR: unparseable .manifest row: $name $subdir $target" >&2
                 exit 1
-            fi
-            install -Dm755 "$name" "$LIBDIR/${subdir}${name}"
-            ;;
-        L)
-            [ -z "$subdir" ] || [ -d "$LIBDIR/$subdir" ] || install -d "$LIBDIR/$subdir"
-            ln -sf "$target" "$LIBDIR/${subdir}${name}"
-            ;;
-        G)
-            # FDSDK exposes GL/lib/gbm as a symlink to the Mesa extension's
-            # GL/default/lib/gbm. Install into that target: creating a real
-            # GL/lib/gbm here shadows Mesa's dri_gbm.so on hybrid systems.
-            GBM_DIR="$LIBDIR/GL/default/lib/gbm"
-            install -d "$GBM_DIR"
-            ln -srf "$LIBDIR/$target" "$GBM_DIR/$name"
-            ;;
-        esac
-    done
+                ;;
+            F)
+                if [ ! -f "$name" ]; then
+                    echo "ERROR: .manifest lists $name but it is not in the payload" >&2
+                    exit 1
+                fi
+                install -Dm755 "$name" "$destdir/${subdir}${base}"
+                ;;
+            L)
+                [ -z "$subdir" ] || [ -d "$destdir/$subdir" ] || install -d "$destdir/$subdir"
+                ln -sf "$target" "$destdir/${subdir}${base}"
+                ;;
+            G)
+                # FDSDK exposes GL/lib/gbm as a symlink to the Mesa extension's
+                # GL/default/lib/gbm. Install into that target: creating a real
+                # GL/lib/gbm here shadows Mesa's dri_gbm.so on hybrid systems.
+                GBM_DIR="$destdir/GL/default/lib/gbm"
+                install -d "$GBM_DIR"
+                ln -srf "$destdir/$target" "$GBM_DIR/$base"
+                ;;
+            esac
+        done
+    }
+    install_manifest_arch NATIVE "$LIBDIR"
+    install_manifest_arch COMPAT32 "$LIBDIR32"
 
     # Userspace tools. nvidia-modprobe stays 0755 (not NVIDIA's 4755):
     # nvidia-device-nodes.service invokes it as root, so no unprivileged
@@ -213,6 +230,10 @@ config:
             "%{install-root}/usr/share/pixmaps/nvidia-settings.png"
     fi
 
+    # library_path is a bare soname, so this one JSON serves the 64-bit
+    # and 32-bit Vulkan loaders alike; each resolves its own ELF class
+    # through ld.so (the i386 dirs are on the ld path via
+    # gaming/steam-native.bst's /etc/ld.so.conf.d/00-i386-linux-gnu.conf).
     if [ -f nvidia_icd.json ]; then
         install -Dm644 nvidia_icd.json \
             "%{install-root}/usr/share/vulkan/icd.d/nvidia_icd.json"
@@ -394,23 +415,31 @@ config:
     PRESET
   # Fail the build if any installed NVIDIA ELF has an NVIDIA-internal
   # DT_NEEDED that the manifest TYPE selection above did not install
-  # (e.g. a newly split-out library like libnvidia-gpucomp).
+  # (e.g. a newly split-out library like libnvidia-gpucomp). Each arch
+  # is checked against its own libdir; a 32-bit object must find its
+  # deps in the i386 tree, never the native one.
   - |
     set -euo pipefail
     LIBDIR="%{install-root}%{libdir}"
+    LIBDIR32="%{install-root}/usr/lib/i386-linux-gnu"
     BINDIR="%{install-root}%{bindir}"
     status=0
-    for obj in "$LIBDIR"/lib*.so.* "$LIBDIR"/vdpau/lib*.so.* "$BINDIR"/*; do
-        { [ -f "$obj" ] && [ ! -L "$obj" ]; } || continue
-        for dep in $(objdump -p "$obj" 2>/dev/null | awk '/NEEDED/{print $2}' || true); do
-            case "$dep" in
-              libnvidia-*|libcuda.so*|libnvcuvid.so*|libnvoptix.so*)
-                if [ ! -e "$LIBDIR/$dep" ]; then
-                    echo "ERROR: $(basename "$obj") requires $dep, which is not installed" >&2
-                    status=1
-                fi
-                ;;
-            esac
+    check_closure() {
+        depdir="$1"; shift
+        for obj in "$@"; do
+            { [ -f "$obj" ] && [ ! -L "$obj" ]; } || continue
+            for dep in $(objdump -p "$obj" 2>/dev/null | awk '/NEEDED/{print $2}' || true); do
+                case "$dep" in
+                  libnvidia-*|libcuda.so*|libnvcuvid.so*|libnvoptix.so*)
+                    if [ ! -e "$depdir/$dep" ]; then
+                        echo "ERROR: $(basename "$obj") requires $dep, which is not installed in $depdir" >&2
+                        status=1
+                    fi
+                    ;;
+                esac
+            done
         done
-    done
+    }
+    check_closure "$LIBDIR" "$LIBDIR"/lib*.so.* "$LIBDIR"/vdpau/lib*.so.* "$BINDIR"/*
+    check_closure "$LIBDIR32" "$LIBDIR32"/lib*.so.* "$LIBDIR32"/vdpau/lib*.so.*
     exit "$status"
