@@ -7,11 +7,16 @@
 # self-updates into the user's home directory on first launch.
 kind: manual
 
+# The CDN's client/installer/steam.deb is an unversioned URL: Valve's
+# 1.0.0.87 release changed its content under our pinned sha256 and broke
+# every fetch (testing CI, 2026-08-03). The apt pool serves the identical
+# payload at a versioned path that never changes once published, so pin
+# that instead; bumps are an explicit url+ref+filename change here.
 sources:
 - kind: remote
-  url: steam-static:client/installer/steam.deb
-  ref: b44634a6a604ca7c8b23809d0f2a921a0348bb2081c8cb8944116d0799872b70
-  filename: steam-1.0.0.85.deb
+  url: steam-repo:steam/pool/steam/s/steam/steam-launcher_1.0.0.87_amd64.deb
+  ref: 765aba9a0ed339a50226ceb614fcc9879a991ba184098bc8de920efb12c714a4
+  filename: steam-launcher_1.0.0.87_amd64.deb
 
 build-depends:
 - freedesktop-sdk.bst:bootstrap/bash.bst
@@ -59,7 +64,7 @@ config:
   - |
     mkdir -p deb data "%{install-root}"
     cd deb
-    ar x ../steam-1.0.0.85.deb
+    ar x ../steam-launcher_1.0.0.87_amd64.deb
     cd ..
     tar -xf deb/data.tar.xz -C data
 

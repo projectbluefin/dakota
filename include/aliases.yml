@@ -67,6 +67,9 @@ aliases:
   github-raw: https://raw.githubusercontent.com/
   # Valve's Steam launcher/bootstrap CDN
   steam-static: https://cdn.fastly.steamstatic.com/
+  # Valve's apt repo; pool keeps versioned launcher .debs, unlike the CDN
+  # installer path whose content churns under a pinned sha256
+  steam-repo: https://repo.steampowered.com/
   # i386 .debs for Steam 32-bit compat libs
   debian: https://deb.debian.org/debian/
 
