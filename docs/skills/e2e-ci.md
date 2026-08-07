@@ -116,6 +116,41 @@ Always call the local wrapper workflow:
 Do **not** wire `projectbluefin/testsuite` directly from every caller. Pin once
 in the wrapper, then inherit it everywhere.
 
+## Installer Post-Boot Assertions (fisherman)
+
+Dakota does not own installer/fisherman source (see `installer.md` for the
+repo boundary), but the *installed system* it produces is Dakota's problem —
+so post-boot e2e assertions for a fisherman-driven `bootc install` belong in
+the testsuite's install-flow suite, wired through `run-testsuite.yml` like
+any other suite.
+
+[dakota#651](https://github.com/projectbluefin/dakota/issues/651) tracks
+three assertion gaps against a system installed via fisherman (the
+`bootc-installer` Go backend). Issues are disabled on `tuna-os/fisherman`, so
+the source fixes are tracked as separate issues and only the e2e coverage
+lives here:
+
+| # | Assertion (post-boot, on the installed target) | Source fix tracked at |
+|---|---|---|
+| 1 | `flatpak list --system --app` must **not** list `org.bootcinstaller.Installer` (or `.Devel`) — `CopyFlatpaks` must exclude the installer's own Flatpak from the copied system store, not just rely on the firstboot `bluefin-remove-installer.service` cleanup as the only backstop. | fisherman issue 1 |
+| 2 | `efibootmgr -v` must show `BootCurrent` plus a Boot entry for the install — requires the installer's `podman run` to bind-mount host `/sys/firmware/efi/efivars` (`-v /sys/firmware/efi/efivars:/sys/firmware/efi/efivars`) so `efibootmgr` can reach host UEFI variables from inside the install container. | fisherman issue 2 |
+| 3 | `/proc/cmdline` must contain a parseable LUKS UUID via **either** `rd.luks.uuid=` or `rd.luks.name=` — confirms the `luks-tpm2-autounlock` `rd.luks.name=` parsing fix works against what fisherman actually writes to the bootloader config on a LUKS install. | projectbluefin/common issue 385 |
+
+**Do not add these as a new inline boot-check gate.** They test the installer
+path (`bootc install to-disk`/`to-filesystem` invoked via fisherman with
+LUKS), which is a different code path than Dakota's own generic-image
+raw-disk build used by `boot-vm`/`generate-bootable-image`/`boot-test`
+(see Hard Gate Pattern above and `Justfile`'s `generate-bootable-image`).
+Mixing the two turns the fast deterministic hard gate into a second,
+installer-shaped e2e suite — the exact anti-pattern called out in Red Flags.
+
+**Sequencing:** the three checks above will fail against current fisherman —
+they are gaps in test *coverage*, not yet-passing assertions. Land them in
+the testsuite install-flow suite as `xfail`/skip-until-fixed (or gated behind
+the source PR merging), then flip to blocking once each source fix ships in
+a nightly. Do not block unrelated Dakota publishes on assertions that verify
+someone else's unmerged fix.
+
 ## Common Rationalizations
 
 | Rationalization | Reality |
@@ -124,6 +159,8 @@ in the wrapper, then inherit it everywhere.
 | "I'll just make smoke optional with `continue-on-error`." | Not on a reusable-workflow call job. Split the workflow instead. |
 | "bootc already knows the defaults; I can skip the explicit flags." | CI has punished that repeatedly. Use the documented raw-image path. |
 | "The testsuite workflow is easy enough to copy here." | Duplicate wiring drifts. Use the wrapper. |
+| "Fisherman is a different repo, so its e2e coverage isn't Dakota's job." | Fisherman issues are disabled; the installed system it produces is still Dakota's problem. Track coverage gaps here, fix source elsewhere. |
+| "Let's just add the LUKS/UEFI checks to the existing boot-check gate." | That gate tests Dakota's own generic raw-disk build, not the fisherman install path — wrong suite, wrong code path. |
 
 ## Red Flags
 
@@ -140,3 +177,4 @@ in the wrapper, then inherit it everywhere.
 - [ ] `bootc install to-disk` uses the documented raw-image pattern
 - [ ] Testsuite calls go through `run-testsuite.yml`
 - [ ] The resulting pipeline is faster and more deterministic, not more ambitious
+- [ ] Installer/fisherman post-boot assertions stay in the testsuite install-flow suite, not the inline boot-check gate

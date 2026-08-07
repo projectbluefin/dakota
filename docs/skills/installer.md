@@ -155,6 +155,18 @@ The ISO's `install-flatpaks.sh` installs the bootc-installer as a system Flatpak
 
 **Root cause is in `dakota-iso`** (`install-flatpaks.sh`), but the defensive fix lives in dakota because the installed image should never ship the installer regardless of how it got there.
 
+### Fisherman e2e coverage gaps tracked in dakota (2026-08-07)
+
+Fisherman (`tuna-os/fisherman`, the installer's Go backend) has issues
+disabled, so gaps in its e2e coverage are tracked as
+[dakota#651](https://github.com/projectbluefin/dakota/issues/651) instead —
+Dakota still owns verifying the *installed* system even though the source
+fix lands upstream. Three post-boot assertions (installer Flatpak exclusion,
+`efibootmgr` UEFI entry presence, `rd.luks.uuid=`/`rd.luks.name=` cmdline
+parsing) belong in the testsuite install-flow suite, not Dakota's own
+generic-image boot-check. See `docs/skills/e2e-ci.md` → "Installer Post-Boot
+Assertions (fisherman)" for the full table and sequencing rule.
+
 ## Dakota vs Dakota-ISO boundary
 
 The installer is NOT built from source in this repo. The boundary:
