@@ -28,6 +28,7 @@ config:
     install -Dm644 bluefin-migrate-var-home-passwd.service \
             "%{install-root}%{indep-libdir}/systemd/system/bluefin-migrate-var-home-passwd.service"
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system-preset/80-bluefin-migrate-var-home-passwd.preset" <<'PRESET'
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system-preset/80-bluefin-migrate-var-home-passwd.preset"
+    cat > "%{install-root}%{indep-libdir}/systemd/system-preset/80-bluefin-migrate-var-home-passwd.preset" <<'PRESET'
     enable bluefin-migrate-var-home-passwd.service
     PRESET

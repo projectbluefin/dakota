@@ -131,8 +131,8 @@ To set default extension preferences, install a dconf keyfile:
 install-commands:
   # ... install extension ...
   - |
-    install -Dm644 /dev/stdin \
-      "%{install-root}%{datadir}/glib-2.0/schemas/10-<name>.gschema.override" <<'OVERRIDE'
+    install -Dm644 /dev/null "%{install-root}%{datadir}/glib-2.0/schemas/10-<name>.gschema.override"
+    cat > "%{install-root}%{datadir}/glib-2.0/schemas/10-<name>.gschema.override" <<'OVERRIDE'
     [org.gnome.shell]
     enabled-extensions=['<uuid>@example.com']
     OVERRIDE

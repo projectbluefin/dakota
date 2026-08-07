@@ -82,7 +82,8 @@ config:
     # steamdeps command so Valve's launcher does not emit python-apt/dpkg noise
     # before continuing.
     rm -rf "%{install-root}/etc/apt"
-    install -Dm755 /dev/stdin "%{install-root}/usr/lib/steam/bin_steamdeps.py" <<'EOF'
+    install -Dm755 /dev/null "%{install-root}/usr/lib/steam/bin_steamdeps.py"
+    cat > "%{install-root}/usr/lib/steam/bin_steamdeps.py" <<'EOF'
     #!/usr/bin/env sh
     exit 0
     EOF
@@ -92,7 +93,8 @@ config:
     # bundled scout runtime can load an older libxcb.so.1 before our matching
     # host libxcb-shm.so.0, causing undefined symbols such as
     # xcb_send_request_with_fds.
-    install -Dm644 /dev/stdin "%{install-root}/etc/ld.so.conf.d/00-i386-linux-gnu.conf" <<'EOF'
+    install -Dm644 /dev/null "%{install-root}/etc/ld.so.conf.d/00-i386-linux-gnu.conf"
+    cat > "%{install-root}/etc/ld.so.conf.d/00-i386-linux-gnu.conf" <<'EOF'
     /usr/lib/i386-linux-gnu/GL/default/lib
     /usr/lib/i386-linux-gnu
     EOF

@@ -69,7 +69,8 @@ variables:
 config:
   install-commands:
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{sysconfdir}/pam.d/system-auth" <<'EOF'
+    install -Dm644 /dev/null "%{install-root}%{sysconfdir}/pam.d/system-auth"
+    cat > "%{install-root}%{sysconfdir}/pam.d/system-auth" <<'EOF'
     auth        required      pam_env.so
     auth        sufficient    pam_fprintd.so
     -auth       sufficient    pam_systemd_home.so

@@ -407,7 +407,8 @@ config:
             "%{install-root}/usr/share/doc/nvidia/LICENSE"
     fi
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system-preset/80-nvidia-pm.preset" <<'PRESET'
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system-preset/80-nvidia-pm.preset"
+    cat > "%{install-root}%{indep-libdir}/systemd/system-preset/80-nvidia-pm.preset" <<'PRESET'
     enable nvidia-suspend.service
     enable nvidia-resume.service
     enable nvidia-hibernate.service

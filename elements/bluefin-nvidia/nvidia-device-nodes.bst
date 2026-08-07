@@ -24,6 +24,7 @@ config:
     install -Dm644 nvidia-device-nodes.service \
         "%{install-root}%{indep-libdir}/systemd/system/nvidia-device-nodes.service"
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system-preset/80-nvidia-device-nodes.preset" <<'PRESET'
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system-preset/80-nvidia-device-nodes.preset"
+    cat > "%{install-root}%{indep-libdir}/systemd/system-preset/80-nvidia-device-nodes.preset" <<'PRESET'
     enable nvidia-device-nodes.service
     PRESET

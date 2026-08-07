@@ -23,7 +23,8 @@ variables:
 config:
   install-commands:
   - |
-    install -Dm755 /dev/stdin "%{install-root}/usr/bin/steam" <<'EOF'
+    install -Dm755 /dev/null "%{install-root}/usr/bin/steam"
+    cat > "%{install-root}/usr/bin/steam" <<'EOF'
     #!/usr/bin/env sh
     exec /usr/bin/flatpak run com.valvesoftware.Steam "$@"
     EOF

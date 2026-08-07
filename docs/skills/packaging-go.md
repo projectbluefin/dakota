@@ -121,7 +121,8 @@ install-commands:
 install-commands:
   # ... install binary ...
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system/project.service" <<'SERVICE'
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system/project.service"
+    cat > "%{install-root}%{indep-libdir}/systemd/system/project.service" <<'SERVICE'
     [Unit]
     Description=Project daemon
     After=network.target
@@ -134,7 +135,8 @@ install-commands:
     WantedBy=multi-user.target
     SERVICE
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system-preset/80-project.preset" <<'PRESET'
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system-preset/80-project.preset"
+    cat > "%{install-root}%{indep-libdir}/systemd/system-preset/80-project.preset" <<'PRESET'
     enable project.service
     PRESET
 ```

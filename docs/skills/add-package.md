@@ -80,7 +80,8 @@ install-commands:
         upstream.service > upstream.service.patched
     install -Dm644 -t "%{install-root}%{indep-libdir}/systemd/system" upstream.service.patched
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/systemd/system-preset/80-name.preset" <<'PRESET'
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system-preset/80-name.preset"
+    cat > "%{install-root}%{indep-libdir}/systemd/system-preset/80-name.preset" <<'PRESET'
     enable service-name.service
     PRESET
 ```

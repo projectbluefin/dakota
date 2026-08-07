@@ -33,7 +33,8 @@ config:
   # udev autostart rules, but enabling the service makes handheld support work
   # even when devices enumerate before udev catches up.
   - |
-    install -Dm644 /dev/stdin "%{install-root}/usr/lib/systemd/system-preset/92-gaming-inputplumber.preset" <<'EOF'
+    install -Dm644 /dev/null "%{install-root}/usr/lib/systemd/system-preset/92-gaming-inputplumber.preset"
+    cat > "%{install-root}/usr/lib/systemd/system-preset/92-gaming-inputplumber.preset" <<'EOF'
     enable inputplumber.service
     enable inputplumber-suspend.service
     EOF

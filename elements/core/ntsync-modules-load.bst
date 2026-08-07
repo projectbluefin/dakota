@@ -11,6 +11,7 @@ variables:
 config:
   install-commands:
   - |
-    install -Dm644 /dev/stdin "%{install-root}%{indep-libdir}/modules-load.d/ntsync.conf" <<'EOF'
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/modules-load.d/ntsync.conf"
+    cat > "%{install-root}%{indep-libdir}/modules-load.d/ntsync.conf" <<'EOF'
     ntsync
     EOF
