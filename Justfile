@@ -74,6 +74,11 @@ bst *ARGS:
         "{{bst2_image}}" \
         bash -c 'bst --colors "$@"' -- ${EFFECTIVE_BST_FLAGS} {{ARGS}}
 
+# Run BATS unit tests for shell scripts and just recipes.
+[group('dev')]
+test-unit:
+    bats tests/unit/
+
 # Validate BST element graph — mirrors CI validate job.
 [group('dev')]
 check-publish-workflow:
