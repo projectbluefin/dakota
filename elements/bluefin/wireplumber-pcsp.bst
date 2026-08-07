@@ -17,5 +17,6 @@ variables:
 
 config:
   install-commands:
-  - install -Dm644 51-disable-pcsp.conf \
+  - |
+    install -Dm644 51-disable-pcsp.conf \
       "%{install-root}%{datadir}/wireplumber/wireplumber.conf.d/51-disable-pcsp.conf"
