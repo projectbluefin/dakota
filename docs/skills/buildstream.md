@@ -158,6 +158,8 @@ Change this value only from observed endpoint saturation or latency evidence.
 
 BuildStream elements that write inline configuration files using `install -Dm644 /dev/stdin ... <<'EOF'` fail in remote execution sandboxes (such as BuildBox) where `/dev/stdin` is not available as a standard character device. Write inline files using a two-step pattern: create the destination file with `install -Dm644 /dev/null target`, then populate it with `cat > target <<'EOF'`.
 
+**Regression (2026-08-07, fixed in #1298):** nine element sites and four packaging docs reintroduced the `/dev/stdin` pattern after this lesson was written. They built fine on the GHA BuildBox backend (bubblewrap mounts `/proc`, so CI cannot catch this) but failed on the lab BuildBarn grid, whose `bb_runner` uses a bare `chrootIntoInputRoot` with no `/proc` mount and only a minimal device directory (`null`, `zero`, `random`, `urandom`). Heredocs themselves work there; only the `/dev/stdin` indirection breaks. Check new inline-file elements for this pattern in review.
+
 ### overlap-whitelist required for base system file replacement
 
 When an element provides files that are also provided by an upstream junction component (for example, `/etc/subuid` and `/etc/subgid` provided by `freedesktop-sdk.bst:components/shadow.bst`), BuildStream will throw an overlap error during composition (e.g. in `bluefin-runtime.bst`).
