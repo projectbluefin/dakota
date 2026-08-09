@@ -64,6 +64,7 @@ bst *ARGS:
 [group('dev')]
 check-publish-workflow:
     python3 scripts/check_publish_workflow.py
+    python3 -m unittest scripts.test_check_publish_workflow scripts.test_gen_filemap
 
 [group('dev')]
 validate:
