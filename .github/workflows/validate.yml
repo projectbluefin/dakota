@@ -2,9 +2,9 @@ name: Validate
 
 on:
   pull_request:
-    branches: [testing, next]
+    branches: [testing, next, main]
   merge_group:
-    branches: [testing, next]
+    branches: [testing, next, main]
 
 permissions:
   contents: read
