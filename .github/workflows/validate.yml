@@ -2,9 +2,9 @@ name: Validate
 
 on:
   pull_request:
-    branches: [testing, next]
+    branches: [testing, next, main]
   merge_group:
-    branches: [testing, next]
+    branches: [testing, next, main]
 
 permissions:
   contents: read
@@ -21,7 +21,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Just
-        uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
           tool: just
 

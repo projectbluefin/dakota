@@ -7,6 +7,16 @@
 #
 # Only runs on workflow_dispatch — PRs do not publish a testing build first,
 # so running smoke here would test a stale :testing image, not the PR's code.
+#
+# The `installer` suite runs the fisherman post-boot assertions (UEFI boot
+# entry via efibootmgr, installer Flatpak exclusion, LUKS rd.luks.name=
+# cmdline format) over SSH against the target image. Implemented in
+# projectbluefin/testsuite (tests/installer/features/installer_post_boot.feature);
+# tracked by projectbluefin/dakota#651 with the spec in docs/skills/e2e-ci.md
+# -> "Installer Post-Boot Assertions (fisherman)". The UEFI/LUKS scenarios
+# skip unless the target is a fisherman-installed UEFI+LUKS system, so on
+# the standard direct-kernel-boot lane only the Flatpak-exclusion assertion
+# runs; the suite is meaningful against a to-filesystem install.
 
 name: E2E Tests — GNOME 50
 
@@ -18,7 +28,7 @@ on:
         required: false
         default: "ghcr.io/projectbluefin/dakota:testing"
       suites:
-        description: "Comma-separated GUI suites: smoke,developer,dx,software,vanilla-gnome"
+        description: "Comma-separated suites: smoke,developer,dx,software,vanilla-gnome,installer (installer = SSH-only fisherman post-boot assertions)"
         required: false
         default: "smoke"
 
