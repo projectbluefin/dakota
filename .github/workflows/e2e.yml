@@ -13,10 +13,25 @@
 # cmdline format) over SSH against the target image. Implemented in
 # projectbluefin/testsuite (tests/installer/features/installer_post_boot.feature);
 # tracked by projectbluefin/dakota#651 with the spec in docs/skills/e2e-ci.md
-# -> "Installer Post-Boot Assertions (fisherman)". The UEFI/LUKS scenarios
-# skip unless the target is a fisherman-installed UEFI+LUKS system, so on
-# the standard direct-kernel-boot lane only the Flatpak-exclusion assertion
-# runs; the suite is meaningful against a to-filesystem install.
+# -> "Installer Post-Boot Assertions (fisherman)". Of the three scenarios,
+# only Flatpak exclusion can currently report a result here:
+#
+#   * UEFI   — skips when `efibootmgr` exits non-zero, which is the case on
+#              the direct-kernel-boot lane (no UEFI firmware, no efivars).
+#              Reports against a to-filesystem install on an OVMF lane.
+#   * LUKS   — gated on LUKS_ENABLED, which the testsuite reusable workflow
+#              does not export (it passes an explicit env list: VM_IP,
+#              VM_USER, SSH_KEY, SSH_PORT, ZSTD_CHUNKED). environment.py
+#              defaults it to "false", so this scenario skips on *every*
+#              run, including against a real LUKS install. Making it report
+#              needs a LUKS_ENABLED passthrough in projectbluefin/testsuite
+#              first; there is no dakota-side lever for it.
+#   * Flatpak— runs, but only carries signal against a fisherman-installed
+#              target, since org.bootcinstaller is never in the store on a
+#              direct-kernel-booted image.
+#
+# Treat a green `installer` run on the standard lane as "not broken", not as
+# evidence that the fisherman fixes shipped.
 
 name: E2E Tests — GNOME 50
 
