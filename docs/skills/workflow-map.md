@@ -87,7 +87,7 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 | `.github/workflows/build-aarch64.yml` | aarch64 OCI build + GHCR push | `push: testing/main` (BST-affecting paths), `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch`. Fully decoupled — never in `needs:` of publish/promote/release. |
 | `.github/workflows/publish.yml` | export, sign, boot-check, promote tags | `workflow_run` from build |
 | `.github/workflows/publish-smoke.yml` | observational smoke only | `workflow_run` from publish |
-| `.github/workflows/e2e.yml` | PR-facing testsuite check | `pull_request` |
+| `.github/workflows/e2e.yml` | testsuite suite runner (delegates to the `projectbluefin/testsuite` reusable workflow) | `workflow_dispatch` **only** — not `pull_request`. PRs do not publish a `:testing` build first, so a PR-triggered run would test a stale image, not the PR's code. Dispatch it with `just e2e <suites> [image]`; `just e2e-installer` runs the fisherman post-boot assertions (#651). |
 | `.github/workflows/lab-check.yml` | MergeRaptor-owned `testing-lab / dakota` Check Run for the Kubernetes lab | `repository_dispatch: lab-check` |
 | `.github/workflows/execute-release.yml` | SHA freshness check → cosign verify → stable release | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch`. Skips if `:testing` digest equals `:stable` digest. |
 | `.github/workflows/sync-next-from-main.yml` | merge main into next (preserve junction refs) | `push: main`, `workflow_dispatch` |

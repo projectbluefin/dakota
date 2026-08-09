@@ -8,15 +8,31 @@
 # Only runs on workflow_dispatch — PRs do not publish a testing build first,
 # so running smoke here would test a stale :testing image, not the PR's code.
 #
-# The `installer` suite runs the fisherman post-boot assertions (UEFI boot
-# entry via efibootmgr, installer Flatpak exclusion, LUKS rd.luks.name=
-# cmdline format) over SSH against the target image. Implemented in
-# projectbluefin/testsuite (tests/installer/features/installer_post_boot.feature);
-# tracked by projectbluefin/dakota#651 with the spec in docs/skills/e2e-ci.md
-# -> "Installer Post-Boot Assertions (fisherman)". The UEFI/LUKS scenarios
-# skip unless the target is a fisherman-installed UEFI+LUKS system, so on
-# the standard direct-kernel-boot lane only the Flatpak-exclusion assertion
-# runs; the suite is meaningful against a to-filesystem install.
+# The `installer` suite runs the fisherman post-boot assertions over SSH
+# against the target image. Implemented in projectbluefin/testsuite
+# (tests/installer/features/installer_post_boot.feature); tracked by
+# projectbluefin/dakota#651.
+#
+# The three assertions gate themselves independently — none of them fails on a
+# target that simply lacks the feature:
+#
+#   * UEFI boot entry (efibootmgr -v)  — skips when efibootmgr exits non-zero,
+#     i.e. the target did not boot via UEFI or /sys is unreachable.
+#   * Installer Flatpak exclusion       — always runs.
+#   * LUKS cmdline (rd.luks.name= /     — runs only when the target actually has
+#     rd.luks.uuid=)                      a LUKS volume, detected at runtime by
+#                                         probing the DUT for a `crypt` device.
+#
+# So on the standard direct-kernel-boot lane only the Flatpak-exclusion
+# assertion does real work; the suite is meaningful against a to-filesystem
+# install. Run it with `just e2e-installer`.
+#
+# Caveat while this is being sequenced: the LUKS runtime probe is
+# projectbluefin/testsuite#754. Until that merges AND the `@v1` tag this
+# workflow pins moves to include it, the LUKS scenario skips unconditionally —
+# it gated on a LUKS_ENABLED env var that nothing sets, so it has never
+# executed. Treat a green `installer` run as covering the Flatpak assertion
+# (plus UEFI on a UEFI target), not the common#385 LUKS fix.
 
 name: E2E Tests — GNOME 50
 
