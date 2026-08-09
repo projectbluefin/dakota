@@ -153,6 +153,7 @@ This is the fast path for stale-image complaints: the image date is usually wron
 
 | Workflow | Trigger | What it does |
 |---|---|---|
+| `validate.yml` | `pull_request` + `merge_group` on branches testing, next, main | Static PR gate: publish-workflow check, dangling-submodule check, patch-drift check, and BST element-graph validation (default + nvidia). Runs no build. |
 | `build.yml` | `push: testing` for key-busting paths, `workflow_dispatch`, `schedule: daily 13:00 UTC` — NOT `pull_request` or `merge_group` | Run default, NVIDIA, gaming, and NVIDIA-gaming concurrently through BuildBox; BuildStream publishes artifacts to the remote CAS and uploads logs. Does not push to GHCR. |
 | `publish.yml` | `workflow_run` from `build.yml` (branches: testing, next, + their gh-readonly-queue/* paths) | Fetch the remote-CAS artifact, export to OCI, run `just lint`, push `:$sha`, sign/attest, and promote `:testing`/`:next` tags. No build happens here. |
 | `execute-release.yml` | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch` | SHA freshness check (:testing vs :stable). If different: cosign verify → skopeo copy `:testing` → `:stable` → fast-forward main → create GitHub Release. Skips if equal. |
@@ -167,7 +168,7 @@ This is the fast path for stale-image complaints: the image date is usually wron
 
 | Job | pull_request | push testing/next | merge_group | workflow_dispatch | schedule |
 |---|---|---|---|---|---|
-| `validate` | Yes | No | No | No | No |
+| `validate` | Yes (testing, next, main) | No | Yes (testing, next, main) | No | No |
 | `e2e` | Yes (change-detected) | No | No | Yes | No |
 | `build` | No | testing only (key-busting paths) | No | Yes | Daily 13:00 UTC |
 | `execute-release` | No | No | No | Yes | Via workflow_run from publish |
@@ -423,6 +424,19 @@ gh run list --repo projectbluefin/dakota --limit 5
 ## Lessons Learned
 
 > **Note:** Lessons are ordered newest-first. Deleted CI paths are historical evidence only; do not recreate them.
+
+### PR-gate branch allowlists silently skip new targets — audit them when adding a branch (2026-08-08)
+
+`validate.yml` scoped both `pull_request` and `merge_group` to
+`branches: [testing, next]`. Because stable promotion is automated
+(`execute-release.yml` fast-forwards `main`, no PR), `main` was never in that
+list — so direct human/agent PRs targeting `main` (e.g. #1276, #1264) ran with
+zero validation and still merged. A `branches:` allowlist is not "all current
+branches"; it is a closed set, and any branch added to the repo's flow later is
+silently excluded. When a new branch starts accepting PRs (or rulesets change),
+audit every PR-gating workflow's `pull_request.branches` / `merge_group.branches`
+filter and extend it — or drop the filter entirely if the gate is cheap and
+universal.
 
 ### GHCR anonymous tag reads are eventually consistent — gate on authenticated digest reads (2026-07-29)
 
