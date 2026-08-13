@@ -213,3 +213,24 @@ Two load-bearing examples:
 Final NVIDIA OCI assembly must assert that `GL/lib/gbm` remains a symlink and
 that both `dri_gbm.so` and `nvidia-drm_gbm.so` resolve through it. Check the
 composed path with `ls -ld` before choosing any install location under `GL/`.
+
+### Bluefin content shipped in a subdirectory GNOME reads non-recursively (2026-08-13)
+
+`projectbluefin/common` ships the Bluefin user-avatar art under
+`system_files/bluefin/usr/share/pixmaps/faces/bluefin/`, which
+`elements/bluefin/common.bst` copies verbatim into the image. GNOME's account
+avatar chooser (`cc-avatar-chooser.c` in gnome-control-center, and
+gnome-initial-setup's account page) scans `/usr/share/pixmaps/faces`
+non-recursively, so the files were present in the image but never visible to
+users (dakota#353).
+
+`ublue-os/bluefin` handles this in `build_files/base/05-override-install.sh` by
+flattening `faces/bluefin/*` over `faces/` at build time. The BST equivalent is
+a flatten step in the `install-commands` of `elements/bluefin/common.bst`, plus
+an `overlap-whitelist` entry for `/usr/share/pixmaps/faces/*` because the
+flattened filenames collide with the GNOME OS defaults from
+`core/gnome-control-center.bst`.
+
+General rule: when `common` places files in a vendor subdirectory, check
+whether the consuming component actually scans subdirectories before assuming
+the copy is sufficient.

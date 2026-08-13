@@ -25,6 +25,9 @@ public:
     - /etc/environment
     - /etc/containers/policy.json
     - /usr/share/pixmaps/gnome-boot-logo.png
+    # Bluefin user-avatar art replaces the GNOME OS defaults shipped by
+    # core/gnome-control-center.bst (same 15 filenames).
+    - /usr/share/pixmaps/faces/*
 
 variables:
   strip-binaries: ""
@@ -65,6 +68,15 @@ config:
     cp "%{install-root}%{datadir}/pixmaps/fedora-logo-icon.png" "%{install-root}%{datadir}/pixmaps/img-logo-icon-dark.png"
     # Override GNOME OS boot logo with Bluefin branding
     cp "%{install-root}%{datadir}/pixmaps/fedora-gdm-logo.png" "%{install-root}%{datadir}/pixmaps/gnome-boot-logo.png"
+    # User-avatar art: common ships Bluefin faces under faces/bluefin/, but
+    # gnome-control-center only reads %{datadir}/pixmaps/faces (non-recursive),
+    # so the images never appear in the account-avatar chooser. Flatten them
+    # over the GNOME OS defaults, matching ublue-os/bluefin's
+    # build_files/base/05-override-install.sh.
+    if [ -d "%{install-root}%{datadir}/pixmaps/faces/bluefin" ]; then
+      mv "%{install-root}%{datadir}/pixmaps/faces/bluefin/"* "%{install-root}%{datadir}/pixmaps/faces/"
+      rmdir "%{install-root}%{datadir}/pixmaps/faces/bluefin"
+    fi
     install -Dm755 bluefin-wallpaper-month-sync "%{install-root}%{prefix}/libexec/bluefin-wallpaper-month-sync"
     install -Dm644 bluefin-wallpaper-month.service "%{install-root}%{prefix}/lib/systemd/system/bluefin-wallpaper-month.service"
     mkdir -p "%{install-root}%{prefix}/lib/systemd/system/multi-user.target.wants"
