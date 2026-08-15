@@ -1,6 +1,6 @@
 ---
 name: release-promotion
-description: Dakota publish and promotion flow from testing to stable, including the daily OCI-native execute-release flow, SHA-based freshness check, cosign verify, boot-check gate, and manual recovery. Use when working on execute-release.yml, stable promotion failures, branch bookmark state, or the daily build pipeline.
+description: Dakota publish and promotion flow from testing to stable, including the Mon/Wed/Fri OCI-native execute-release flow, SHA-based freshness check, cosign verify, boot-check gate, and manual recovery. Use when working on execute-release.yml, stable promotion failures, branch bookmark state, or the daily build pipeline.
 metadata:
   context7-sources:
     - /websites/github_en_actions
@@ -11,13 +11,16 @@ metadata:
 
 ## Overview
 
-Promotion from `testing` to `:stable` is **fully automated and daily** — no human approval required at any stage.
+Promotion from `testing` to `:stable` is **fully automated on Monday, Wednesday,
+and Friday at 18:00 UTC** — no human approval required at any stage.
 
 ```text
 testing (trunk) → build.yml → publish.yml → :testing tag
                                                   │
-                                         execute-release.yml (workflow_run from publish)
-                                         SHA freshness check → cosign verify → boot-check
+                                         Mon/Wed/Fri 18:00 UTC
+                                         execute-release.yml schedule
+                                         publish-existence guard
+                                         SHA freshness → cosign → boot-check
                                                   │
                                          :stable + fast-forward main bookmark
 ```
@@ -36,10 +39,10 @@ Do not conflate "publish is healthy" with "stable promotion is healthy".
 Use when the task mentions:
 - `execute-release.yml`
 - stable promotion failures (`:testing` not promoted to `:stable`)
-- SHA-based freshness check or `workflow_run` from `publish.yml`
+- SHA-based freshness check or scheduled release from `publish.yml`
 - `main-bookmark-protection` ruleset
 - cosign verify in the release path
-- stable release, `:stable`, or daily promotion flow
+- stable release, `:stable`, or scheduled promotion flow
 - `testing-merge-queue-no-review` ruleset
 
 ## When NOT to Use
@@ -59,13 +62,14 @@ Use when the task mentions:
    - cosign verify `:testing`
    - skopeo copy `:testing` → `:stable`
    - fast-forward `main` bookmark
-3. **`execute-release.yml` fires via `workflow_run` from `publish.yml` on the `testing` branch.**
-   It checks whether the SHA published as `:testing` differs from the current `:stable`. If
-   they are equal, promotion is skipped (already up to date). If they differ, cosign verify
-   runs, then the copy and fast-forward. The image is already boot-checked by `publish.yml`.
-4. **`workflow_run` from publish — not a push trigger.** `execute-release.yml` starts
-   automatically after every successful `publish.yml` run on the `testing` branch. No cron
-   or commit-message gate required.
+3. **`execute-release.yml` runs on a Mon/Wed/Fri schedule after the daily publish.**
+   It resolves the current `testing` SHA and verifies that a successful
+   `publish.yml` run exists for that exact SHA before resolving the digest. It then
+   checks whether the SHA differs from `:stable`; if equal, promotion is skipped.
+4. **The schedule is deliberately separate from publish.** `build.yml` and
+   `publish.yml` continue their daily cadence, while only the scheduled release
+   window promotes a fresh published SHA. This prevents an in-progress or failed
+   daily build from becoming stable.
 5. **Do not add a promotion PR or merge queue step.** The squash PR ceremony was eliminated
    in the OCI-native redesign (issue 1073). Promotion is a direct OCI tag copy + git
    fast-forward; there is no PR to gate.
@@ -75,12 +79,13 @@ Use when the task mentions:
 ## Promotion Map
 
 ```text
-push to testing (BST-affecting paths)
-  → build.yml (build job, including daily 13:00 UTC schedule)
+push to testing (BST-affecting paths) or daily build schedule
+  → build.yml (daily 13:00 UTC schedule)
   → publish.yml (workflow_run)
-      → boot-check gate (must boot before :testing is promoted)
+      → boot-check gate (must boot before :testing is published)
       → :testing tag published to GHCR
-  → execute-release.yml (workflow_run from publish on testing)
+  → Mon/Wed/Fri 18:00 UTC execute-release.yml schedule
+      → successful publish-existence guard for the current testing SHA
       → SHA freshness check (:testing SHA vs :stable SHA)
           → skip if equal (already up to date)
           → cosign verify :testing
@@ -127,35 +132,32 @@ Ruleset: `main-bookmark-protection`
 
 ## Workflow Configuration
 
-`execute-release.yml` fires via `workflow_run` from `publish.yml` on the `testing` branch:
+`execute-release.yml` runs on the stable-release schedule and keeps manual
+dispatch for recovery:
 
 ```yaml
 on:
-  workflow_run:
-    workflows: ["Publish Bluefin dakota"]
-    branches: [testing]
-    types: [completed]
+  schedule:
+    - cron: '0 18 * * 1,3,5'
   workflow_dispatch: {}
 ```
 
-The first job reads `head_sha` from the triggering `workflow_run` event — never the floating `:testing` tag. This anchors cosign verify and the freshness check to the exact SHA that was just built and published.
+The first job reads the current `testing` branch SHA, then checks the Actions
+API for a successful `publish.yml` run with the same `headSha`. This anchors
+digest resolution to a completed publish rather than a floating or still-building
+`:testing` tag.
 
-```yaml
-steps:
-  - name: Get tested SHA
-    id: tested-sha
-    run: echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
-```
-
-Do not substitute `github.event.workflow_run.head_sha` with a `skopeo inspect` lookup of `:testing` — that is a TOCTOU race. Use the event SHA.
+The scheduled path must not substitute a `skopeo inspect` lookup of `:testing`
+for the branch SHA or skip the successful-publish check. Manual `promote_sha`
+remains the explicit recovery override.
 
 ## Hard Rules
 
-- `execute-release.yml` must use `head_sha` from the `workflow_run` event, not a floating `:testing` tag lookup.
+- `execute-release.yml` scheduled runs must resolve the current `testing` SHA and find a successful `publish.yml` run with the same `headSha` before promotion.
 - `main` is a bookmark only. No PRs target main. `execute-release.yml` is the only writer.
 - The `main-bookmark-protection` ruleset must block non-fast-forward and deletion. No merge queue, no required checks.
 - The `testing-merge-queue-no-review` ruleset must require `validate` + `e2e` and enable the merge queue.
-- Stable promotion cadence is daily — triggered by `workflow_run` from `publish.yml` after each successful build.
+- Stable promotion cadence is Mon/Wed/Fri at 18:00 UTC — triggered by the scheduled `execute-release.yml` run.
 - The SHA freshness check compares the `:testing` SHA with the current `:stable` SHA. Equal → skip. Different → promote.
 - cosign `--certificate-identity-regexp` must be anchored with `^...$` and restricted to the publishing workflow file.
 - `execute-release.yml` `workflow_dispatch` bypass is allowed for manual recovery only.
@@ -170,7 +172,7 @@ Do not substitute `github.event.workflow_run.head_sha` with a `skopeo inspect` l
 # check recent execute-release runs
 gh run list --repo projectbluefin/dakota --workflow 'Execute Release' --limit 10
 
-# check recent publish runs (execute-release fires after these)
+# check recent publish runs before the next scheduled release
 gh run list --repo projectbluefin/dakota --workflow 'Publish Bluefin dakota' --limit 10
 
 # dispatch execute-release manually (use only for recovery)
@@ -214,17 +216,17 @@ curl -X POST \
 
 ## Common Rationalizations
 
-| Rationalization | Reality |
-|---|---|
-| "execute-release failed, so publish is broken." | Different layer. Publish may be healthy while promotion is blocked. |
-| "Let's use the floating :testing tag as the anchor." | TOCTOU race. Always use `head_sha` from the `workflow_run` event. |
-| "main has diverged — let's open a PR to fix it." | main is a bookmark. Only `execute-release.yml` writes to it via fast-forward. |
-| "The freshness check is too conservative." | Equal SHAs mean `:stable` is already current. Promotion is not needed. |
-| "This reusable caller only needs job-level permissions." | Wrong often enough to deserve a scar. Check top-level caller permissions first. |
+|                                          Rationalization |                                                                                                        Reality |
+| -------------------------------------------------------: | -------------------------------------------------------------------------------------------------------------: |
+|          "execute-release failed, so publish is broken." |                                            Different layer. Publish may be healthy while promotion is blocked. |
+|     "Let's use the floating :testing tag as the anchor." | TOCTOU race. Use the current `testing` ref and require a successful `publish.yml` run with the same `headSha`. |
+|         "main has diverged — let's open a PR to fix it." |                                  main is a bookmark. Only `execute-release.yml` writes to it via fast-forward. |
+|               "The freshness check is too conservative." |                                         Equal SHAs mean `:stable` is already current. Promotion is not needed. |
+| "This reusable caller only needs job-level permissions." |                                Wrong often enough to deserve a scar. Check top-level caller permissions first. |
 
 ## Red Flags
 
-- `execute-release.yml` using `skopeo inspect :testing` to get the SHA instead of `github.event.workflow_run.head_sha`
+- `execute-release.yml` using `skopeo inspect :testing` to get the SHA instead of the current `testing` ref plus a matching successful publish run
 - Any PR targeting `main` (main is a bookmark, not a development branch)
 - Adding a merge queue or required checks to the `main-bookmark-protection` ruleset
 - `testing-merge-queue-no-review` ruleset missing `validate` or `e2e` required checks
@@ -232,8 +234,9 @@ curl -X POST \
 
 ## Verification
 
-- [ ] `execute-release.yml` trigger is `workflow_run` from `publish.yml` on `testing`
-- [ ] `head_sha` from `workflow_run` event anchors cosign verify and the freshness check
+- [ ] `execute-release.yml` schedules Mon/Wed/Fri at `0 18 * * 1,3,5`
+- [ ] Scheduled promotion verifies a successful `publish.yml` run for the exact current `testing` SHA
+- [ ] Manual `workflow_dispatch` recovery inputs remain available
 - [ ] `main-bookmark-protection` ruleset: non_fast_forward + deletion blocked, no merge queue
 - [ ] `testing-merge-queue-no-review` ruleset: `validate` + `e2e` required, merge queue enabled
 - [ ] No PRs exist targeting `main`
@@ -245,13 +248,13 @@ curl -X POST \
 ### release/blocked after CI-only push to testing is expected
 
 When a paths-ignored push (e.g. `.github/workflows/**` change) advances the `testing`
-HEAD, the promote gate runs against the new SHA and finds no CI results for it.
-The gate correctly sets `release/blocked` — the SHA has never been built.
+HEAD, the next scheduled release finds no successful publish run for the new SHA.
+The release correctly skips — the SHA has never been built and published.
 
 This is not a pipeline failure. The resolution is automatic:
 1. The BST build for the prior SHA completes.
 2. `publish.yml` fires → `:testing` updated.
-3. Next promote run re-evaluates → gate passes → merge queue fires.
+3. The next Mon/Wed/Fri release window re-evaluates the current SHA.
 
 ### One BST build at a time — cancel everything before starting a new build
 
@@ -269,9 +272,8 @@ Cancel everything, let one build finish, then re-trigger if needed.
 ### promote_sha recovery — when testing advances past the build SHA (2026-07-28)
 
 Pushing workflow-only fixes to `testing` (which is the default branch) advances the
-testing HEAD past the build SHA. The auto-triggered execute-release sees
-`CURRENT_SHA != BUILD_SHA` and skips promotion ("testing has advanced — will promote
-next build").
+testing HEAD without a corresponding publish run. The next scheduled
+`execute-release` sees no successful publish for the current SHA and skips promotion.
 
 **Recovery:** Use the `promote_sha` workflow_dispatch input:
 ```bash
@@ -281,9 +283,9 @@ gh workflow run execute-release.yml \
   -f promote_sha=<the-build-sha>
 ```
 
-This bypasses the SHA mismatch guard and promotes the specific build SHA even though
-testing has advanced. Only the SHA-tagged images need to exist in GHCR (they do —
-push succeeds before the verify step runs even in failed publish runs).
+This bypasses the scheduled publish-existence guard and promotes the specific build
+SHA even though testing has advanced. Only use it after confirming that the
+SHA-tagged images exist and were cosign-signed.
 
 **Prerequisite:** The images at `promote_sha` must be cosign-signed. If publish
 failed before signing (e.g. due to the `--creds` skopeo issue), you MUST wait for
@@ -325,18 +327,19 @@ update-main-bookmark:
           --method PATCH --field sha="$TARGET_SHA" --field force=true
 ```
 
-### OCI-native daily promotion model (2026-06-23)
+### OCI-native promotion model history (2026-06-23)
 
-Dakota migrated from a weekly squash-PR ceremony to a daily OCI-native promotion
-flow (issue 1073). The key differences:
+Dakota migrated from a weekly squash-PR ceremony to an OCI-native promotion
+flow (issue 1073). The original rollout was daily; the current release cadence
+is documented above. The key differences were:
 
 - **Deleted workflows:** `promote-testing-to-main.yml`, `pr-release-gate.yml`,
   `sync-main-to-testing.yml`, `cache-warm.yml`.
-- **`execute-release.yml`** now fires via `workflow_run` from `publish.yml` on the
-  `testing` branch — no cron, no commit-message gate.
-- **SHA anchor:** `head_sha` from the `workflow_run` event is the source of truth for
-  cosign verify and the freshness check. Never use `skopeo inspect :testing` as the
-  anchor — that is a TOCTOU race.
+- **`execute-release.yml`** replaced the promotion PR ceremony. Its historical
+  `workflow_run` trigger has since been replaced by the Mon/Wed/Fri schedule.
+- **SHA anchor:** the current branch SHA plus a matching successful `publish.yml`
+  run is the source of truth for scheduled releases. Never use `skopeo inspect
+  :testing` as the SHA anchor — that is a TOCTOU race.
 - **Freshness check:** compare the `:testing` digest to the `:stable` digest. Equal →
   skip promotion (already up to date). Different → promote.
 - **`main` is a bookmark.** Fast-forwarded by `execute-release.yml` only. No PRs
@@ -350,6 +353,14 @@ flow (issue 1073). The key differences:
 - **ARM trigger change:** `build-aarch64.yml` now fires via `workflow_run` from
   `publish.yml` — not a Tuesday cron. This serializes ARM after x86 CAS writes
   complete, preventing CAS contention.
+
+### Scheduled release must match a published SHA (2026-08-09)
+
+The daily build and publish cadence is intentionally independent from the
+Mon/Wed/Fri stable cadence. A scheduled `execute-release.yml` run must locate a
+successful `publish.yml` run whose `headSha` equals the current `testing` ref
+before resolving the digest. The digest action can fall back to a SHA tag, but
+that fallback alone does not prove the SHA passed publish and boot-check.
 
 ### Keep stable variant lists aligned
 

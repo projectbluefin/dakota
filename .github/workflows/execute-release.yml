@@ -1,10 +1,10 @@
 name: Execute Release
 
 on:
-  workflow_run:
-    workflows: ["Publish Bluefin dakota"]
-    types: [completed]
-    branches: [testing]
+  # The daily build publishes :testing at 13:00 UTC. Release after that
+  # publish has completed on the evenly-spaced Mon/Wed/Fri cadence.
+  schedule:
+    - cron: '0 18 * * 1,3,5'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -16,7 +16,7 @@ on:
         type: boolean
         default: false
       promote_sha:
-        description: 'Recovery only — promote a specific SHA instead of the current testing HEAD (bypasses SHA mismatch guard)'
+        description: 'Recovery only — promote a specific SHA instead of the current testing HEAD (bypasses scheduled publish-existence guard)'
         required: false
         type: string
         default: ''
@@ -48,43 +48,51 @@ jobs:
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PROMOTE_SHA: ${{ inputs.promote_sha }}
         run: |
           set -euo pipefail
 
-          # Skip if triggered by a failed publish workflow
-          if [ "${{ github.event_name }}" = "workflow_run" ] && \
-             [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-            echo "Publish workflow did not succeed (conclusion: ${{ github.event.workflow_run.conclusion }}). Skipping."
-            echo "should-release=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Resolve the SHA that was built and published.
+          # Resolve the SHA that was built and published. Manual recovery can
+          # override the current testing HEAD with an explicit SHA.
           # promote_sha overrides SHA resolution (recovery: promotes a specific build
           # even when testing has advanced past it due to workflow-only commits).
-          if [[ -n "${{ inputs.promote_sha }}" ]]; then
-            BUILD_SHA="${{ inputs.promote_sha }}"
+          if [[ -n "$PROMOTE_SHA" ]]; then
+            BUILD_SHA="$PROMOTE_SHA"
             echo "Recovery mode: promoting specified SHA ${BUILD_SHA}"
-          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
-            BUILD_SHA="${{ github.event.workflow_run.head_sha }}"
           else
             BUILD_SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/testing" --jq '.object.sha')
           fi
 
-          # Guard: if testing advanced since the build, the reusable fast-forward would
-          # point main to a newer commit than the image we're promoting. Skip promotion.
-          # Bypassed when promote_sha is specified (recovery: explicit SHA override).
-          if [ "${{ github.event_name }}" = "workflow_run" ] && [[ -z "${{ inputs.promote_sha }}" ]]; then
-            CURRENT_SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/testing" --jq '.object.sha')
-            if [ "$CURRENT_SHA" != "$BUILD_SHA" ]; then
-              echo "::warning::testing has advanced (build: ${BUILD_SHA}, current: ${CURRENT_SHA}). Skipping promotion to avoid SHA mismatch on main fast-forward. Will promote next build."
-              echo "should-release=false" >> "$GITHUB_OUTPUT"
-              exit 0
+          # Scheduled releases must prove that this exact testing SHA was
+          # successfully published before resolving its digest. This avoids
+          # promoting a SHA while the daily build or publish is still running.
+          PUBLISH_RUN_ID=""
+          SHOULD_RELEASE=true
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            PUBLISH_RUN_ID=$(gh run list \
+              --workflow publish.yml \
+              --branch testing \
+              --status success \
+              --limit 100 \
+              --json databaseId,headSha \
+              --jq ".[] | select(.headSha == \"$BUILD_SHA\") | .databaseId" \
+              | head -1)
+
+            if [[ -z "$PUBLISH_RUN_ID" ]]; then
+              echo "::warning::No successful Publish Bluefin dakota run found for testing SHA ${BUILD_SHA}; skipping this release window."
+              SHOULD_RELEASE=false
+            else
+              echo "Found successful publish run ${PUBLISH_RUN_ID} for testing SHA ${BUILD_SHA}."
             fi
           fi
 
-          echo "build_sha=${BUILD_SHA}" >> "$GITHUB_OUTPUT"
-          echo "proceed=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "should-release=${SHOULD_RELEASE}"
+            echo "build_sha=${BUILD_SHA}"
+            echo "publish_run_id=${PUBLISH_RUN_ID}"
+            echo "proceed=${SHOULD_RELEASE}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Resolve published digest
         if: steps.gate.outputs.proceed == 'true'
@@ -95,7 +103,7 @@ jobs:
           image: ghcr.io/projectbluefin/dakota
           build-sha: ${{ steps.gate.outputs.build_sha }}
           registry-creds: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id || '' }}
+          run-id: ${{ steps.gate.outputs.publish_run_id }}
           verify: 'true'
 
       - name: Compare against :stable
