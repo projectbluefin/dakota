@@ -1185,6 +1185,36 @@ verify image_ref="":
     fi
     exit "${STATUS}"
 
+# ── E2E dispatch ─────────────────────────────────────────────────────
+# e2e.yml is workflow_dispatch-only — PRs do not publish a :testing build
+# first, so running smoke on a PR would test a stale image. Dispatching it was
+# a loose `gh workflow run` incantation with no recipe until now.
+#
+# Dispatch the e2e workflow against a published image.
+[group('test')]
+e2e suites="smoke" image="ghcr.io/projectbluefin/dakota:testing":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "gh CLI is required to dispatch the e2e workflow" >&2
+        exit 2
+    fi
+    echo "==> Dispatching e2e: suites={{suites}} image={{image}}"
+    gh workflow run e2e.yml \
+        --repo projectbluefin/dakota \
+        --field image="{{image}}" \
+        --field suites="{{suites}}"
+    echo "==> Watch it with: gh run list --repo projectbluefin/dakota --workflow e2e.yml --limit 5"
+
+# Only meaningful against a fisherman to-filesystem install — see the header
+# of .github/workflows/e2e.yml for which of the three assertions gate on what.
+# Usage: just e2e-installer ghcr.io/projectbluefin/dakota:testing
+#
+# Dispatch the fisherman post-boot assertions (projectbluefin/dakota#651).
+[group('test')]
+e2e-installer image="ghcr.io/projectbluefin/dakota:testing":
+    just e2e installer "{{image}}"
+
 # ── Lint ─────────────────────────────────────────────────────────────
 [group('test')]
 lint:
