@@ -1258,3 +1258,81 @@ swap-audit:
         [ "$STATUS" -eq 0 ] && echo "PASS: swap/zram configuration OK"
         exit "$STATUS"
         '
+
+# ── Avatar audit ─────────────────────────────────────────────────────
+# Assert the Bluefin dinosaur avatars are actually reachable by GNOME's
+# account-picture pickers. Guards against the #353 regression class, where
+# the art shipped fine but nothing pointed GNOME at it.
+#
+# Two independent ways this breaks silently, both checked here:
+#   1. common.bst stops ingesting /usr/share/pixmaps/faces/bluefin/*.jpg.
+#   2. The dconf override ships but never reaches the compiled distro db
+#      (element dropped from the layer, or `dconf update` did not run).
+#
+# org.gnome.desktop.interface avatar-directories REPLACES the default face
+# dirs rather than adding to them (gnome-control-center
+# panels/system/users/cc-avatar-chooser.c, gnome-initial-setup
+# pages/account/um-photo-dialog.c), so a stale or typo'd path yields an
+# empty picker with no fallback. Every listed dir is therefore checked for
+# existence and for actual .jpg content.
+[group('test')]
+avatar-audit:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Use sudo unless already root
+    SUDO_CMD=""
+    if [ "$(id -u)" -ne 0 ]; then
+        SUDO_CMD="sudo"
+    fi
+
+    echo "==> Auditing user-avatar configuration in {{image_name}}:{{image_tag}}..."
+    $SUDO_CMD podman run --rm --pull=never \
+        "{{image_name}}:{{image_tag}}" \
+        bash -c '
+        set -uo pipefail
+        STATUS=0
+        fail() { echo "FAIL: $1" >&2; STATUS=1; }
+
+        Q=$(printf "\047")
+        KEYFILE=/etc/dconf/db/distro.d/07-dakota-avatar-directories
+        DB=/etc/dconf/db/distro
+
+        # The art itself, straight from bluefin/common.bst.
+        compgen -G "/usr/share/pixmaps/faces/bluefin/*.jpg" > /dev/null \
+            || fail "no Bluefin avatar art under /usr/share/pixmaps/faces/bluefin"
+
+        # The distro dconf profile must read the distro db at all.
+        grep -qx "system-db:distro" /etc/dconf/profile/user 2>/dev/null \
+            || fail "/etc/dconf/profile/user does not read system-db:distro"
+
+        if [ ! -f "$KEYFILE" ]; then
+            fail "$KEYFILE missing"
+        elif [ ! -f "$DB" ]; then
+            fail "compiled dconf db $DB missing -- did dconf update run?"
+        else
+            VALUE=$(sed -n "s/^avatar-directories=//p" "$KEYFILE")
+            if [ -z "$VALUE" ]; then
+                fail "avatar-directories key missing from $KEYFILE"
+            else
+                DIRS=$(printf "%s" "$VALUE" | tr -d "[]${Q} " | tr "," "\n" | grep -v "^$")
+                if [ -z "$DIRS" ]; then
+                    fail "avatar-directories is empty -- the picker would show nothing"
+                else
+                    while read -r dir; do
+                        [ -d "$dir" ] \
+                            || { fail "avatar-directories lists $dir, which is not in the image"; continue; }
+                        compgen -G "${dir}/*.jpg" > /dev/null \
+                            || fail "$dir contains no .jpg faces"
+                        # gvdb keeps strings verbatim, so the compiled db can
+                        # be grepped without a dconf/D-Bus round trip.
+                        grep -qaF "$dir" "$DB" \
+                            || fail "$dir absent from compiled $DB -- override did not reach the db"
+                    done <<< "$DIRS"
+                fi
+            fi
+        fi
+
+        [ "$STATUS" -eq 0 ] && echo "PASS: user-avatar configuration OK"
+        exit "$STATUS"
+        '

@@ -213,3 +213,26 @@ Two load-bearing examples:
 Final NVIDIA OCI assembly must assert that `GL/lib/gbm` remains a symlink and
 that both `dri_gbm.so` and `nvidia-drm_gbm.so` resolve through it. Check the
 composed path with `ls -ld` before choosing any install location under `GL/`.
+
+### Files present in the image are not the same as files GNOME will find (2026-08-07)
+
+Landing an asset under the right path is not the same as the consuming
+component seeing it. `bluefin/common.bst` correctly installs Bluefin's
+dinosaur avatars at `/usr/share/pixmaps/faces/bluefin/*.jpg`, and they show
+up fine in `just bst artifact list-contents oci/layers/bluefin.bst`, but
+GNOME's avatar pickers (`cc-avatar-chooser.c` in gnome-control-center,
+`um-photo-dialog.c` in gnome-initial-setup) only enumerate files directly
+inside a faces dir — they never recurse into subdirectories. A vendor
+subdirectory like `bluefin/` is invisible to them by default (#353).
+
+The fix is `org.gnome.desktop.interface avatar-directories`
+(`elements/bluefin/user-avatars.bst`,
+`files/user-avatars/07-dakota-avatar-directories`), but this key **replaces**
+the default system faces dirs rather than adding to them — both pickers try
+the configured dirs first and only fall back to the built-in
+`<datadir>/pixmaps/faces` if that yields zero faces. A typo'd or missing
+path in `avatar-directories` therefore doesn't degrade to the stock icons;
+it produces an empty picker. `just avatar-audit` checks the art exists, the
+key is present, and every listed directory is both on disk and reachable in
+the compiled `/etc/dconf/db/distro` — the same class of "shipped but not
+reachable" gap that `swap-audit` guards for zram/kargs.
