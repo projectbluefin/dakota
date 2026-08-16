@@ -1,4 +1,4 @@
-From deba018b7180e08cb01685e422b7b4fc668d5ef4 Mon Sep 17 00:00:00 2001
+From ed436dccf29591178817abe7498eac3e21e49ba3 Mon Sep 17 00:00:00 2001
 From: Valentin David <me@valentindavid.com>
 Date: Sun, 26 Oct 2025 16:06:02 +0100
 Subject: [PATCH 4/7] openssh: Include ssh*_config.d/*.conf
@@ -10,7 +10,7 @@ and some software expect it: systemd, libvirt.
  1 file changed, 14 insertions(+)
 
 diff --git a/elements/components/openssh.bst b/elements/components/openssh.bst
-index 2ccc03748..d48247cd1 100644
+index 9eb72d96c..5a8f15c49 100644
 --- a/elements/components/openssh.bst
 +++ b/elements/components/openssh.bst
 @@ -28,20 +28,34 @@ variables:
@@ -49,5 +49,5 @@ index 2ccc03748..d48247cd1 100644
    bst:
      split-rules:
 -- 
-2.54.0
+2.55.0
 

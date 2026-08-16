@@ -3,7 +3,8 @@
 # This reproduces the x86_64/aarch64 recipe of the linux.bst element at
 # Dakota's pinned freedesktop-sdk 25.08 ref, with the shared config
 # enabling ATH12K. The pinned upstream kernel patches only affect
-# RISC-V and PowerPC, which Dakota does not build.
+# RISC-V, PowerPC, and perf-tooling reproducibility (jevents), none of
+# which Dakota builds.
 #
 # Two Dakota deltas from the upstream recipe (both shared with
 # linux-ogc.bst, see there):

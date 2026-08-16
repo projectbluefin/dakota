@@ -1,4 +1,4 @@
-From e51fde61ed09195ba684340c0b3be5f4c6fd9cad Mon Sep 17 00:00:00 2001
+From de6ea0678616af41edffd7b9f8597f0b1a93bc1d Mon Sep 17 00:00:00 2001
 From: Valentin David <me@valentindavid.com>
 Date: Sat, 24 Jan 2026 12:13:27 +0100
 Subject: [PATCH 5/7] lvm2: Disable event activation by default
@@ -49,5 +49,5 @@ index 5f289a56a..5b24218eb 100644
    bst:
      split-rules:
 -- 
-2.54.0
+2.55.0
 

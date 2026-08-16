@@ -1,4 +1,4 @@
-From ac376aee55c9a7b7d94ffba9c7113cfc4d956a9a Mon Sep 17 00:00:00 2001
+From c42e483a6fea5a2aaaf170f51e2846d41b465d0d Mon Sep 17 00:00:00 2001
 From: Jordan Petridis <jpetridis@gnome.org>
 Date: Mon, 4 Aug 2025 20:22:27 +0300
 Subject: [PATCH 2/7] project.conf: Add GNOME CAS servers
@@ -58,5 +58,5 @@ index 9600a65fd..f04634f94 100644
      (@): include/_private/cmake-conf.yml
    meson:
 -- 
-2.54.0
+2.55.0
 

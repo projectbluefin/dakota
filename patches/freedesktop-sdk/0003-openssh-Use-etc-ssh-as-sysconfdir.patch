@@ -1,4 +1,4 @@
-From cb7355848d5632c17355078ae33508f7766409f8 Mon Sep 17 00:00:00 2001
+From d8741b73ea303791592279fecf926e9daab9a009 Mon Sep 17 00:00:00 2001
 From: Valentin David <me@valentindavid.com>
 Date: Sun, 26 Oct 2025 11:03:32 +0100
 Subject: [PATCH 3/7] openssh: Use /etc/ssh as sysconfdir
@@ -12,7 +12,7 @@ Also fix a /var/run
  1 file changed, 2 insertions(+)
 
 diff --git a/elements/components/openssh.bst b/elements/components/openssh.bst
-index a7c0361f3..2ccc03748 100644
+index ddc285e45..9eb72d96c 100644
 --- a/elements/components/openssh.bst
 +++ b/elements/components/openssh.bst
 @@ -9,33 +9,35 @@ build-depends:
@@ -52,5 +52,5 @@ index a7c0361f3..2ccc03748 100644
        install -Dm755 contrib/ssh-copy-id -t "%{install-root}%{bindir}"
        install -Dm644 contrib/ssh-copy-id.1 -t "%{install-root}%{mandir}/man1"
 -- 
-2.54.0
+2.55.0
 
