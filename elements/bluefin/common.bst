@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/common.git
   track: main
-  ref: v2026.08-51-g3e5f7f5d2dd739908d0e8570e832f267a8e1d1cf
+  ref: v2026.08-54-g19afc70e4923e644cc7f108063a47db4e85971d6
 - kind: git_module
   url: github:projectbluefin/branding/
   path: bluefin-branding
@@ -35,6 +35,15 @@ config:
     #   - install -Dm644 -t "%{install-root}%{sysconfdir}/" etc/*
   - |
     sed -i "s#file:///usr/share/backgrounds/bluefin/12-bluefin.xml#file:///var/lib/ublue-os/current-bluefin.xml#g" "system_files/bluefin/usr/share/glib-2.0/schemas/zz0-bluefin-modifications.gschema.override"
+
+    # The /var/home/linuxbrew spelling breaks Homebrew's bottle-prefix
+    # detection on Dakota's real /home; common respelled everything to
+    # /home/linuxbrew in projectbluefin/common#997. Guard against the bad
+    # spelling regressing upstream (docs/skills/host-homebrew.md).
+    if grep -rl "/var/home/linuxbrew" system_files/shared system_files/bluefin; then
+      echo "ERROR: /var/home/linuxbrew references above break brew bottle-prefix detection — fix them in projectbluefin/common" >&2
+      exit 1
+    fi
 
     cp -r system_files/bluefin/usr/./ "%{install-root}%{prefix}/"
     cp -r system_files/shared/usr/./ "%{install-root}%{prefix}/"
