@@ -150,9 +150,10 @@ A workflow with `on: push: branches: [main]` that lives **only on the `next` bra
 will **never fire**. GitHub only reads workflow files from the default branch when
 evaluating push triggers.
 
-**Fix:** The sync workflow (`sync-next-from-main.yml`) must live on `main`. It then
-fires on every `push: main` and merges main into `next`. A copy also lands on `next`
-via the sync itself (harmless — the `next` copy is never triggered).
+**Fix:** The sync workflow (`sync-next.yml`) must live on `testing`
+(the default branch). It then fires on every `push: testing` and re-synthesizes
+`next` from testing. A copy also lands on `next` via the sync itself (harmless —
+the `next` copy is never triggered).
 
 ### 7) Branch protection blocking workflow direct push
 
@@ -258,8 +259,8 @@ App permission. If workflow-file bumps are still not auto-merging, check that:
 
 ### 11b) Branch-sync workflows that push workflow files need the Mergeraptor token
 
-`sync-next-from-main.yml` merges `main` into `next`. When that merge includes
-changes to `.github/workflows/` files, the push fails:
+`sync-next.yml` re-synthesizes `next` from `testing`. When the
+synced content includes changes to `.github/workflows/` files, the push fails:
 
 ```
 remote: refusing to allow a GitHub App to create or update workflow

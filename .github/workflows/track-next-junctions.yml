@@ -9,8 +9,11 @@ on:
     - cron: '0 20 * * *'
   workflow_dispatch:
 
+# Shares a group with sync-next.yml so a tracker run can never
+# interleave with a sync rewriting next. Runner saturation against stable
+# builds is handled by the 20:00 UTC schedule offset, not this group.
 concurrency:
-  group: dakota-bst-build-global
+  group: dakota-next-branch-mutation
   cancel-in-progress: false
 
 env:

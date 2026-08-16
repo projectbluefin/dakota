@@ -90,7 +90,7 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 | `.github/workflows/e2e.yml` | testsuite suite runner (delegates to the `projectbluefin/testsuite` reusable workflow) | `workflow_dispatch` **only** — not `pull_request`. PRs do not publish a `:testing` build first, so a PR-triggered run would test a stale image, not the PR's code. Dispatch it with `just e2e <suites> [image]`; `just e2e-installer` runs the fisherman post-boot assertions (#651). |
 | `.github/workflows/lab-check.yml` | MergeRaptor-owned `testing-lab / dakota` Check Run for the Kubernetes lab | `repository_dispatch: lab-check` |
 | `.github/workflows/execute-release.yml` | SHA freshness check → cosign verify → stable release | `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch`. Skips if `:testing` digest equals `:stable` digest. |
-| `.github/workflows/sync-next-from-main.yml` | merge main into next (preserve junction refs) | `push: main`, `workflow_dispatch` |
+| `.github/workflows/sync-next.yml` | synthesize next = testing + overlay of next-owned files (junctions, patch queues, kernels, manifests) | `push: testing`, `workflow_dispatch` |
 | ~~`promote-testing-to-main.yml`~~ | DELETED | Was: `push: testing`, schedule, manual |
 | ~~`pr-release-gate.yml`~~ | DELETED | Was: `pull_request` to `main` |
 | ~~`sync-main-to-testing.yml`~~ | DELETED | Was: `push: main` |
@@ -102,7 +102,7 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 |---|---|---|---|
 | `testing` | `push` (BST-affecting paths only) or `schedule: 13:00 UTC` | `:testing` | **Development trunk. Primary `:testing` publish path.** Every BST-affecting push builds → publishes → promotes. Doc/workflow-only pushes are ignored (paths-ignore). |
 | `main` | fast-forward from `execute-release.yml` | `:stable` | **Release bookmark only.** Only `execute-release.yml` writes here after a successful SHA freshness check + cosign verify + boot-check. No PRs target `main`. |
-| `next` | `push` or `sync-next-from-main` dispatch | `:next`, `:btw` | Rolling GNOME master; never stable. No PR requirement on branch protection. |
+| `next` | `push` or `sync-next` dispatch | `:next`, `:btw` | Rolling GNOME master; never stable. No PR requirement on branch protection. |
 | `gh-readonly-queue/testing/*` | merge-queue | (build only, no tag) | Gate before merge to `testing`. |
 | `gh-readonly-queue/next/*` | merge-queue | (build only, no tag) | Gate before merge to `next`. |
 | `testing` (BST paths) | `workflow_run` from publish | `:aarch64`, `:aarch64-<sha>` | Published by `build-aarch64.yml`. Completely decoupled from x86_64 flow. Never blocks release. |
@@ -136,7 +136,7 @@ push to testing (BST-affecting) or daily 13:00 UTC schedule
 - Editing a workflow before checking whether a different workflow actually owns the stage
 - Assuming `workflow_dispatch` behaves like `workflow_run`
 - A branch-sync workflow that only lives on the target branch (will never fire — must be on default branch)
-- Re-adding PR requirement to `next` branch protection (breaks `sync-next-from-main` direct push)
+- Re-adding PR requirement to `next` branch protection (breaks `sync-next` direct push)
 
 ## Verification
 
