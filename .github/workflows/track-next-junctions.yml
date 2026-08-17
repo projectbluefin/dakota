@@ -1,9 +1,9 @@
 name: Track next branch junctions
 
 # Runs at 20:00 UTC daily — offset from the main tracker (06:00 UTC) to avoid
-# saturating runners when stable-branch builds are active. gnome-build-meta
-# master nightly finishes ~08:00 UTC, so 20:00 UTC ensures new artifacts are
-# in the CAS before we open a junction-bump PR.
+# saturating runners when stable-branch builds are active. gnome-build-meta's
+# gnome-51 CI publishes artifacts well before this, so bump PRs land with the
+# upstream CAS already warm.
 on:
   schedule:
     - cron: '0 20 * * *'
@@ -21,12 +21,16 @@ env:
 
 jobs:
   # ── Track core junctions for next (btw stream) ─────────────────
-  # Bumps gnome-build-meta.bst (master) and freedesktop-sdk.bst atomically on
-  # the next branch. Opens a PR against next with auto-merge enabled —
-  # next is a fully automated rolling nightly stream, no human gate required.
+  # Tracks gnome-build-meta.bst along its branch (track: gnome-51 in the
+  # element), then derives freedesktop-sdk.bst and patches/freedesktop-sdk
+  # from the tracked commit: our fdsdk pin and patch queue must match what
+  # gnome-build-meta itself uses, or the patch queue stops applying and
+  # cache reuse against GNOME's CAS is lost. Tracking fdsdk independently
+  # races ahead of gnome-build-meta whenever fdsdk tags a release (see the
+  # 26.08beta.4 failure on 2026-08-17).
   #
-  # When gnome-build-meta cuts a stable branch (e.g. gnome-51 ~Sep 2026), update
-  # track: master → track: gnome-51 in elements/gnome-build-meta.bst on next.
+  # Opens a PR against next with auto-merge enabled — next is a fully
+  # automated rolling stream, no human gate required.
   track-core-junctions-next:
     runs-on: ubuntu-24.04
     permissions:
@@ -55,38 +59,80 @@ jobs:
       - name: Pull BuildStream container image
         run: podman pull "$BST2_IMAGE"
 
-      - name: Track core junctions (gnome-build-meta master + freedesktop-sdk)
+      - name: Track gnome-build-meta, derive freedesktop-sdk from its pin
         run: |
           just bst --no-interactive source track gnome-build-meta.bst
-          just bst --no-interactive source track freedesktop-sdk.bst
+
+          gbm_ref=$(awk '/^[[:space:]]*ref: / { print $2; exit }' elements/gnome-build-meta.bst)
+          if [[ ! "$gbm_ref" =~ -g([0-9a-f]{40})$ ]]; then
+            echo "ERROR: could not extract GBM sha from ref: ${gbm_ref}" >&2
+            exit 1
+          fi
+          gbm_sha="${BASH_REMATCH[1]}"
+
+          files_api="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/files"
+          fdsdk_ref=$(curl -fsSL "${files_api}/elements%2Ffreedesktop-sdk.bst/raw?ref=${gbm_sha}" \
+            | awk '/url: gitlab:freedesktop-sdk/ { found=1 } found && /^[[:space:]]*ref: / { print $2; exit }')
+          if [ -z "$fdsdk_ref" ]; then
+            echo "ERROR: could not read the freedesktop-sdk pin from gnome-build-meta @ ${gbm_sha}" >&2
+            exit 1
+          fi
+          sed -i "0,/^\s*ref:/{s|^\(\s*\)ref:.*|\1ref: ${fdsdk_ref}|}" elements/freedesktop-sdk.bst
+
+          # Mirror gnome-build-meta's fdsdk patch queue at the same commit.
+          tree_api="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/tree?path=patches/freedesktop-sdk&ref=${gbm_sha}&per_page=100"
+          mapfile -t patch_files < <(curl -fsSL "$tree_api" \
+            | python3 -c 'import json,sys; [print(i["name"]) for i in json.load(sys.stdin) if i["type"] == "blob"]')
+          if [ "${#patch_files[@]}" -eq 0 ]; then
+            echo "ERROR: empty patches/freedesktop-sdk listing at gnome-build-meta @ ${gbm_sha}" >&2
+            exit 1
+          fi
+          rm -f patches/freedesktop-sdk/*
+          for f in "${patch_files[@]}"; do
+            curl -fsSL "${files_api}/patches%2Ffreedesktop-sdk%2F${f}/raw?ref=${gbm_sha}" \
+              -o "patches/freedesktop-sdk/${f}"
+          done
+
+          # By construction this passes; failing here means the mirror above
+          # broke and the PR should not be opened.
+          just patch-drift-check
 
       - name: Create or update PR against next (auto-merge)
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          git diff --quiet && { echo "No junction updates"; exit 0; }
-
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git checkout -B auto/track-next-junction origin/next
-          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst
+          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst patches/freedesktop-sdk
+
+          if git diff --cached --quiet; then
+            echo "No junction updates"
+            # A leftover open PR at this point predates the current junction
+            # state (e.g. an unmergeable bump) — close it rather than let it
+            # linger with auto-merge armed.
+            EXISTING=$(gh pr list --head auto/track-next-junction --base next --state open --json number --jq '.[0].number // empty' || true)
+            if [ -n "$EXISTING" ]; then
+              gh pr close "$EXISTING" --delete-branch \
+                --comment "Superseded: next already matches the tracked junction state."
+            fi
+            exit 0
+          fi
+
           git commit -m "chore(deps): update core junctions (next branch)"
           git push --force-with-lease origin auto/track-next-junction
 
-          EXISTING=$(gh pr list --head auto/track-next-junction --json number --jq '.[0].number' 2>/dev/null || true)
+          EXISTING=$(gh pr list --head auto/track-next-junction --base next --state open --json number --jq '.[0].number // empty' || true)
           if [ -n "$EXISTING" ]; then
             PR_URL=$(gh pr view "$EXISTING" --json url --jq '.url')
             echo "Existing PR: $PR_URL — re-enabling auto-merge"
           else
-            PR_BODY=$(printf '%s\n\n%s' \
-            "Bumps \`gnome-build-meta.bst\` (master) and \`freedesktop-sdk.bst\` atomically on the \`next\` branch. Auto-merges once \`bst show\` validation passes." \
-            "> **Note:** When gnome-build-meta cuts a stable branch (e.g. \`gnome-51\`), update \`track: master\` → \`track: <branch>\` in \`elements/gnome-build-meta.bst\` on \`next\`. No CI changes needed.")
             PR_URL=$(gh pr create \
               --base next \
               --head auto/track-next-junction \
               --title "chore(deps): update core junctions (next branch)" \
-              --body "$PR_BODY")
+              --body "Tracks \`gnome-build-meta.bst\` along gnome-51 and pins \`freedesktop-sdk.bst\` plus \`patches/freedesktop-sdk\` to exactly what the tracked commit uses. Auto-merges once validation passes.")
             echo "Created PR: $PR_URL"
           fi
 
