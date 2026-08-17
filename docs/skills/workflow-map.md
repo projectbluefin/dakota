@@ -102,7 +102,7 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 |---|---|---|---|
 | `testing` | `push` (BST-affecting paths only) or `schedule: 13:00 UTC` | `:testing` | **Development trunk. Primary `:testing` publish path.** Every BST-affecting push builds → publishes → promotes. Doc/workflow-only pushes are ignored (paths-ignore). |
 | `main` | fast-forward from `execute-release.yml` | `:stable` | **Release bookmark only.** Only `execute-release.yml` writes here after a successful SHA freshness check + cosign verify + boot-check. No PRs target `main`. |
-| `next` | `push` or `sync-next` dispatch | `:next`, `:btw` | Rolling GNOME master; never stable. No PR requirement on branch protection. |
+| `next` | `push` or `sync-next` dispatch | `:next`, `:btw` | Rolling GNOME 51 stream (tracks gnome-build-meta gnome-51; fdsdk derived from its pin); never stable. Required check: validate; no PR requirement. |
 | `gh-readonly-queue/testing/*` | merge-queue | (build only, no tag) | Gate before merge to `testing`. |
 | `gh-readonly-queue/next/*` | merge-queue | (build only, no tag) | Gate before merge to `next`. |
 | `testing` (BST paths) | `workflow_run` from publish | `:aarch64`, `:aarch64-<sha>` | Published by `build-aarch64.yml`. Completely decoupled from x86_64 flow. Never blocks release. |

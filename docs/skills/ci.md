@@ -1311,7 +1311,7 @@ on `main` that touch `Justfile` or `.github/`.
 ### :next build only fires on junction bumps — not a guaranteed nightly (2026-06-09)
 
 `build.yml` has no `schedule:` trigger. The `next` branch builds when:
-1. `track-next-junctions.yml` bumps gnome-build-meta master (20:00 UTC nightly,
+1. `track-next-junctions.yml` bumps gnome-build-meta along gnome-51 (20:00 UTC nightly,
    only if upstream advanced that day) → auto-merge PR → merge_group build
 2. Manual `workflow_dispatch`
 
@@ -2567,7 +2567,7 @@ Always check for cancelled builds after batch-merging PRs.
 
 The `pr-triage.yml` gate enforces branch targets. In the testing-first model:
 - PRs targeting `testing` → allowed (all content PRs)
-- PRs targeting `next` → allowed (GNOME master stream)
+- PRs targeting `next` → allowed (GNOME 51 stream)
 - PRs targeting anything else (stable, latest) → blocked
 
 If the gate is only allowing `renovate/*` branches to target testing (old state),
