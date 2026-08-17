@@ -4,10 +4,13 @@
 kind: manual
 
 sources:
+# Upstream deleted the v2.1.ROLLING tag (and rewrote v2.1 history), so we
+# track the rolling v2.1 branch and pin a bare commit; a bare sha ref fetches
+# by commit and survives upstream ref churn.
 - kind: git_repo
   url: github:LuaJIT/LuaJIT.git
-  track: v2.1.ROLLING
-  ref: v2.1.ROLLING-0-g2096ea625d78304e1955b4d7bfd5853cb547fba9
+  track: v2.1
+  ref: 1edc3e52b67eaf6ce5f809be8e17d6862594b8bc # v2.1 tip, 2026-08-03
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-make.bst
