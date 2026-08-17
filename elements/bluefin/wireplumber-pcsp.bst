@@ -10,6 +10,7 @@ sources:
   path: files/wireplumber
 
 build-depends:
+- core/sandbox-tools.bst
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 
 variables:

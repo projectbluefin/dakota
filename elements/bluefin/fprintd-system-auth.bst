@@ -57,6 +57,7 @@ public:
 
 # No external sources — the file is inline.
 build-depends:
+- core/sandbox-tools.bst
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 
 # Stage after the stock file so this override wins the overlap deterministically.

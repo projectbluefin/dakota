@@ -5,6 +5,9 @@ description: |
   the GDM greeter races the first root NVML client for them and NVIDIA
   EGL init fails.
 
+build-depends:
+- core/sandbox-tools.bst
+
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 - bluefin-nvidia/nvidia-drivers.bst

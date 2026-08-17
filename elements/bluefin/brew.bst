@@ -1,5 +1,8 @@
 kind: manual
 
+build-depends:
+- core/sandbox-tools.bst
+
 sources:
 - kind: git_repo
   url: github:ublue-os/brew.git

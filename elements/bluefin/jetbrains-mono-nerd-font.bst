@@ -1,6 +1,7 @@
 kind: manual
 
 build-depends:
+- core/sandbox-tools.bst
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 - freedesktop-sdk.bst:components/libarchive.bst
 - freedesktop-sdk.bst:components/bzip2.bst

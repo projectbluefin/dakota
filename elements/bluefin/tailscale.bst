@@ -11,6 +11,7 @@ sources:
       ref: 2b64e9ade7e73034b5ec9e9bcd537f5ddd14ae3abb435e57e929e7486ae42660
 
 build-depends:
+- core/sandbox-tools.bst
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 - freedesktop-sdk.bst:components/sed.bst
 

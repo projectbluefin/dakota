@@ -11,6 +11,9 @@ description: |
   bluefin/swapfile.bst; zram is disabled via an integration command in
   oci/layers/bluefin-stack.bst.
 
+build-depends:
+- core/sandbox-tools.bst
+
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 

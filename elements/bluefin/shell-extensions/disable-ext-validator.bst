@@ -1,5 +1,8 @@
 kind: manual
 
+build-depends:
+- core/sandbox-tools.bst
+
 depends:
   - gnome-build-meta.bst:sdk/glib.bst
   - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst

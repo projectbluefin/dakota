@@ -2,6 +2,9 @@
 # Wine/Proton probe /dev/ntsync directly; without this nothing loads it.
 kind: manual
 
+build-depends:
+- core/sandbox-tools.bst
+
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 
