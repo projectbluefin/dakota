@@ -7,7 +7,7 @@ depends:
   - freedesktop-sdk.bst:components/linux-firmware.bst
   - core/ntsync-modules-load.bst
   - gnome-build-meta.bst:gnomeos/initramfs/signed-modules.bst
-  - gnome-build-meta.bst:oci/initramfs.bst
+  - gnome-build-meta.bst:oci/initramfs/image.bst
 
   - gnome-build-meta.bst:gnomeos-deps/bootc.bst
   - gnome-build-meta.bst:oci/integration/bootc-config.bst
