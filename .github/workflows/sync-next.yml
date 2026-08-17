@@ -32,6 +32,7 @@ env:
     files/linux
     patches/freedesktop-sdk
     patches/linux
+    patches/linux-ogc
     files/filemap.json
     files/fakecap-manifest.tsv
 
