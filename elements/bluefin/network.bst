@@ -2,6 +2,7 @@ kind: manual
 
 # No external sources - all files are inline.
 build-depends:
+- core/sandbox-tools.bst
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 
 variables:

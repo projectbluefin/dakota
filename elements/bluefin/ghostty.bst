@@ -4,6 +4,7 @@ variables:
   strip-binaries: ""
 
 build-depends:
+  - core/sandbox-tools.bst
   - bluefin/zig.bst
   - freedesktop-sdk.bst:components/tar.bst
   - freedesktop-sdk.bst:components/gzip.bst

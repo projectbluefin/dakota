@@ -7,6 +7,7 @@ sources:
   path: files/service-overrides
 
 build-depends:
+- core/sandbox-tools.bst
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 
 variables:

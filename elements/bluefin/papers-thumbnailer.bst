@@ -1,6 +1,7 @@
 kind: manual
 
 build-depends:
+- core/sandbox-tools.bst
 - gnome-build-meta.bst:core/papers.bst
 
 depends:

@@ -1,6 +1,7 @@
 kind: manual
 
 build-depends:
+- core/sandbox-tools.bst
 - filename: freedesktop-sdk.bst:components/linux.bst
   strict: true
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst

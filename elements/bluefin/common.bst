@@ -13,6 +13,7 @@ sources:
   path: files/wallpaper-month
 
 build-depends:
+- core/sandbox-tools.bst
 - gnome-build-meta.bst:gnomeos-deps/just.bst
 
 depends:
