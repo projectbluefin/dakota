@@ -83,7 +83,7 @@ Successful publish.yml on testing   ← PARALLEL, DECOUPLED
 
 | Workflow | Owns | Normal trigger |
 |---|---|---|
-| `.github/workflows/build.yml` | BST build into remote CAS | `push: testing` (BST + CI-build-path files), `workflow_dispatch`, `schedule: daily 13:00 UTC`. `validate` lives in `validate.yml`; this workflow does not run on `pull_request` or `merge_group`. |
+| `.github/workflows/build.yml` | BST build into remote CAS | `push: testing/next` (BST + CI-build-path files), `workflow_dispatch`, `schedule: daily 13:00 UTC`. `validate` lives in `validate.yml`; this workflow does not run on `pull_request` or `merge_group`. |
 | `.github/workflows/build-aarch64.yml` | aarch64 OCI build + GHCR push | `push: testing/main` (BST-affecting paths), `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch`. Fully decoupled — never in `needs:` of publish/promote/release. |
 | `.github/workflows/publish.yml` | export, sign, boot-check, promote tags | `workflow_run` from build |
 | `.github/workflows/publish-smoke.yml` | observational smoke only | `workflow_run` from publish |

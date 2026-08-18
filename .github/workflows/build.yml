@@ -2,7 +2,10 @@ name: Build Bluefin dakota
 
 on:
   push:
-    branches: [testing]
+    # next builds per content push too: syncs and merged junction bumps queue
+    # behind testing in the shared concurrency group, and superseded pending
+    # runs collapse burst days to one build of the newest state.
+    branches: [testing, next]
     paths:
       - "elements/**"
       - "patches/**"
