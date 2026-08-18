@@ -10,6 +10,7 @@ sources:
   filename: libgtk2.0-0_2.24.33-2+deb12u1_i386.deb
 
 build-depends:
+- core/sandbox-tools.bst
 - freedesktop-sdk.bst:bootstrap/bash.bst
 - freedesktop-sdk.bst:bootstrap/binutils.bst
 - freedesktop-sdk.bst:components/tar.bst

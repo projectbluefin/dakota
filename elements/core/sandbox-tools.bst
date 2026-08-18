@@ -14,3 +14,5 @@ kind: stack
 depends:
 - freedesktop-sdk.bst:bootstrap/bash.bst
 - freedesktop-sdk.bst:bootstrap/coreutils.bst
+# 26.08 coreutils links libgcc_s.so.1; stage its provider too.
+- freedesktop-sdk.bst:components/gcc-libs.bst

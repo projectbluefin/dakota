@@ -1,5 +1,8 @@
 kind: manual
 
+build-depends:
+  - core/sandbox-tools.bst
+
 depends:
   # FIXME: cleanup custom make destdirs set when not needed
   - bluefin/shell-extensions/app-indicators.bst

@@ -31,6 +31,7 @@ env:
     elements/oci/layers/bluefin-stack.bst
     files/linux
     patches/freedesktop-sdk
+    patches/freedesktop-sdk.manifest.json
     patches/linux
     patches/linux-ogc
     files/filemap.json

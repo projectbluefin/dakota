@@ -96,7 +96,10 @@ validate:
     just bst show --deps all oci/bluefin.bst
     just bst show --deps all oci/bluefin-nvidia.bst
 
-# Verify the local freedesktop-sdk patch queue matches the pinned GBM ref.
+# Verify the local freedesktop-sdk patch queue matches its committed
+# manifest, offline. The manifest is written by `just patch-sync` (the only
+# step that contacts gitlab.gnome.org), so validate never depends on
+# upstream uptime.
 [group('dev')]
 patch-drift-check:
     #!/usr/bin/env bash
@@ -107,67 +110,91 @@ patch-drift-check:
         echo "ERROR: could not extract GBM commit SHA from elements/gnome-build-meta.bst ref: ${gbm_ref}" >&2
         exit 1
     fi
-    gbm_sha="${BASH_REMATCH[1]}"
+    export gbm_sha="${BASH_REMATCH[1]}"
+    python3 - <<'EOF'
+    import hashlib, json, os, sys
 
-    local_dir="patches/freedesktop-sdk"
-    workdir=".cache/patch-drift-check.$$"
-    rm -rf "$workdir"
-    mkdir -p "$workdir/upstream"
-    trap 'rm -rf "$workdir"' EXIT
+    manifest_path = "patches/freedesktop-sdk.manifest.json"
+    local_dir = "patches/freedesktop-sdk"
+    gbm_sha = os.environ["gbm_sha"]
 
-    api_url="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/tree?path=patches/freedesktop-sdk&ref=${gbm_sha}&per_page=100"
-    curl -fsSL "$api_url" \
-        | python3 -c 'import json, sys; print("\n".join(sorted(item["name"] for item in json.load(sys.stdin) if item.get("type") == "blob")))' \
-        > "$workdir/upstream-files"
+    if not os.path.exists(manifest_path):
+        sys.exit(f"ERROR: {manifest_path} missing - run `just patch-sync`")
+    m = json.load(open(manifest_path))
 
-    if [ ! -s "$workdir/upstream-files" ]; then
-        echo "ERROR: GBM patches/freedesktop-sdk listing is empty at ${gbm_sha}" >&2
+    if m["gnome-build-meta-sha"] != gbm_sha:
+        sys.exit(
+            "ERROR: junction pins GBM %s but patches were synced for %s - run `just patch-sync`"
+            % (gbm_sha, m["gnome-build-meta-sha"])
+        )
+
+    local = {
+        f: hashlib.sha256(open(os.path.join(local_dir, f), "rb").read()).hexdigest()
+        for f in sorted(os.listdir(local_dir))
+        if os.path.isfile(os.path.join(local_dir, f))
+    }
+    status = 0
+    for f in sorted(set(m["files"]) - set(local)):
+        print(f"ERROR: {f} listed in manifest but missing locally", file=sys.stderr); status = 1
+    for f in sorted(set(local) - set(m["files"])):
+        print(f"ERROR: {f} present locally but not in manifest", file=sys.stderr); status = 1
+    for f in sorted(set(local) & set(m["files"])):
+        if local[f] != m["files"][f]:
+            print(f"ERROR: {f} differs from manifest", file=sys.stderr); status = 1
+    if status:
+        sys.exit("ERROR: patch queue drifted from manifest - run `just patch-sync` after junction bumps")
+    print(f"OK: patches/freedesktop-sdk matches manifest for GBM {gbm_sha} ({len(local)} files)")
+    EOF
+
+# Re-sync patches/freedesktop-sdk (and its manifest) from gnome-build-meta
+# at the pinned junction sha. The one place upstream is contacted; run it
+# after every gnome-build-meta junction bump.
+[group('dev')]
+patch-sync:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    gbm_ref=$(awk '/^[[:space:]]*ref: / { print $2; exit }' elements/gnome-build-meta.bst)
+    if [[ ! "$gbm_ref" =~ -g([0-9a-f]{40})$ ]]; then
+        echo "ERROR: could not extract GBM commit SHA from elements/gnome-build-meta.bst ref: ${gbm_ref}" >&2
         exit 1
     fi
+    export gbm_sha="${BASH_REMATCH[1]}"
 
-    while IFS= read -r name; do
-        encoded=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$name")
-        curl -fsSL "https://gitlab.gnome.org/GNOME/gnome-build-meta/-/raw/${gbm_sha}/patches/freedesktop-sdk/${encoded}" \
-            -o "$workdir/upstream/$name"
-    done < "$workdir/upstream-files"
-
-    if [ -d "$local_dir" ]; then
-        find "$local_dir" -maxdepth 1 -type f -printf '%f\n' | sort > "$workdir/local-files"
-    else
-        : > "$workdir/local-files"
+    files_api="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/files"
+    tree_api="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/tree?path=patches/freedesktop-sdk&ref=${gbm_sha}&per_page=100"
+    mapfile -t patch_files < <(curl -fsSL "$tree_api" \
+        | python3 -c 'import json, sys; [print(i["name"]) for i in json.load(sys.stdin) if i["type"] == "blob"]')
+    if [ "${#patch_files[@]}" -eq 0 ]; then
+        echo "ERROR: empty patches/freedesktop-sdk listing at gnome-build-meta @ ${gbm_sha}" >&2
+        exit 1
     fi
-
-    comm -23 "$workdir/upstream-files" "$workdir/local-files" > "$workdir/missing"
-    comm -13 "$workdir/upstream-files" "$workdir/local-files" > "$workdir/extra"
-    : > "$workdir/differing"
-    comm -12 "$workdir/upstream-files" "$workdir/local-files" | while IFS= read -r name; do
-        if ! cmp -s "$workdir/upstream/$name" "$local_dir/$name"; then
-            echo "$name" >> "$workdir/differing"
-        fi
+    rm -f patches/freedesktop-sdk/*
+    for f in "${patch_files[@]}"; do
+        encoded=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$f")
+        curl -fsSL "${files_api}/patches%2Ffreedesktop-sdk%2F${encoded}/raw?ref=${gbm_sha}" \
+            -o "patches/freedesktop-sdk/${f}"
     done
 
-    status=0
-    if [ -s "$workdir/missing" ]; then
-        echo "ERROR: missing local patches from GBM patches/freedesktop-sdk at ${gbm_sha}:" >&2
-        sed 's/^/  /' "$workdir/missing" >&2
-        status=1
-    fi
-    if [ -s "$workdir/extra" ]; then
-        echo "ERROR: extra local patches not in GBM patches/freedesktop-sdk at ${gbm_sha}:" >&2
-        sed 's/^/  /' "$workdir/extra" >&2
-        status=1
-    fi
-    if [ -s "$workdir/differing" ]; then
-        echo "ERROR: differing patch contents versus GBM patches/freedesktop-sdk at ${gbm_sha}:" >&2
-        sed 's/^/  /' "$workdir/differing" >&2
-        status=1
-    fi
-    if [ "$status" -ne 0 ]; then
-        exit "$status"
-    fi
+    python3 - <<'EOF'
+    import hashlib, json, os
 
-    count=$(wc -l < "$workdir/upstream-files" | tr -d ' ')
-    echo "OK: patches/freedesktop-sdk matches GBM ${gbm_sha} (${count} files)"
+    d = "patches/freedesktop-sdk"
+    files = {
+        f: hashlib.sha256(open(os.path.join(d, f), "rb").read()).hexdigest()
+        for f in sorted(os.listdir(d))
+        if os.path.isfile(os.path.join(d, f))
+    }
+    manifest = {
+        "comment": "Written by `just patch-sync`; verified offline by `just patch-drift-check`.",
+        "gnome-build-meta-sha": os.environ["gbm_sha"],
+        "files": files,
+    }
+    with open("patches/freedesktop-sdk.manifest.json", "w") as fh:
+        json.dump(manifest, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    print(f"Synced {len(files)} patches and manifest for GBM {os.environ['gbm_sha']}")
+    EOF
 
 # ── Build ─────────────────────────────────────────────────────────────
 # Build the OCI image and load it into podman.

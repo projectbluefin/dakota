@@ -79,22 +79,10 @@ jobs:
           fi
           sed -i "0,/^\s*ref:/{s|^\(\s*\)ref:.*|\1ref: ${fdsdk_ref}|}" elements/freedesktop-sdk.bst
 
-          # Mirror gnome-build-meta's fdsdk patch queue at the same commit.
-          tree_api="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/tree?path=patches/freedesktop-sdk&ref=${gbm_sha}&per_page=100"
-          mapfile -t patch_files < <(curl -fsSL "$tree_api" \
-            | python3 -c 'import json,sys; [print(i["name"]) for i in json.load(sys.stdin) if i["type"] == "blob"]')
-          if [ "${#patch_files[@]}" -eq 0 ]; then
-            echo "ERROR: empty patches/freedesktop-sdk listing at gnome-build-meta @ ${gbm_sha}" >&2
-            exit 1
-          fi
-          rm -f patches/freedesktop-sdk/*
-          for f in "${patch_files[@]}"; do
-            curl -fsSL "${files_api}/patches%2Ffreedesktop-sdk%2F${f}/raw?ref=${gbm_sha}" \
-              -o "patches/freedesktop-sdk/${f}"
-          done
-
-          # By construction this passes; failing here means the mirror above
-          # broke and the PR should not be opened.
+          # Mirror gnome-build-meta's fdsdk patch queue and write the offline
+          # drift manifest, then assert it. Failing here means the sync broke
+          # and the PR should not be opened.
+          just patch-sync
           just patch-drift-check
 
       - name: Create or update PR against next (auto-merge)
@@ -105,7 +93,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git checkout -B auto/track-next-junction origin/next
-          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst patches/freedesktop-sdk
+          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst patches/freedesktop-sdk patches/freedesktop-sdk.manifest.json
 
           if git diff --cached --quiet; then
             echo "No junction updates"

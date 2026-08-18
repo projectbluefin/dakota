@@ -4,6 +4,7 @@ kind: compose
 # narrow split so the final filter does not install the whole i686
 # freedesktop-sdk userspace over the native x86_64 image.
 build-depends:
+- core/sandbox-tools.bst
 # 32-bit GLVND/GLX/EGL fixes Steam's libGL.so.1 bootstrap checks.
 - freedesktop-sdk.bst:cross-compilers/freedesktop-sdk-i686.bst:components/libglvnd.bst
 
