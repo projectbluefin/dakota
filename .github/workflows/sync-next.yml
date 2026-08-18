@@ -87,7 +87,15 @@ jobs:
           git reset --hard origin/testing
           # rm first so owned directories don't keep testing-only files.
           git rm -r -q --ignore-unmatch -- "${owned[@]}"
-          git checkout "$old" -- "${owned[@]}"
+          # Restore owned paths that exist at the old tip; ones born on
+          # testing (e.g. a fresh manifest) reach next via the tracker.
+          for p in "${owned[@]}"; do
+            if git cat-file -e "$old:$p" 2>/dev/null; then
+              git checkout "$old" -- "$p"
+            else
+              echo "note: $p absent at old next tip; skipping restore"
+            fi
+          done
           if git diff --cached --quiet; then
             echo "next-owned files already match testing; publishing bare sync"
           else
