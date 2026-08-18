@@ -37,10 +37,11 @@ env:
   # ("image not known", exit 125) — masked by job-level continue-on-error.
   BUILD_IMAGE_TAG: aarch64
 
-# All BuildStream cache writers share one CAS serialization group. ARM remains
-# decoupled from x86 publication and release, but cannot contend for CAS writes.
+# Own serialization group: aarch64 builds run on ARM runners with their own
+# BST cache and must never queue x86 builds behind them (an aarch64 build
+# held the global group for an hour while a next image waited, 2026-08-18).
 concurrency:
-  group: dakota-bst-build-global
+  group: dakota-aarch64-build
   cancel-in-progress: false
 
 jobs:
