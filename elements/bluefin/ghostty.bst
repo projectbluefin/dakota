@@ -250,8 +250,21 @@ config:
     - |
       export ZIG_GLOBAL_CACHE_DIR="/tmp/zig-cache"
       export ZIG_LIB_DIR="%{libdir}/zig"
+      # zig 0.15 caps its bundled glibc stubs at 2.42; fdsdk 26.08 ships
+      # glibc 2.44, so libs reference 2.43+ symbols the stubs lack. Point
+      # zig at the real system libc instead of its stubs.
+      cat > /tmp/system-libc.conf <<LIBC
+      include_dir=/usr/include
+      sys_include_dir=$(ls -d /usr/include/*-linux-gnu 2>/dev/null | head -n1 || echo /usr/include)
+      crt_dir=%{libdir}
+      msvc_lib_dir=
+      kernel32_lib_dir=
+      gcc_dir=
+      LIBC
+      sed -i 's/^      //' /tmp/system-libc.conf
       DESTDIR="%{install-root}" \
       zig build \
+        --libc /tmp/system-libc.conf \
         --prefix /usr \
         --global-cache-dir "$ZIG_GLOBAL_CACHE_DIR" \
         -Doptimize=ReleaseFast \

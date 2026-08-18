@@ -7,6 +7,7 @@ sources:
   ref: 3bb9134985343ffd1993520eb37c90e113bfb09b
 
 build-depends:
+- core/sandbox-tools.bst
 - freedesktop-sdk.bst:components/jq.bst
 
 depends:
