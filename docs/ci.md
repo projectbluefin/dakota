@@ -1,125 +1,66 @@
 # CI reference
 
-## Jobs
+This is a map, not a historical runbook. Workflow YAML is authoritative when it
+disagrees with this page.
 
-| Job | Triggers | What |
+## Pipeline
+
+| Workflow | Trigger | Purpose |
 |---|---|---|
-| `validate` | `pull_request` | `bst show` — graph + patch check (~15 min) |
-| `e2e` | `pull_request` when `elements/`, `files/`, `patches/`, `Justfile`, or `project.conf` changed | Smoke test in QEMU via projectbluefin/testsuite |
-| `build` | `push: testing` (BST-affecting paths), `workflow_dispatch`, `schedule: daily 13:00 UTC` — skips on `pull_request`/`merge_group` | Four x86 variants concurrently through remote BuildBox execution; artifacts land in the remote CAS |
-| `build-aarch64` | `push: testing/main` (BST-affecting paths only), `workflow_run` from `publish.yml` on `testing`, `workflow_dispatch` | ARM64 — fully decoupled, never blocks release |
+| `validate.yml` | PR and merge queue targeting `testing`, `next`, or `main` | Workflow checks, patch drift, and default/NVIDIA BST graphs |
+| `build.yml` | Relevant pushes to `testing`/`next`, daily 13:00 UTC, manual | Build four x86 variants through remote execution |
+| `publish.yml` | Successful build workflow on `testing`/`next`, manual recovery | Export CAS artifacts, publish immutable and stream tags, sign, attest, and attach SBOMs |
+| `e2e.yml` | Manual only | Run testsuite suites against an explicitly published image |
+| `build-aarch64.yml` | Architecture-specific push/workflow triggers and manual | Build the decoupled aarch64 image |
+| `boot-test-aarch64.yml` | aarch64 pipeline trigger | Boot validation for the ARM image |
+| `execute-release.yml` | Mon/Wed/Fri 18:00 UTC and manual recovery | Verify and promote the tested x86 variants to `stable` |
 
-## Publish pipeline (publish.yml)
+PRs do not publish their image, so `e2e.yml` does not run on pull requests: it
+would test a stale public tag rather than the PR. Run it manually only after the
+intended image is available.
 
-`build` success on `testing` or `next` triggers `publish.yml` via `workflow_run`:
+## Build and publish contract
 
-```
-build.yml (testing|next) → [workflow_run] → publish.yml
-                                             setup → publish-image → promote (:testing or :next)
-                                                                  └→ publish-sbom (parallel)
-```
+`build.yml` places BuildStream artifacts in the remote CAS. `publish.yml` can
+export only artifacts already built for its resolved SHA. Normal flow:
 
-| Job | What |
-|---|---|
-| `setup` | Resolves SHA, trigger event, and branch |
-| `publish-image` | Exports from CAS; rechunks; pushes `:$sha` and records the manifest digest from podman's digestfile; anonymous tag visibility is warning-only; signs + attests; uploads `digest-<variant>` artifact |
-| `promote` | Downloads `digest-<variant>`, `skopeo copy` by digest → `:testing`, verifies the promoted tag matches; falls back to an authenticated `:$sha` inspect if the artifact is missing |
-| `publish-sbom` | Generates SBOM; resolves the image digest from `digest-<variant>` (same fallback); attaches via oras; signs SBOM (parallel with promote) |
-
-`promote` depends only on `publish-image`, not on SBOM — saves 10–15 min on the critical path.
-
-**Digest contract:** a successful push plus podman's `--digestfile` digest is the receipt; no stage re-reads GHCR to rediscover what was pushed. The digest travels via per-variant `digest-<variant>` workflow artifacts, consumed everywhere through the shared `.github/actions/resolve-image-digest` action (artifact preferred, authenticated `:sha` inspect fallback). The few remaining registry reads (stable comparison, promote post-copy verify) are authenticated and digest-based. Anonymous tag reads are advisory only — GHCR's anonymous path is eventually consistent and lagged past a 6-minute poll twice on 2026-07-28/29. Artifacts are immutable per run: re-running a single `publish-image` job that already uploaded its artifact may fail the upload; re-run the whole workflow instead.
-
-**Critical ordering:** `publish.yml` pulls the OCI artifact from CAS. The artifact is only in CAS if `build.yml` ran first for that SHA. Always dispatch `build.yml --ref testing` (or let push trigger it) before manually dispatching `publish.yml`.
-
-## Stable promotion (execute-release.yml)
-
-`execute-release.yml` fires via `workflow_run` from `publish.yml` on the `testing` branch — no commit message gate, no PR, no human approval.
-
-```
-push to testing (BST-affecting) or daily 13:00 UTC schedule
-  → build.yml → publish.yml → :testing
-  → execute-release.yml (workflow_run from publish on testing)
-       → freshness check: digest from the publish run's digest-default artifact
-         (authenticated :$sha inspect as fallback) vs :stable digest
-           → skip if equal (already up to date)
-           → cosign verify
-           → skopeo copy :$sha → :stable (reusable workflow)
-           → fast-forward main bookmark
-           → GitHub Release created
+```text
+testing/next change → build.yml → remote CAS → publish.yml
+                                      └──────→ immutable :SHA
+                                               + :testing or :next
 ```
 
-`main` is a **release bookmark only** — fast-forwarded by `execute-release.yml` after each successful promotion. Do not open PRs against `main`.
+The build matrix contains default, NVIDIA, gaming, and NVIDIA-gaming variants.
+Those siblings intentionally run together; the remote executor is the capacity
+limit.
 
-## Schedule
+Publish records the pushed digest and passes that receipt between jobs. Signing,
+attestation, stream-tag promotion, and verification operate on the resolved SHA
+or digest rather than rediscovering mutable tag state.
 
-Build fires daily at 13:00 UTC, on BST-affecting pushes to `testing`, and through `workflow_dispatch`. The nightly-next dispatcher invokes the same workflow explicitly on `next`; PR and merge-queue events do not run it.
+## Stable release
 
-## Remote execution and cache
+`execute-release.yml` is scheduled after the daily build window. It resolves the
+published testing SHA and digest, skips an already-current release, invokes the
+managed release workflow with anchored cosign identity rules, advances the
+`main` bookmark, and verifies resulting tags. The testsuite release gate is
+currently disabled in workflow configuration; do not describe it as active.
 
-`cache.projectbluefin.io:11002` — BuildBox 1.4.11 execution, remote CAS, artifact/source caches, and action cache behind mTLS via `CASD_CLIENT_CERT` + `CASD_CLIENT_KEY`. Build jobs fail closed; publish uses a fetch-only configuration so it can materialize images locally.
+`main` is a release bookmark, not the development branch. `next` and `btw` never
+promote to `stable`.
 
-## Published images
+## Operating rules
 
-`ghcr.io/projectbluefin/dakota:{testing,stable,next,btw}` and `ghcr.io/projectbluefin/dakota:<sha>`
+- Read the workflow at the commit that produced a failure.
+- A workflow with no jobs/logs usually failed parsing or validation before job
+  creation; inspect syntax and permissions.
+- Third-party actions are pinned to full SHAs. Managed
+  `projectbluefin/actions@v1` references are intentional exceptions.
+- Remote cache access and remote execution are separate; diagnose them
+  independently.
+- Never report CI as green while required runs are pending or failing.
+- Use `just validate` for local graph/configuration validation. Full image build
+  and publication evidence come from CI.
 
-Streams:
-- `:testing` — published on every BST-affecting push to the `testing` branch (or daily schedule)
-- `:stable` — promoted from `:testing` daily by `execute-release.yml` (when `:testing` SHA differs from `:stable`)
-- `:next` / `:btw` — published from the `next` branch; never promoted to `:stable`
-
-Never bypass the merge queue with `--admin`.
-
-## Manual stable promotion
-
-To manually cut a `:stable` release:
-
-```bash
-# 1. Verify :testing is fresh and cosign-verified, then dispatch execute-release directly
-gh workflow run execute-release.yml --repo projectbluefin/dakota --ref testing
-```
-
-## Restarting the factory (publish pipeline has been idle)
-
-When the publish pipeline has been paused intentionally (e.g., post-refactor),
-the restart sequence is:
-
-```bash
-# 1. Verify publish.yml is healthy — no startup_failure
-gh run list --repo projectbluefin/dakota --workflow publish.yml --limit 5
-
-# 2. Dispatch a fresh build on testing to populate the CAS
-gh workflow run build.yml --repo projectbluefin/dakota --ref testing
-# Wait ~60–90 minutes for build to complete
-
-# 3. publish.yml auto-triggers via workflow_run; if not, dispatch manually
-gh workflow run publish.yml --repo projectbluefin/dakota --ref testing
-
-# 4. Monitor until :testing lands, then execute-release auto-triggers
-gh run watch --repo projectbluefin/dakota
-```
-
-**Common failure: `startup_failure` with `jobs: []`**
-
-This means GitHub rejected the workflow YAML before creating any jobs — no logs
-are available. Root causes found in this repo:
-
-| Cause | Fix |
-|---|---|
-| `artifact-metadata: write` in `permissions:` block | Not a valid GITHUB_TOKEN scope; remove it |
-| Job-level `permissions:` on a reusable workflow call job | Remove the job-level block; let it inherit from top-level |
-
-Valid `GITHUB_TOKEN` permission scopes: `actions`, `attestations`, `checks`,
-`contents`, `deployments`, `discussions`, `environments`, `id-token`, `issues`,
-`packages`, `pages`, `pull-requests`, `repository-projects`, `security-events`,
-`statuses`. Any unknown scope causes `startup_failure`.
-
-## e2e change detection
-
-e2e uses a `should-run` job that diffs `HEAD` against the PR base branch. It fires when any of these paths change:
-
-```
-elements/**  files/**  patches/**  Justfile  project.conf
-```
-
-There is no `paths:` filter on the `on.pull_request` trigger — the workflow always starts, but the `e2e` job is skipped when `should-run` finds no relevant changes. This means e2e is marked **skipped** (not failed) for action pin bumps and workflow-only changes, which satisfies the required status check.
+Task-specific guidance is loaded on demand from `dakota-ci` or
+`dakota-release` under `.agents/skills/`.

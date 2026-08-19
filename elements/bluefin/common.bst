@@ -40,7 +40,7 @@ config:
     # The /var/home/linuxbrew spelling breaks Homebrew's bottle-prefix
     # detection on Dakota's real /home; common respelled everything to
     # /home/linuxbrew in projectbluefin/common#997. Guard against the bad
-    # spelling regressing upstream (docs/skills/host-homebrew.md).
+    # spelling regressing upstream (.agents/skills/dakota-workstation/references/host-homebrew.md).
     if grep -rl "/var/home/linuxbrew" system_files/shared system_files/bluefin; then
       echo "ERROR: /var/home/linuxbrew references above break brew bottle-prefix detection — fix them in projectbluefin/common" >&2
       exit 1

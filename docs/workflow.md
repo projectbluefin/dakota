@@ -160,36 +160,29 @@ Copy `files/hive/hive-project.yaml.example` to `/etc/hive/hive-project.yaml` and
 
 ## Image stream and branch model
 
-Dakota uses trunk-based development. `testing` is the development trunk; `main` is a release bookmark fast-forwarded by `execute-release.yml` after each daily promotion.
+Dakota uses trunk-based development. `testing` is the development trunk; `main`
+is a release bookmark advanced by `execute-release.yml` after promotion.
 
-```
-testing (development trunk — all PRs land here)
-  │
-  └─► build.yml (daily 13:00 UTC + merge_group + workflow_dispatch)
-          │
-          └─► publish.yml (workflow_run on build success)
-                  │
-                  ├─► :sha     — immutable per-build tag
-                  └─► :testing — published after boot-check passes
-                                       │
-                              execute-release.yml
-                              (workflow_run from publish, daily if :testing != :stable)
-                              SHA-based freshness check → cosign verify → boot-check gate
-                                       │
-                                       └─► :stable  (+ fast-forwards main bookmark)
+```text
+testing change or daily schedule
+  → build.yml
+  → publish.yml on successful build
+      ├─ :sha
+      └─ :testing
+
+Mon/Wed/Fri release schedule
+  → execute-release.yml
+  → freshness and signature checks
+  → :stable + main bookmark
 ```
 
-| Stream | Tag | Cadence | Gate |
-|---|---|---|---|
-| Development | `:sha` | Every merge to `testing` | None |
-| Testing | `:testing` | Daily (13:00 UTC build) | boot-check |
-| Stable | `:stable` | Daily (if :testing != :stable) | SHA freshness check + cosign verify + boot-check |
+`next` follows the same build/publish machinery but advances `:next` and `:btw`;
+it never promotes to `:stable`. E2e is manually dispatched against an already
+published image and is not a pull-request check.
 
-**All PRs target `testing`.** This includes contributor PRs, Renovate PRs, and BST source bump PRs. The `main` git branch is a release bookmark only — it is fast-forwarded by `execute-release.yml` after each successful promotion and must not be used as a PR base.
-
-**Branch protection:** `testing` has the `testing-merge-queue-no-review` ruleset (required status checks: `validate` + `e2e`, merge queue). `main` has the `main-bookmark-protection` ruleset (deletion + non_fast_forward blocked; no merge queue, no required checks).
-
-**Deleted workflows (OCI-native redesign, 2026-06-23):** `promote-testing-to-main.yml`, `pr-release-gate.yml`, `sync-main-to-testing.yml`, `cache-warm.yml`.
+**All normal PRs target `testing`.** The `main` branch is a release bookmark and
+must not be used as a contributor PR base. Confirm live branch protection and
+required checks in GitHub rather than copying them into documentation.
 
 ### Branch flow for contributors
 

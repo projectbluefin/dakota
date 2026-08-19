@@ -2,7 +2,7 @@ name: Run Testsuite
 
 # Canonical wrapper — always call this, never call projectbluefin/testsuite e2e.yml directly.
 # Uses @main (managed floating tag) — internal projectbluefin/ refs are never SHA-pinned.
-# See docs/skills/ci-tooling.md for the internal vs external pin policy.
+# See .agents/skills/dakota-ci/SKILL.md for the internal vs external pin policy.
 on:
   workflow_call:
     inputs:

@@ -21,7 +21,7 @@
 | `elements/oci/` | OCI image assembly — layers + final image |
 | `patches/linux/` | Kernel patches (via fdsdk linux element) |
 | `files/` | Static files installed by elements |
-| `docs/skills/` | Agent skills — task-focused, lazy-loaded |
+| `.agents/skills/` | Agent skills — discovered and loaded on demand |
 | `Justfile` | All local dev commands — run `just --list` first |
 
 ## Dev loop

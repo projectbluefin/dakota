@@ -2,11 +2,11 @@
 
 ## All PRs
 
-- [ ] `just validate` passes
-- [ ] `just lint` passes on a built image
-- [ ] `just boot-test` passes (or `just boot-fast` / `just boot-vm`)
+- [ ] The narrowest relevant validation passes and is reported accurately
+- [ ] `just validate` passes for BST, image, or Justfile changes
+- [ ] Image-affecting changes include lint/boot evidence from local testing or CI
 - [ ] Commit trailer: `Assisted-by:` or `Signed-off-by:` — **not** `Co-authored-by:`
-- [ ] `Closes #NNN` in the PR body
+- [ ] `Closes #NNN` is present when the PR resolves an issue
 - [ ] I am using an agent and I take responsibility for this PR
 
 ## Junction bumps (`gnome-build-meta.bst` or `freedesktop-sdk.bst`)
