@@ -3,7 +3,7 @@ kind: compose
 build-depends:
   - freedesktop-sdk.bst:components/gcc.bst
   # Homebrew native builds only see /usr/bin and brick the persistent
-  # prefix when make is missing (docs/skills/host-homebrew.md)
+  # prefix when make is missing (.agents/skills/dakota-workstation/references/host-homebrew.md)
   - freedesktop-sdk.bst:components/make.bst
   - oci/layers/bluefin-nvidia-runtime.bst
 

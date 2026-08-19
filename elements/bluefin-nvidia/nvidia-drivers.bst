@@ -246,7 +246,7 @@ config:
     # fdsdk's libglvnd searches only /etc/glvnd/egl_vendor.d and
     # %{libdir}/GL/glvnd/egl_vendor.d — never /usr/share. The GL dir is
     # a symlink into the Mesa extension tree that a real directory here
-    # would shadow at OCI merge (see docs/skills/oci-layers.md), so the
+    # would shadow at OCI merge (see .agents/skills/dakota-image/SKILL.md), so the
     # load-bearing copy goes to /etc; /usr/share is convention only.
     # Upstream-Status: not-submitted (fdsdk libglvnd sets datadir=%{libdir}/GL)
     # Exit: when fdsdk libglvnd also searches /usr/share/glvnd/egl_vendor.d
