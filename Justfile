@@ -298,8 +298,11 @@ export variant="default":
     # and the multi-layer output breaks composefs xattr injection in chunka.
     # Fixes: projectbluefin/dakota#841 (boot failure on :testing 2026-06-13)
     DATE_TAG="$(date -u +%Y%m%d)"
-    # shellcheck disable=SC2086
-    printf 'FROM %s\nRUN sed -i "s/^VERSION_ID=.*/VERSION_ID=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\\"%s\\"/" /usr/lib/os-release\n' "$IMAGE_ID" "$DATE_TAG" "$DATE_TAG" \
+    # Preserve the deterministic source mtimes. sed -i changes the parent
+    # directory mtime, which otherwise invalidates every Chunkah layer that
+    # carries /usr/lib metadata even when its component files are unchanged.
+    # shellcheck disable=SC2016,SC2086
+    printf 'FROM %s\nRUN OS_RELEASE_MTIME="$(stat -c %%y /usr/lib/os-release)" \\\n    && USR_LIB_MTIME="$(stat -c %%y /usr/lib)" \\\n    && sed -i "s/^VERSION_ID=.*/VERSION_ID=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\\"%s\\"/" /usr/lib/os-release \\\n    && touch -d "$OS_RELEASE_MTIME" /usr/lib/os-release \\\n    && touch -d "$USR_LIB_MTIME" /usr/lib\n' "$IMAGE_ID" "$DATE_TAG" "$DATE_TAG" \
         | $SUDO_CMD podman build --pull=never --security-opt label=type:unconfined_t --squash-all ${LABEL_ARGS} -t "${FINAL_NAME}:${FINAL_TAG}" -f - .
     $SUDO_CMD podman rmi "$IMAGE_ID" || true
 

@@ -9,6 +9,7 @@ on:
     paths:
       - "elements/**"
       - "patches/**"
+      - "Justfile"
       - "project.conf"
       - "include/**"
   # Fires daily at 13:00 UTC — 5 hours after the gnome-build-meta nightly
