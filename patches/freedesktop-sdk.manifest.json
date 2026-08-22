@@ -4,5 +4,5 @@
     "0001-project-Specify-more-limits-to-the-CAS-configs.patch": "1cf1912b034621c524ee470301160e01a8a593e48caf0739f6fa7ea819e34194",
     "0002-project.conf-Add-GNOME-CAS-servers.patch": "16d9674291e1c90be83645d4af9e41003872e0687062ea3d3e66cf687f28202a"
   },
-  "gnome-build-meta-sha": "ff0d30522ed46fc9cacada85172623d610b857b9"
+  "gnome-build-meta-sha": "3ed2ea30afbe1a4c0119e65982609fda199427b9"
 }
