@@ -7,7 +7,7 @@ depends:
   - freedesktop-sdk.bst:components/linux-firmware.bst
   - core/ntsync-modules-load.bst
   - gnome-build-meta.bst:gnomeos/initramfs/signed-modules.bst
-  - gnome-build-meta.bst:oci/initramfs.bst
+  - gnome-build-meta.bst:oci/initramfs/image.bst
 
   - gnome-build-meta.bst:gnomeos-deps/bootc.bst
   - gnome-build-meta.bst:oci/integration/bootc-config.bst
@@ -27,7 +27,7 @@ public:
     integration-commands:
       # Overwrite the zram-generator config from gnomeos-deps/zram-generator.bst.
       # An element-level override loses the staging-order overlap (see
-      # .agents/skills/dakota-buildstream/SKILL.md); integration commands run after all staging,
+      # docs/skills/buildstream.md); integration commands run after all staging,
       # so this is the deterministic winner. No [zramN] section = no zram device.
       - printf '# zram disabled; Dakota swaps via zswap + /var/swap/swapfile\n' > /usr/lib/systemd/zram-generator.conf
 
