@@ -52,4 +52,9 @@ jobs:
           chmod +x actionlint
 
       - name: Run actionlint
-        run: ./actionlint -color .github/workflows/*.yml
+        # -ignore: actionlint <= v1.7.12 predates the `queue` concurrency key
+        # (GitHub changelog 2026-05-07). Drop once rhysd/actionlint#657 ships.
+        run: |
+          ./actionlint -color \
+            -ignore 'unexpected key "queue" for "concurrency" section' \
+            .github/workflows/*.yml
