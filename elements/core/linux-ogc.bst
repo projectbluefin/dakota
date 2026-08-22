@@ -13,8 +13,9 @@
 #   3. Modules stripped (INSTALL_MOD_STRIP=1) and vmlinux to the devel
 #      split: OGC forces DEBUG_INFO=y for BTF.
 #
-# Bumps: `just bst source track core/linux-ogc.bst` follows v*-ogc*
-# tags; update the ogc-localversion variable to match the new tag. On a
+# Bumps: `just bst source track core/linux-ogc.bst` follows stable v*-ogc*
+# tags (release candidates are excluded); update the ogc-localversion variable
+# to match the new tag. On a
 # stable-series jump, nvidia-drivers.bst must compile against the new
 # tree before shipping.
 kind: make
@@ -240,6 +241,8 @@ sources:
 - kind: git_repo
   url: github:OpenGamingCollective/linux.git
   track: v*-ogc*
+  exclude:
+  - '*-rc*'
   ref: v7.1.4-ogc1-0-g29e5cbbcc123d68c41fc41b9c15afc3a2a98469e
 - kind: local
   path: files/linux/config-utils.sh

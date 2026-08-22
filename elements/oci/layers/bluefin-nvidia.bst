@@ -1,14 +1,13 @@
 kind: compose
 
 build-depends:
-  - freedesktop-sdk.bst:components/gcc.bst
-  # Homebrew native builds only see /usr/bin and brick the persistent
-  # prefix when make is missing (.agents/skills/dakota-workstation/references/host-homebrew.md)
-  - freedesktop-sdk.bst:components/make.bst
-  - oci/layers/bluefin-nvidia-runtime.bst
+  - oci/layers/bluefin-nvidia-stack.bst
+  # The filtered toolchain survives the global devel filter without requiring
+  # a second full-root composition.
+  - oci/layers/brew-toolchain.bst
 
 config:
   exclude:
+    - devel
     - debug
-    - extra
     - static-blocklist
