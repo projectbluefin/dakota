@@ -6,7 +6,7 @@ include/linux/device.h with identical semantics (same modes, same
 show/store wiring), so the driver's local definitions now trigger
 macro-redefinition errors under -Werror. Use the kernel's macros.
 
-Carried by Dakota against v7.2-rc7-ogc6; drop this patch once
+Carried by Dakota against v7.2-ogc4; drop this patch once
 OpenGamingCollective fixes the collision in their tree.
 ---
 --- a/drivers/platform/x86/ayn-ec.c

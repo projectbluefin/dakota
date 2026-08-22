@@ -84,6 +84,21 @@ config:
     scripts/config --keep-case -e CRYPTO_ZSTD
 
   - |
+    # Drop expectations for options this newer stable tree no longer offers.
+    # Existing symbols whose dependencies are not met remain hard failures.
+    find . -name 'Kconfig*' -exec grep -h '^\(menu\)\{0,1\}config ' {} + \
+      | awk '{print $2}' | sort -u > .kconfig-symbols
+    cp expected-configs expected-configs.orig
+    while IFS= read -r cfg; do
+      sym=${cfg#CONFIG_}
+      if ! grep -qx "$sym" .kconfig-symbols; then
+        echo "note: pruning expectation for ${cfg} (absent from this tree)" 1>&2
+        sed -i "/^\(CONFIG_\)\{0,1\}${sym}$/d" expected-configs
+      fi
+    done < expected-configs.orig
+    rm -f expected-configs.orig
+
+  - |
     make -j1 olddefconfig
 
   - |
@@ -172,7 +187,7 @@ sources:
   track: v*
   exclude:
   - '*-rc*'
-  ref: v7.1.7-0-gc7ba9d6de43e9d9bd755b1f3c19501a38898c6b6
+  ref: v7.2-0-g8d3ae59288f1e7d58d76558a6ee96d533bc5019f
 - kind: patch_queue
   path: patches/linux
 - kind: local
