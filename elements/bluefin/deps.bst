@@ -54,6 +54,7 @@ depends:
 
   # Include things missing from the gnomeos base image
   - gnome-build-meta.bst:core-deps/fwupd.bst
+  - gnome-build-meta.bst:core-deps/wireless-regdb.bst
 
   # system-monitor shell extension needs GTop-2.0.typelib; only reaches the image
   # transitively via gnome-control-center otherwise (projectbluefin/dakota#1163)
