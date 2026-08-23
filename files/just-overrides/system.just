@@ -13,43 +13,34 @@ bluefin-cli:
 devmode:
     @ujust toggle-devmode
 
-# Toggle between Bluefin and the Developer Experience
+# Toggle the Developer Experience (groups + optional dev flatpaks and fonts)
 [group('System')]
 toggle-devmode:
     #!/usr/bin/env bash
-    set -e
-    BOOTED_JSON=$(sudo bootc status --json 2>/dev/null || echo '{}')
-    CURRENT_IMAGE=$(echo "$BOOTED_JSON" | jq -r '.status.booted.image.image.image // empty')
-    if [[ -z "${CURRENT_IMAGE}" ]]; then
-        echo "ERROR: could not determine the booted image from bootc status"
-        exit 1
-    fi
-    # Extract image tag (everything after the last colon)
-    IMAGE_TAG="${CURRENT_IMAGE##*:}"
-    # Extract base name without tag
-    IMAGE_REPO="${CURRENT_IMAGE%:*}"
-    IMAGE_BASE_NAME="$(basename "${IMAGE_REPO}")"
-    set +e
-
-    if grep -q -E -e "dx$" <<< "${IMAGE_BASE_NAME}" ; then
-        gum confirm "Would you like to disable developer mode?" || exit 0
-        echo "Rebasing to a non developer image"
-        NEW_IMAGE="$(sed "s/\-dx//" <<< ${IMAGE_REPO}):${IMAGE_TAG}"
-        pkexec bootc switch --enforce-container-sigpolicy "${NEW_IMAGE}"
+    set -euo pipefail
+    # Dakota bakes the developer stack into every image (podman, distrobox,
+    # skopeo, git, flatpak-builder, the brew toolchain, ...) and publishes no
+    # -dx variant, so unlike Bluefin there is no image rebase here. Developer
+    # mode is group membership plus optional extras, and works the same on a
+    # fresh ISO install with no registry-bound bootc image.
+    if id -nG "$(id -un)" | grep -qw docker ; then
+        gum confirm "Developer mode is on (docker/libvirt/incus/serial groups). Disable it?" || exit 0
+        for g in docker incus-admin libvirt dialout ; do
+            sudo gpasswd -d "$(id -un)" "$g" 2>/dev/null || true
+        done
+        echo "Developer groups removed. Log out and back in for this to take effect."
         exit 0
     fi
 
     gum confirm "Would you like to enable developer mode?" || exit 0
-    echo "Rebasing to a developer image"
-    NEW_IMAGE="${IMAGE_REPO}-dx:${IMAGE_TAG}"
-    pkexec bootc switch --enforce-container-sigpolicy "${NEW_IMAGE}"
+    ujust dx-group
     if gum confirm "Do you want to also install the default development flatpaks?" ; then
         ADD_DEVMODE=1 ujust install-system-flatpaks 0 1
     fi
     if gum confirm "Do you want to install extra monospace fonts?" ; then
         brew bundle install --file=/usr/share/ublue-os/homebrew/fonts.Brewfile
     fi
-    echo "Use ujust dx-group to add your user to the correct groups and complete the installation after rebooting into the development image"
+    echo "Log out and back in (or reboot) to pick up the new group memberships."
 
 # Configure docker,incus-admin,libvirt, container manager, serial permissions
 [group('System')]
@@ -92,7 +83,7 @@ install-system-flatpaks $confirm="1" $dx_only="0":
     brew bundle --file="${TARGET_FLATPAK_FILE:-/usr/share/ublue-os/homebrew/system-flatpaks.Brewfile}"
 
 # Install default system flatpaks (alias for install-system-flatpaks)
-# For additional applications, use: ujust bbrew
+# For additional applications, use ChairLift (Applications page)
 [group('System')]
 bluefin-apps:
     echo "Installing default system flatpaks..."

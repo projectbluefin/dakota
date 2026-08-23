@@ -21,6 +21,7 @@ depends:
   - bluefin/tealdeer.bst
   - bluefin/ydotool.bst
   - bluefin/umotd.bst
+  - bluefin/uwelcome.bst
 
   - bluefin/common.bst
   - bluefin/user-avatars.bst

@@ -359,7 +359,7 @@ probe:
         gum style --foreground 214 --margin "0 2" \
             "Goose is not installed."
         gum style --foreground 245 --margin "0 4" \
-            "Install it first:  ujust bbrew  →  select the 'ai' menu option"
+            "Install it first:  brew bundle --file=/usr/share/ublue-os/homebrew/ai-tools.Brewfile"
         exit 1
     fi
 
