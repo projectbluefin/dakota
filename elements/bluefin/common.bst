@@ -46,6 +46,31 @@ config:
       exit 1
     fi
 
+    # Dakota-only: make fastfetch's image line show the real stream tag.
+    # Unprivileged `bootc status` requires root on bootc >= 1.14, so the
+    # script's bootc fallback is dead in user sessions — and Dakota's baked
+    # image-tag is always "latest" because promotion retags the same digest
+    # (unlike Bluefin/LTS/Aurora, which bake the tag per-stream build).
+    # ublue-booted-image.service (bluefin/firstboot-date.bst) records the
+    # booted ref in /run/ublue-os/booted-image at boot; teach the script to
+    # prefer it. Guard so an upstream rewrite of the script fails loudly
+    # here instead of silently shipping an unpatched fastfetch.
+    # NB: the build sandbox has only bash + coreutils + sed (no grep/awk) —
+    # see core/sandbox-tools.bst — so guard and patch are sed/wc based.
+    IMG_INFO="system_files/shared/usr/bin/ublue-image-info.sh"
+    if [ "$(sed -n '/\.status\.booted\.image\.image\.image/p' "$IMG_INFO" | wc -l)" != 1 ]; then
+      echo "ERROR: ublue-image-info.sh changed upstream — re-fit the booted-image patch (see ublue-booted-image.service)" >&2
+      exit 1
+    fi
+    sed -i '/\.status\.booted\.image\.image\.image/a \
+    \
+    # Dakota: prefer the boot-time snapshot written by ublue-booted-image.service.\
+    # Unprivileged bootc status fails on bootc >= 1.14, so the query above is dead\
+    # in user sessions, and the baked Dakota tag is always "latest".\
+    if [[ -r /run/ublue-os/booted-image ]]; then\
+    \tread -r BOOTED_REF < /run/ublue-os/booted-image\
+    fi' "$IMG_INFO"
+
     cp -r system_files/bluefin/usr/./ "%{install-root}%{prefix}/"
     cp -r system_files/shared/usr/./ "%{install-root}%{prefix}/"
     cp -r system_files/bluefin/etc/./ "%{install-root}%{sysconfdir}/"

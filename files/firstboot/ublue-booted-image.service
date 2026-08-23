@@ -1,0 +1,14 @@
+[Unit]
+Description=Record booted bootc image ref for unprivileged consumers
+Documentation=https://github.com/projectbluefin/dakota
+ConditionPathExists=/usr/bin/bootc
+After=local-fs.target
+Before=systemd-user-sessions.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/ublue-booted-image-sync
+
+[Install]
+WantedBy=multi-user.target
