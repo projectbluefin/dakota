@@ -21,7 +21,6 @@ depends:
   - bluefin/tealdeer.bst
   - bluefin/ydotool.bst
   - bluefin/umotd.bst
-  - bluefin/uwelcome.bst
 
   - bluefin/common.bst
   - bluefin/user-avatars.bst
@@ -69,8 +68,7 @@ depends:
   - freedesktop-sdk.bst:components/skopeo.bst
   - freedesktop-sdk.bst:components/flatpak-builder.bst
 
-  - freedesktop-sdk.bst:components/bpf.bst
-  - freedesktop-sdk.bst:components/vmlinuxh.bst
+  - freedesktop-sdk.bst:components/bpf-maybe.bst
   - gnome-build-meta.bst:gnomeos-deps/bpftop.bst
   - gnome-build-meta.bst:core/sysprof-app.bst
 
