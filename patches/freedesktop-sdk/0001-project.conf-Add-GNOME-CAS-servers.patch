@@ -1,7 +1,7 @@
-From 5c3dcb18fa972a01a2f66cb30851e816d7ab3e18 Mon Sep 17 00:00:00 2001
+From 75585cbb5ad903573a7fe623a62820f04ef7f166 Mon Sep 17 00:00:00 2001
 From: Jordan Petridis <jpetridis@gnome.org>
 Date: Mon, 4 Aug 2025 20:22:27 +0300
-Subject: [PATCH 2/2] project.conf: Add GNOME CAS servers
+Subject: [PATCH] project.conf: Add GNOME CAS servers
 
 This is meant as a downstream patch. Till now everyone
 has to configure the servers in their buildstream config,
@@ -13,32 +13,32 @@ to also make use of the CAS server.
  1 file changed, 12 insertions(+)
 
 diff --git a/project.conf b/project.conf
-index bc06001ed..6391c1898 100644
+index b3fd0f84a..982bddfcb 100644
 --- a/project.conf
 +++ b/project.conf
 @@ -149,6 +149,12 @@ artifacts:
-     retry-limit: 5
+     retry-limit: 4
      retry-delay: 500
-     request-timeout: 180
+     request-timeout: 300
 +- url: https://gbm.gnome.org:11003
 +  connection-config:
 +    keepalive-time: 60
-+    retry-limit: 5
++    retry-limit: 4
 +    retry-delay: 500
-+    request-timeout: 180
++    request-timeout: 300
  
  source-caches:
  - url: https://cache.freedesktop-sdk.io:11001
 @@ -157,6 +163,12 @@ source-caches:
-     retry-limit: 5
+     retry-limit: 4
      retry-delay: 500
-     request-timeout: 180
+     request-timeout: 300
 +- url: https://gbm.gnome.org:11003
 +  connection-config:
 +    keepalive-time: 60
-+    retry-limit: 5
++    retry-limit: 4
 +    retry-delay: 500
-+    request-timeout: 180
++    request-timeout: 300
  
  sandbox:
    build-arch: '%{target_arch}'

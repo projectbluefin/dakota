@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: gnome:gnome-build-meta.git
   track: gnome-51
-  ref: 51.beta-1-g3ed2ea30afbe1a4c0119e65982609fda199427b9
+  ref: 51.beta-2-g2e049fea8339ef5186a7fae8d553e9bc9f53cb36
 
 config:
   options:

@@ -1,8 +1,7 @@
 {
   "comment": "Written by `just patch-sync`; verified offline by `just patch-drift-check`.",
   "files": {
-    "0001-project-Specify-more-limits-to-the-CAS-configs.patch": "1cf1912b034621c524ee470301160e01a8a593e48caf0739f6fa7ea819e34194",
-    "0002-project.conf-Add-GNOME-CAS-servers.patch": "16d9674291e1c90be83645d4af9e41003872e0687062ea3d3e66cf687f28202a"
+    "0001-project.conf-Add-GNOME-CAS-servers.patch": "2a79bad1e6159c0b31a9cd5b914a7eb34f0431c406b27974fe12dbe5990d49e7"
   },
-  "gnome-build-meta-sha": "3ed2ea30afbe1a4c0119e65982609fda199427b9"
+  "gnome-build-meta-sha": "2e049fea8339ef5186a7fae8d553e9bc9f53cb36"
 }
