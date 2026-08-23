@@ -9,5 +9,5 @@
     "0006-Add-cross-compilers-binutils-x86-64.bst.patch": "ce121de8de3cf0e2f273c3511f5db2add821842aae7028859e0bb25cf718098c",
     "0007-Update-Pipewire-to-1.6.8.patch": "07e9528cad31e477c09ea42e8a3288f3abb9c92f05b94cba357f43f53b8409de"
   },
-  "gnome-build-meta-sha": "8524013485013dd5616bfff02dbeab274d5a4553"
+  "gnome-build-meta-sha": "ec28a45a6fcd99195ebc39c1aeda78fd6fe27b8f"
 }
