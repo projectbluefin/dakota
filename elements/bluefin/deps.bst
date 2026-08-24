@@ -63,6 +63,7 @@ depends:
   - freedesktop-sdk.bst:components/buildstream2.bst
   - freedesktop-sdk.bst:components/containers-common.bst
   - freedesktop-sdk.bst:components/debuginfod.bst
+  - freedesktop-sdk.bst:components/dmidecode.bst
   - freedesktop-sdk.bst:components/git-lfs.bst
   - freedesktop-sdk.bst:components/git.bst
   - freedesktop-sdk.bst:components/podman.bst
