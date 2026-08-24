@@ -98,26 +98,40 @@ alias rollback-helper := rebase-helper
 rebase-helper:
     @/usr/bin/ublue-rollback-helper
 
-# Show current kernel parameters and explain how to add persistent ones
+# Show current kernel parameters and manage persistent ones
 [group('System')]
 kargs:
     #!/usr/bin/env bash
     echo "=== Current kernel parameters ==="
     tr ' ' '\n' < /proc/cmdline
     echo ""
-    echo "=== Adding persistent kernel parameters ==="
-    echo "Dakota uses bootc with composefs — /usr is read-only so you cannot"
-    echo "write to /usr/lib/bootc/kargs.d/ at runtime."
     echo ""
-    echo "Options:"
-    echo "  1. For a one-time test (lost on next upgrade):"
-    echo "     Edit the current BLS entry in /boot/loader/entries/ and add"
-    echo "     your parameter to the 'options' line, then reboot."
-    echo ""
-    echo "  2. For persistent kargs across upgrades, create a local image layer"
-    echo "     with a file at /usr/lib/bootc/kargs.d/99-custom.toml containing:"
-    echo "     [kargs]"
-    echo "     append = [\"your.karg=value\"]"
+    echo "Add a persistent parameter: ujust kargs-add <parameter>"
+    echo "Remove a persistent parameter: ujust kargs-remove <parameter>"
+
+# Add one kernel parameter to the bootc deployment and persist it across upgrades.
+[group('System')]
+kargs-add parameter:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -z "{{parameter}}" || "{{parameter}}" =~ [[:space:]] ]]; then
+        echo "Usage: ujust kargs-add <single kernel parameter>" >&2
+        exit 2
+    fi
+    sudo bootc kargs --append="{{parameter}}"
+    echo "Added persistent kernel parameter: {{parameter}}"
+
+# Remove one kernel parameter from the bootc deployment.
+[group('System')]
+kargs-remove parameter:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -z "{{parameter}}" || "{{parameter}}" =~ [[:space:]] ]]; then
+        echo "Usage: ujust kargs-remove <single kernel parameter>" >&2
+        exit 2
+    fi
+    sudo bootc kargs --delete="{{parameter}}"
+    echo "Removed persistent kernel parameter: {{parameter}}"
 
 # Mount a drive persistently using a systemd.mount unit
 [group('System')]
