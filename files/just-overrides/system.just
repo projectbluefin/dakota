@@ -98,26 +98,30 @@ alias rollback-helper := rebase-helper
 rebase-helper:
     @/usr/bin/ublue-rollback-helper
 
-# Show current kernel parameters and explain how to add persistent ones
+# Show or add persistent kernel parameters
 [group('System')]
-kargs:
+kargs $karg="":
     #!/usr/bin/env bash
+    set -euo pipefail
+
     echo "=== Current kernel parameters ==="
     tr ' ' '\n' < /proc/cmdline
     echo ""
-    echo "=== Adding persistent kernel parameters ==="
-    echo "Dakota uses bootc with composefs — /usr is read-only so you cannot"
-    echo "write to /usr/lib/bootc/kargs.d/ at runtime."
+
+    KARG={{ quote(karg) }}
+    if [[ -z "$KARG" ]]; then
+        KARG="$(gum input --placeholder "amdgpu.ppfeaturemask=0xffffffff")"
+    fi
+    [[ -n "$KARG" ]] || { echo "No kernel parameter entered." >&2; exit 1; }
+    [[ "$KARG" != *$'\n'* && "$KARG" != *$'\r'* ]] || {
+        echo "Kernel parameter must be a single line." >&2
+        exit 1
+    }
+
     echo ""
-    echo "Options:"
-    echo "  1. For a one-time test (lost on next upgrade):"
-    echo "     Edit the current BLS entry in /boot/loader/entries/ and add"
-    echo "     your parameter to the 'options' line, then reboot."
-    echo ""
-    echo "  2. For persistent kargs across upgrades, create a local image layer"
-    echo "     with a file at /usr/lib/bootc/kargs.d/99-custom.toml containing:"
-    echo "     [kargs]"
-    echo "     append = [\"your.karg=value\"]"
+    echo "Adding persistent kernel parameter: $KARG"
+    sudo bootc kargs --append="$KARG"
+    echo "Kernel parameter staged. Reboot to apply it."
 
 # Mount a drive persistently using a systemd.mount unit
 [group('System')]
