@@ -17,6 +17,7 @@ depends:
 
   - bluefin/ghostty.bst
 
+  - bluefin/fastfetch.bst
   - bluefin/gum.bst
   - bluefin/tealdeer.bst
   - bluefin/ydotool.bst
