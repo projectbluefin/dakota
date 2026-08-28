@@ -34,6 +34,7 @@ depends:
   - bluefin/wallpaper-month.bst
   - bluefin/bootc-install-config.bst
   - bluefin/composefs-loop-udisks-ignore.bst
+  - bluefin/udev-groups.bst
   - bluefin/gnome-epub-thumbnailer.bst
   - bluefin/papers-thumbnailer.bst
   - bluefin/wallpapers.bst
