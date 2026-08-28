@@ -2,10 +2,15 @@ name: Build Bluefin dakota
 
 on:
   push:
-    branches: [testing]
+    # next builds per content push too: syncs and merged junction bumps queue
+    # behind testing in the shared concurrency group. queue: max keeps every
+    # queued run (FIFO) instead of superseding — the stale-check job below
+    # collapses burst days to one build of the newest state per branch.
+    branches: [testing, next]
     paths:
       - "elements/**"
       - "patches/**"
+      - "Justfile"
       - "project.conf"
       - "include/**"
   # Fires daily at 13:00 UTC — 5 hours after the gnome-build-meta nightly
@@ -22,9 +27,14 @@ env:
   IMAGE_NAME: dakota
   IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
 
+# queue: max holds up to 100 pending runs FIFO. The default (queue: single)
+# keeps only ONE pending run per group and cancels the previous pending run
+# whenever a new one arrives — so a testing push followed ~40s later by the
+# sync-next push to next silently discarded the testing build (2026-08-22).
 concurrency:
   group: dakota-bst-build-global
   cancel-in-progress: false
+  queue: max
 
 jobs:
   verify-default-branch:
@@ -43,9 +53,47 @@ jobs:
             exit 1
           fi
 
+  # With queue: max every push queues its own run instead of superseding the
+  # previous pending one. A run that waited in the queue may be stale by the
+  # time it starts: a newer push run for the same branch is already queued
+  # and will build a superset of this state. Skip the expensive build then.
+  stale-check:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+    outputs:
+      stale: ${{ steps.check.outputs.stale }}
+    steps:
+      - name: Check for newer queued run on this branch
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          newer=0
+          # Concurrency-held runs surface as "queued" or "pending" depending
+          # on where they wait; count both.
+          for status in queued pending; do
+            n=$(gh run list \
+              --repo "${{ github.repository }}" \
+              --workflow build.yml \
+              --branch "${{ github.ref_name }}" \
+              --event push \
+              --status "$status" \
+              --json databaseId \
+              --jq "[.[] | select(.databaseId > ${{ github.run_id }})] | length")
+            newer=$((newer + n))
+          done
+          if [ "$newer" -gt 0 ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "${newer} newer queued run(s) for ${{ github.ref_name }} — skipping stale build"
+          else
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
-    needs: [verify-default-branch]
-    if: (!cancelled()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
+    needs: [verify-default-branch, stale-check]
+    if: (!cancelled()) && needs.stale-check.outputs.stale != 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     # The BuildBox backend has four action slots. Start every image variant

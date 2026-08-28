@@ -190,6 +190,11 @@ jobs:
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
         run: just swap-audit
 
+      - name: Audit user-avatar configuration
+        env:
+          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
+        run: just avatar-audit
+
       - name: Login to GHCR
         env:
           GH_ACTOR: ${{ github.actor }}

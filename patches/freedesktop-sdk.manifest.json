@@ -1,0 +1,13 @@
+{
+  "comment": "Written by `just patch-sync`; verified offline by `just patch-drift-check`.",
+  "files": {
+    "0001-project-Specify-more-limits-to-the-CAS-configs.patch": "c88f898ab797268ab4d1a4e4e0608df12fc47a4908f4dd390b97f35fdc08cf97",
+    "0002-project.conf-Add-GNOME-CAS-servers.patch": "80fd9b1aae84700b754483cd1e2cfbcb5d0179c00c82deadccc2c444414fffac",
+    "0003-openssh-Use-etc-ssh-as-sysconfdir.patch": "797a945aa266f4e9c7064618cf53e2f8ab56dd09c168553f667becab9111170e",
+    "0004-openssh-Include-ssh-_config.d-.conf.patch": "f9a53430cc821809e7fd737455043d56fe9df91f1f66d57be99e6b37991a801e",
+    "0005-lvm2-Disable-event-activation-by-default.patch": "87236589d2f0350244597439a36c7670314fb649c6c8850de865d65547fe80aa",
+    "0006-Add-cross-compilers-binutils-x86-64.bst.patch": "ce121de8de3cf0e2f273c3511f5db2add821842aae7028859e0bb25cf718098c",
+    "0007-Update-Pipewire-to-1.6.8.patch": "07e9528cad31e477c09ea42e8a3288f3abb9c92f05b94cba357f43f53b8409de"
+  },
+  "gnome-build-meta-sha": "ec28a45a6fcd99195ebc39c1aeda78fd6fe27b8f"
+}

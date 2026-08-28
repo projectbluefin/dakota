@@ -8,6 +8,7 @@ runtime-depends:
   - gnome-build-meta.bst:core-deps/plymouth.bst
 
 build-depends:
+  - core/sandbox-tools.bst
   - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 
 variables:

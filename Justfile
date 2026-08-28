@@ -96,7 +96,10 @@ validate:
     just bst show --deps all oci/bluefin.bst
     just bst show --deps all oci/bluefin-nvidia.bst
 
-# Verify the local freedesktop-sdk patch queue matches the pinned GBM ref.
+# Verify the local freedesktop-sdk patch queue matches its committed
+# manifest, offline. The manifest is written by `just patch-sync` (the only
+# step that contacts gitlab.gnome.org), so validate never depends on
+# upstream uptime.
 [group('dev')]
 patch-drift-check:
     #!/usr/bin/env bash
@@ -107,67 +110,91 @@ patch-drift-check:
         echo "ERROR: could not extract GBM commit SHA from elements/gnome-build-meta.bst ref: ${gbm_ref}" >&2
         exit 1
     fi
-    gbm_sha="${BASH_REMATCH[1]}"
+    export gbm_sha="${BASH_REMATCH[1]}"
+    python3 - <<'EOF'
+    import hashlib, json, os, sys
 
-    local_dir="patches/freedesktop-sdk"
-    workdir=".cache/patch-drift-check.$$"
-    rm -rf "$workdir"
-    mkdir -p "$workdir/upstream"
-    trap 'rm -rf "$workdir"' EXIT
+    manifest_path = "patches/freedesktop-sdk.manifest.json"
+    local_dir = "patches/freedesktop-sdk"
+    gbm_sha = os.environ["gbm_sha"]
 
-    api_url="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/tree?path=patches/freedesktop-sdk&ref=${gbm_sha}&per_page=100"
-    curl -fsSL "$api_url" \
-        | python3 -c 'import json, sys; print("\n".join(sorted(item["name"] for item in json.load(sys.stdin) if item.get("type") == "blob")))' \
-        > "$workdir/upstream-files"
+    if not os.path.exists(manifest_path):
+        sys.exit(f"ERROR: {manifest_path} missing - run `just patch-sync`")
+    m = json.load(open(manifest_path))
 
-    if [ ! -s "$workdir/upstream-files" ]; then
-        echo "ERROR: GBM patches/freedesktop-sdk listing is empty at ${gbm_sha}" >&2
+    if m["gnome-build-meta-sha"] != gbm_sha:
+        sys.exit(
+            "ERROR: junction pins GBM %s but patches were synced for %s - run `just patch-sync`"
+            % (gbm_sha, m["gnome-build-meta-sha"])
+        )
+
+    local = {
+        f: hashlib.sha256(open(os.path.join(local_dir, f), "rb").read()).hexdigest()
+        for f in sorted(os.listdir(local_dir))
+        if os.path.isfile(os.path.join(local_dir, f))
+    }
+    status = 0
+    for f in sorted(set(m["files"]) - set(local)):
+        print(f"ERROR: {f} listed in manifest but missing locally", file=sys.stderr); status = 1
+    for f in sorted(set(local) - set(m["files"])):
+        print(f"ERROR: {f} present locally but not in manifest", file=sys.stderr); status = 1
+    for f in sorted(set(local) & set(m["files"])):
+        if local[f] != m["files"][f]:
+            print(f"ERROR: {f} differs from manifest", file=sys.stderr); status = 1
+    if status:
+        sys.exit("ERROR: patch queue drifted from manifest - run `just patch-sync` after junction bumps")
+    print(f"OK: patches/freedesktop-sdk matches manifest for GBM {gbm_sha} ({len(local)} files)")
+    EOF
+
+# Re-sync patches/freedesktop-sdk (and its manifest) from gnome-build-meta
+# at the pinned junction sha. The one place upstream is contacted; run it
+# after every gnome-build-meta junction bump.
+[group('dev')]
+patch-sync:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    gbm_ref=$(awk '/^[[:space:]]*ref: / { print $2; exit }' elements/gnome-build-meta.bst)
+    if [[ ! "$gbm_ref" =~ -g([0-9a-f]{40})$ ]]; then
+        echo "ERROR: could not extract GBM commit SHA from elements/gnome-build-meta.bst ref: ${gbm_ref}" >&2
         exit 1
     fi
+    export gbm_sha="${BASH_REMATCH[1]}"
 
-    while IFS= read -r name; do
-        encoded=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$name")
-        curl -fsSL "https://gitlab.gnome.org/GNOME/gnome-build-meta/-/raw/${gbm_sha}/patches/freedesktop-sdk/${encoded}" \
-            -o "$workdir/upstream/$name"
-    done < "$workdir/upstream-files"
-
-    if [ -d "$local_dir" ]; then
-        find "$local_dir" -maxdepth 1 -type f -printf '%f\n' | sort > "$workdir/local-files"
-    else
-        : > "$workdir/local-files"
+    files_api="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/files"
+    tree_api="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/tree?path=patches/freedesktop-sdk&ref=${gbm_sha}&per_page=100"
+    mapfile -t patch_files < <(curl -fsSL "$tree_api" \
+        | python3 -c 'import json, sys; [print(i["name"]) for i in json.load(sys.stdin) if i["type"] == "blob"]')
+    if [ "${#patch_files[@]}" -eq 0 ]; then
+        echo "ERROR: empty patches/freedesktop-sdk listing at gnome-build-meta @ ${gbm_sha}" >&2
+        exit 1
     fi
-
-    comm -23 "$workdir/upstream-files" "$workdir/local-files" > "$workdir/missing"
-    comm -13 "$workdir/upstream-files" "$workdir/local-files" > "$workdir/extra"
-    : > "$workdir/differing"
-    comm -12 "$workdir/upstream-files" "$workdir/local-files" | while IFS= read -r name; do
-        if ! cmp -s "$workdir/upstream/$name" "$local_dir/$name"; then
-            echo "$name" >> "$workdir/differing"
-        fi
+    rm -f patches/freedesktop-sdk/*
+    for f in "${patch_files[@]}"; do
+        encoded=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$f")
+        curl -fsSL "${files_api}/patches%2Ffreedesktop-sdk%2F${encoded}/raw?ref=${gbm_sha}" \
+            -o "patches/freedesktop-sdk/${f}"
     done
 
-    status=0
-    if [ -s "$workdir/missing" ]; then
-        echo "ERROR: missing local patches from GBM patches/freedesktop-sdk at ${gbm_sha}:" >&2
-        sed 's/^/  /' "$workdir/missing" >&2
-        status=1
-    fi
-    if [ -s "$workdir/extra" ]; then
-        echo "ERROR: extra local patches not in GBM patches/freedesktop-sdk at ${gbm_sha}:" >&2
-        sed 's/^/  /' "$workdir/extra" >&2
-        status=1
-    fi
-    if [ -s "$workdir/differing" ]; then
-        echo "ERROR: differing patch contents versus GBM patches/freedesktop-sdk at ${gbm_sha}:" >&2
-        sed 's/^/  /' "$workdir/differing" >&2
-        status=1
-    fi
-    if [ "$status" -ne 0 ]; then
-        exit "$status"
-    fi
+    python3 - <<'EOF'
+    import hashlib, json, os
 
-    count=$(wc -l < "$workdir/upstream-files" | tr -d ' ')
-    echo "OK: patches/freedesktop-sdk matches GBM ${gbm_sha} (${count} files)"
+    d = "patches/freedesktop-sdk"
+    files = {
+        f: hashlib.sha256(open(os.path.join(d, f), "rb").read()).hexdigest()
+        for f in sorted(os.listdir(d))
+        if os.path.isfile(os.path.join(d, f))
+    }
+    manifest = {
+        "comment": "Written by `just patch-sync`; verified offline by `just patch-drift-check`.",
+        "gnome-build-meta-sha": os.environ["gbm_sha"],
+        "files": files,
+    }
+    with open("patches/freedesktop-sdk.manifest.json", "w") as fh:
+        json.dump(manifest, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    print(f"Synced {len(files)} patches and manifest for GBM {os.environ['gbm_sha']}")
+    EOF
 
 # ── Build ─────────────────────────────────────────────────────────────
 # Build the OCI image and load it into podman.
@@ -271,8 +298,11 @@ export variant="default":
     # and the multi-layer output breaks composefs xattr injection in chunka.
     # Fixes: projectbluefin/dakota#841 (boot failure on :testing 2026-06-13)
     DATE_TAG="$(date -u +%Y%m%d)"
-    # shellcheck disable=SC2086
-    printf 'FROM %s\nRUN sed -i "s/^VERSION_ID=.*/VERSION_ID=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\\"%s\\"/" /usr/lib/os-release\n' "$IMAGE_ID" "$DATE_TAG" "$DATE_TAG" \
+    # Preserve the deterministic source mtimes. sed -i changes the parent
+    # directory mtime, which otherwise invalidates every Chunkah layer that
+    # carries /usr/lib metadata even when its component files are unchanged.
+    # shellcheck disable=SC2016,SC2086
+    printf 'FROM %s\nRUN OS_RELEASE_MTIME="$(stat -c %%y /usr/lib/os-release)" \\\n    && USR_LIB_MTIME="$(stat -c %%y /usr/lib)" \\\n    && sed -i "s/^VERSION_ID=.*/VERSION_ID=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\\"%s\\"/" /usr/lib/os-release \\\n    && touch -d "$OS_RELEASE_MTIME" /usr/lib/os-release \\\n    && touch -d "$USR_LIB_MTIME" /usr/lib\n' "$IMAGE_ID" "$DATE_TAG" "$DATE_TAG" \
         | $SUDO_CMD podman build --pull=never --security-opt label=type:unconfined_t --squash-all ${LABEL_ARGS} -t "${FINAL_NAME}:${FINAL_TAG}" -f - .
     $SUDO_CMD podman rmi "$IMAGE_ID" || true
 
@@ -1185,6 +1215,36 @@ verify image_ref="":
     fi
     exit "${STATUS}"
 
+# ── E2E dispatch ─────────────────────────────────────────────────────
+# e2e.yml is workflow_dispatch-only — PRs do not publish a :testing build
+# first, so running smoke on a PR would test a stale image. Dispatching it was
+# a loose `gh workflow run` incantation with no recipe until now.
+#
+# Dispatch the e2e workflow against a published image.
+[group('test')]
+e2e suites="smoke" image="ghcr.io/projectbluefin/dakota:testing":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "gh CLI is required to dispatch the e2e workflow" >&2
+        exit 2
+    fi
+    echo "==> Dispatching e2e: suites={{suites}} image={{image}}"
+    gh workflow run e2e.yml \
+        --repo projectbluefin/dakota \
+        --field image="{{image}}" \
+        --field suites="{{suites}}"
+    echo "==> Watch it with: gh run list --repo projectbluefin/dakota --workflow e2e.yml --limit 5"
+
+# Only meaningful against a fisherman to-filesystem install — see the header
+# of .github/workflows/e2e.yml for which of the three assertions gate on what.
+# Usage: just e2e-installer ghcr.io/projectbluefin/dakota:testing
+#
+# Dispatch the fisherman post-boot assertions (projectbluefin/dakota#651).
+[group('test')]
+e2e-installer image="ghcr.io/projectbluefin/dakota:testing":
+    just e2e installer "{{image}}"
+
 # ── Lint ─────────────────────────────────────────────────────────────
 [group('test')]
 lint:
@@ -1256,5 +1316,83 @@ swap-audit:
             || fail "bluefin-swapfile-init exited non-zero"
 
         [ "$STATUS" -eq 0 ] && echo "PASS: swap/zram configuration OK"
+        exit "$STATUS"
+        '
+
+# ── Avatar audit ─────────────────────────────────────────────────────
+# Assert the Bluefin dinosaur avatars are actually reachable by GNOME's
+# account-picture pickers. Guards against the #353 regression class, where
+# the art shipped fine but nothing pointed GNOME at it.
+#
+# Two independent ways this breaks silently, both checked here:
+#   1. common.bst stops ingesting /usr/share/pixmaps/faces/bluefin/*.jpg.
+#   2. The dconf override ships but never reaches the compiled distro db
+#      (element dropped from the layer, or `dconf update` did not run).
+#
+# org.gnome.desktop.interface avatar-directories REPLACES the default face
+# dirs rather than adding to them (gnome-control-center
+# panels/system/users/cc-avatar-chooser.c, gnome-initial-setup
+# pages/account/um-photo-dialog.c), so a stale or typo'd path yields an
+# empty picker with no fallback. Every listed dir is therefore checked for
+# existence and for actual .jpg content.
+[group('test')]
+avatar-audit:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Use sudo unless already root
+    SUDO_CMD=""
+    if [ "$(id -u)" -ne 0 ]; then
+        SUDO_CMD="sudo"
+    fi
+
+    echo "==> Auditing user-avatar configuration in {{image_name}}:{{image_tag}}..."
+    $SUDO_CMD podman run --rm --pull=never \
+        "{{image_name}}:{{image_tag}}" \
+        bash -c '
+        set -uo pipefail
+        STATUS=0
+        fail() { echo "FAIL: $1" >&2; STATUS=1; }
+
+        Q=$(printf "\047")
+        KEYFILE=/etc/dconf/db/distro.d/07-dakota-avatar-directories
+        DB=/etc/dconf/db/distro
+
+        # The art itself, straight from bluefin/common.bst.
+        compgen -G "/usr/share/pixmaps/faces/bluefin/*.jpg" > /dev/null \
+            || fail "no Bluefin avatar art under /usr/share/pixmaps/faces/bluefin"
+
+        # The distro dconf profile must read the distro db at all.
+        grep -qx "system-db:distro" /etc/dconf/profile/user 2>/dev/null \
+            || fail "/etc/dconf/profile/user does not read system-db:distro"
+
+        if [ ! -f "$KEYFILE" ]; then
+            fail "$KEYFILE missing"
+        elif [ ! -f "$DB" ]; then
+            fail "compiled dconf db $DB missing -- did dconf update run?"
+        else
+            VALUE=$(sed -n "s/^avatar-directories=//p" "$KEYFILE")
+            if [ -z "$VALUE" ]; then
+                fail "avatar-directories key missing from $KEYFILE"
+            else
+                DIRS=$(printf "%s" "$VALUE" | tr -d "[]${Q} " | tr "," "\n" | grep -v "^$")
+                if [ -z "$DIRS" ]; then
+                    fail "avatar-directories is empty -- the picker would show nothing"
+                else
+                    while read -r dir; do
+                        [ -d "$dir" ] \
+                            || { fail "avatar-directories lists $dir, which is not in the image"; continue; }
+                        compgen -G "${dir}/*.jpg" > /dev/null \
+                            || fail "$dir contains no .jpg faces"
+                        # gvdb keeps strings verbatim, so the compiled db can
+                        # be grepped without a dconf/D-Bus round trip.
+                        grep -qaF "$dir" "$DB" \
+                            || fail "$dir absent from compiled $DB -- override did not reach the db"
+                    done <<< "$DIRS"
+                fi
+            fi
+        fi
+
+        [ "$STATUS" -eq 0 ] && echo "PASS: user-avatar configuration OK"
         exit "$STATUS"
         '

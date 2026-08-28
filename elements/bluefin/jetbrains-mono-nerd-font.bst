@@ -1,6 +1,7 @@
 kind: manual
 
 build-depends:
+- core/sandbox-tools.bst
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 - freedesktop-sdk.bst:components/libarchive.bst
 - freedesktop-sdk.bst:components/bzip2.bst
@@ -13,8 +14,8 @@ sources:
   # kind: tar fails on this specific archive. No idea why.
   # FIXME: build the nerd fonts ourselves
 - kind: remote
-  url: github_files:ryanoasis/nerd-fonts/releases/download/v3.5.0/JetBrainsMono.tar.xz
-  ref: 0227b220360a6f819b9ead92343e8112b34733054782561af50cfba1e8afab63
+  url: github_files:ryanoasis/nerd-fonts/releases/download/v3.5.1/JetBrainsMono.tar.xz
+  ref: 04d5e8f903693f9dd13e16f867e994834e681eb3c72c0d337a770dcda09010cf
 variables:
   license-files-extra: "OFL.txt"
   fontdir: "%{install-root}%{datadir}/fonts"

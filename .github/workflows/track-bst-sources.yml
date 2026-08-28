@@ -21,8 +21,13 @@ on:
 
 permissions: read-all
 
+# Own group, deliberately NOT dakota-bst-build-global: tracking only queries
+# upstream repos and release URLs to resolve refs — it never builds and never
+# touches the CAS, so it has no reason to wait behind (or contend with)
+# multi-hour BST builds. On 2026-08-22 the scheduled tracker entering the
+# shared build group cancelled the pending next build.
 concurrency:
-  group: dakota-bst-build-global
+  group: dakota-source-track
   cancel-in-progress: false
 
 env:
@@ -152,7 +157,7 @@ jobs:
           private-key: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}
 
       - name: Setup Just
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+        uses: taiki-e/install-action@37f7c5781271959fb65b6b35224e28652ff2b63d # v2
         with:
           tool: just
 
@@ -319,7 +324,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Just
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+        uses: taiki-e/install-action@37f7c5781271959fb65b6b35224e28652ff2b63d # v2
         with:
           tool: just
 
@@ -744,7 +749,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Just
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+        uses: taiki-e/install-action@37f7c5781271959fb65b6b35224e28652ff2b63d # v2
         with:
           tool: just
 

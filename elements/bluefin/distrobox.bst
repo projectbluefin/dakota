@@ -4,6 +4,7 @@
 kind: manual
 
 build-depends:
+- core/sandbox-tools.bst
 - freedesktop-sdk.bst:components/go.bst
 
 depends:

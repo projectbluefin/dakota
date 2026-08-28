@@ -7,6 +7,7 @@ sources:
   ref: 9e441493a132e9f38d3a7fdf5d7f0d55a0a36369
 
 build-depends:
+- core/sandbox-tools.bst
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 - freedesktop-sdk.bst:components/jq.bst
 

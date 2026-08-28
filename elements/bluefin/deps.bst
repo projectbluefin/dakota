@@ -17,12 +17,15 @@ depends:
 
   - bluefin/ghostty.bst
 
+  - bluefin/fastfetch.bst
   - bluefin/gum.bst
   - bluefin/tealdeer.bst
   - bluefin/ydotool.bst
   - bluefin/umotd.bst
+  - bluefin/uwelcome.bst
 
   - bluefin/common.bst
+  - bluefin/user-avatars.bst
   - bluefin/just-overrides.bst
   - bluefin/zswap-config.bst
   - bluefin/swapfile.bst
@@ -31,6 +34,7 @@ depends:
   - bluefin/wallpaper-month.bst
   - bluefin/bootc-install-config.bst
   - bluefin/composefs-loop-udisks-ignore.bst
+  - bluefin/udev-groups.bst
   - bluefin/gnome-epub-thumbnailer.bst
   - bluefin/papers-thumbnailer.bst
   - bluefin/wallpapers.bst
@@ -48,6 +52,7 @@ depends:
   - bluefin/wireplumber-pcsp.bst
   - bluefin/countme.bst
   - bluefin/alsa-utils.bst
+  - bluefin/brlaser.bst
   # - bluefin/lsp-plugins-lv2.bst
 
   # Include things missing from the gnomeos base image
@@ -60,6 +65,7 @@ depends:
   - freedesktop-sdk.bst:components/buildstream2.bst
   - freedesktop-sdk.bst:components/containers-common.bst
   - freedesktop-sdk.bst:components/debuginfod.bst
+  - freedesktop-sdk.bst:components/dmidecode.bst
   - freedesktop-sdk.bst:components/git-lfs.bst
   - freedesktop-sdk.bst:components/git.bst
   - freedesktop-sdk.bst:components/podman.bst

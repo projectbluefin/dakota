@@ -5,11 +5,12 @@ sources:
   #   url: github:ublue-os/artwork.git
   #   track: main
 - kind: tar
-  url: github_files:ublue-os/artwork/releases/download/bluefin-v2026-04-13/bluefin-wallpapers-gnome.tar.zstd
-  ref: 87fdc6505da615e5df902df408371d5ab34efef6199144925324a564e6801e00
+  url: github_files:ublue-os/artwork/releases/download/bluefin-v2026-08-21/bluefin-wallpapers-gnome.tar.zstd
+  ref: b3c5332f28c06265aa39284c0e1fad5ec970860d06737ebae24072a17cb52bf4
   base-dir: ""
 
 build-depends:
+- core/sandbox-tools.bst
 - freedesktop-sdk.bst:components/sed.bst
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 

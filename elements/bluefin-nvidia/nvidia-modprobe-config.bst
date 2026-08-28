@@ -2,6 +2,9 @@ kind: manual
 description: |
   Modprobe glue for NVIDIA on Wayland: enable KMS + fbdev, blacklist nouveau.
 
+build-depends:
+- core/sandbox-tools.bst
+
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 

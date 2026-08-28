@@ -3,7 +3,8 @@
 # This reproduces the x86_64/aarch64 recipe of the linux.bst element at
 # Dakota's pinned freedesktop-sdk 25.08 ref, with the shared config
 # enabling ATH12K. The pinned upstream kernel patches only affect
-# RISC-V and PowerPC, which Dakota does not build.
+# RISC-V, PowerPC, and perf-tooling reproducibility (jevents), none of
+# which Dakota builds.
 #
 # Two Dakota deltas from the upstream recipe (both shared with
 # linux-ogc.bst, see there):
@@ -80,8 +81,27 @@ config:
     . ./fdsdk-config.sh "%{arch}"
 
   - |
+    # Linux 7.1 dropped the RNG_DEFAULT select that enabled this menu;
+    # keep FDSDK's expected SP800-90A DRBGs available.
+    scripts/config --keep-case -e CRYPTO_DRBG_MENU
+
     # The zswap.compressor=zstd karg needs the compressor built in, not =m.
     scripts/config --keep-case -e CRYPTO_ZSTD
+
+  - |
+    # Drop expectations only for options this newer stable tree no longer
+    # offers. Existing symbols whose dependencies are unmet remain failures.
+    find . -name 'Kconfig*' -exec grep -h '^\(menu\)\{0,1\}config ' {} + \
+      | awk '{print $2}' | sort -u > .kconfig-symbols
+    cp expected-configs expected-configs.orig
+    while IFS= read -r cfg; do
+      sym=${cfg#CONFIG_}
+      if ! grep -qx "$sym" .kconfig-symbols; then
+        echo "note: pruning expectation for ${cfg} (absent from this tree)" 1>&2
+        sed -i "/^\(CONFIG_\)\{0,1\}${sym}$/d" expected-configs
+      fi
+    done < expected-configs.orig
+    rm -f expected-configs.orig
 
   - |
     make -j1 olddefconfig
@@ -167,10 +187,8 @@ public:
 sources:
 - kind: git_repo
   url: kernel:linux/kernel/git/stable/linux.git
-  track: v*
-  exclude:
-  - '*-rc*'
-  ref: v7.0.11-0-gbb532bfaf7919c7c98caab81864e9ce2646e11e3
+  track: v7.1.8
+  ref: v7.1.8-0-g25c76bea853d0db65b51fb4697a47cbfd9e35e76
 - kind: local
   path: files/linux/config-utils.sh
 - kind: local

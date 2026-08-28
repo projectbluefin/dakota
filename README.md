@@ -63,12 +63,12 @@ Comment `/claim` to take an issue. See [AGENTS.md](AGENTS.md) for the full contr
 
 ## Image streams
 
-| Tag | Stream | What it is |
-|---|---|---|
-| `:stable` | Stable | GNOME 50 — production. Daily automated promotion from `:testing`. |
-| `:testing` | Dev | GNOME 50 — daily builds from `testing` branch. Boot-check gated. |
-| `:next` | Rolling | **GNOME master — the bleeding edge.** Tracks gnome-build-meta `master` daily. Auto-updates, zero maintenance. |
-| `:btw` | Rolling | Alias for `:next`. |
+|        Tag |  Stream |                                                                                                    What it is |
+| ---------: | ------: | ------------------------------------------------------------------------------------------------------------: |
+|  `:stable` |  Stable |                                       GNOME 50 — production. Mon/Wed/Fri automated promotion from `:testing`. |
+| `:testing` |     Dev |                                              GNOME 50 — daily builds from `testing` branch. Boot-check gated. |
+|    `:next` | Rolling | **GNOME master — the bleeding edge.** Tracks gnome-build-meta `master` daily. Auto-updates, zero maintenance. |
+|     `:btw` | Rolling |                                                                                            Alias for `:next`. |
 
 `:next` / `:btw` is the arch competitor stream — latest GNOME the moment it lands upstream, built from source with memory-safe defaults (sudo-rs, uutils-coreutils). If you want to run GNOME before everyone else and help find regressions before they reach stable, this is your image.
 

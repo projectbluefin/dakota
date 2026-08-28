@@ -1,16 +1,20 @@
 kind: manual
 
 sources:
-- kind: remote
+# The docker source pins the per-architecture manifest digest, not the
+# multi-arch index digest, so each arch carries its own ref (tracked with
+# `just bst -o arch <arch> source track bluefin/brew-tarball.bst`).
+- kind: docker
+  url: ghcr:ublue-os/brew
+  track: latest
   (?):
   - arch == "x86_64":
-      url: github_files:ublue-os/packages/releases/download/homebrew-2026-03-03-01-31-47/homebrew-x86_64.tar.zst
-      ref: 46e546da7ac2a4e916f0c89db61e9c0292b90e8b4b6b5662d2c5df5f668fb40c
+      ref: e0edae28a2ce41e2faa05b9a4902488a9a22d5c4a70c94427ccac8904ec5107a
   - arch == "aarch64":
-      url: github_files:ublue-os/packages/releases/download/homebrew-2026-02-17-01-32-11/homebrew-aarch64.tar.zst
-      ref: 08813d100ff0f69c57038b1d397e641789701e0ca109200e1377473cd7bad001
+      ref: aff477fa0ccbbb467946ed12e1ec6cd7726281e555daa152ef64af8f3106a5e6
 
 build-depends:
+- core/sandbox-tools.bst
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 
 runtime-depends:
@@ -22,7 +26,7 @@ variables:
 config:
   install-commands:
   - |
-    mkdir -p "%{install-root}%{datadir}"
-    mv homebrew-%{arch}.tar.zst "%{install-root}%{datadir}/homebrew.tar.zst"
+    install -Dm644 system_files/usr/share/homebrew.tar.zst \
+      "%{install-root}%{datadir}/homebrew.tar.zst"
   - |
     %{install-extra}

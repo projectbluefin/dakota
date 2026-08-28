@@ -1,0 +1,20 @@
+#!/usr/bin/bash
+# Record the booted bootc image ref where unprivileged consumers (fastfetch's
+# ublue-image-info.sh) can read it. `bootc status` requires root on bootc
+# >= 1.14 (get_host() -> prepare_for_write()), and the baked image-info.json
+# tag is always the compose-time "latest" because promotion retags the same
+# digest. The booted ref cannot change within a boot, so one write per boot
+# is always accurate.
+set -euo pipefail
+
+ref="$(bootc status --json | jq -r '.status.booted.image.image.image // empty')"
+if [ -z "${ref}" ]; then
+    echo "no booted bootc image found; leaving no state file" >&2
+    exit 0
+fi
+
+install -d -m 0755 /run/ublue-os
+tmp="$(mktemp /run/ublue-os/booted-image.XXXXXX)"
+printf '%s\n' "${ref}" > "${tmp}"
+chmod 0644 "${tmp}"
+mv -f "${tmp}" /run/ublue-os/booted-image

@@ -1,0 +1,143 @@
+name: Sync next
+
+# Synthesizes next = testing + the next-stream overlay. Two tiers:
+#   NEXT_OWNED  - wholly stream-specific content (junctions, patch queues,
+#                 kernels, generated manifests): restored verbatim from next.
+#   NEXT_MERGED - testing files carrying a small next-only tweak: 3-way
+#                 merged so edits landing on testing flow through and only
+#                 next's tweak is reapplied. A conflict fails the job; push
+#                 the resolved file to next and the next sync carries it.
+# Anything on next outside both lists fails the drop guard instead of being
+# deleted. The lists should shrink back toward junctions + manifests once
+# testing reaches fdsdk 26.08.
+
+on:
+  push:
+    branches: [testing]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Shared with track-next-junctions.yml so sync and tracker never interleave.
+concurrency:
+  group: dakota-next-branch-mutation
+  cancel-in-progress: false
+
+env:
+  NEXT_OWNED: >-
+    elements/gnome-build-meta.bst
+    elements/freedesktop-sdk.bst
+    elements/core/linux-fdsdk.bst
+    elements/core/linux-ogc.bst
+    files/linux
+    patches/freedesktop-sdk
+    patches/freedesktop-sdk.manifest.json
+    patches/linux
+    patches/linux-ogc
+    files/filemap.json
+    files/fakecap-manifest.tsv
+  NEXT_MERGED: >-
+    elements/bluefin/deps.bst
+    elements/bluefin-nvidia/nvidia-drivers.bst
+    elements/gaming/host-platform.bst
+    elements/oci/layers/bluefin-stack.bst
+
+jobs:
+  sync-next:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Get mergeraptor token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.MERGERAPTOR_APP_ID }}
+          private-key: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}
+
+      - name: Checkout next
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: next
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      # Concurrency can't block a PR auto-merging mid-rewrite; close it first.
+      - name: Retire open junction-bump PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          pr=$(gh pr list --head auto/track-next-junction --base next \
+                 --state open --json number -q '.[0].number // empty')
+          [ -z "$pr" ] || gh pr close "$pr" --delete-branch \
+            --comment "Superseded by sync; the tracker reopens against the new tip."
+
+      - name: Synthesize next from testing
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          old=$(git rev-parse HEAD)
+          git fetch origin testing
+          read -ra owned <<< "$NEXT_OWNED"
+          read -ra merged <<< "$NEXT_MERGED"
+
+          # Refuse to drop divergence outside NEXT_OWNED + NEXT_MERGED.
+          base=$(git merge-base HEAD origin/testing)
+          mapfile -t excludes < <(for p in "${owned[@]}" "${merged[@]}"; do echo ":(exclude)$p"; done)
+          unsanctioned=$(git diff --name-only "$base" HEAD -- . "${excludes[@]}")
+          if [ -n "$unsanctioned" ]; then
+            echo "ERROR: next diverges from testing outside NEXT_OWNED/NEXT_MERGED — refusing to drop:"
+            echo "$unsanctioned"
+            exit 1
+          fi
+
+          git reset --hard origin/testing
+          # rm first so owned directories don't keep testing-only files.
+          git rm -r -q --ignore-unmatch -- "${owned[@]}"
+          # Restore owned paths that exist at the old tip; ones born on
+          # testing (e.g. a fresh manifest) reach next via the tracker.
+          for p in "${owned[@]}"; do
+            if git cat-file -e "$old:$p" 2>/dev/null; then
+              git checkout "$old" -- "$p"
+            else
+              echo "note: $p absent at old next tip; skipping restore"
+            fi
+          done
+
+          # 3-way merge NEXT_MERGED files: base = merge-base, ours = testing
+          # (the worktree after reset), theirs = old next tip. Testing's edits
+          # flow through; only next's tweak is reapplied on top.
+          tmp=$(mktemp -d)
+          for p in "${merged[@]}"; do
+            if ! git cat-file -e "$old:$p" 2>/dev/null; then
+              echo "note: $p absent at old next tip; keeping testing copy"
+              continue
+            fi
+            if [ ! -f "$p" ]; then
+              echo "note: $p deleted on testing; dropping next copy"
+              continue
+            fi
+            if ! git cat-file -e "$base:$p" 2>/dev/null; then
+              echo "ERROR: $p has no merge-base version; cannot 3-way merge." \
+                   "Push a reconciled copy to next, then re-run the sync."
+              exit 1
+            fi
+            git show "$base:$p" > "$tmp/base"
+            git show "$old:$p"  > "$tmp/next"
+            if ! git merge-file -L testing -L merge-base -L next "$p" "$tmp/base" "$tmp/next"; then
+              echo "ERROR: conflict carrying next's tweak to $p (markers above)." \
+                   "Push the resolved file to next, then re-run the sync."
+              git diff -- "$p"
+              exit 1
+            fi
+            git add -- "$p"
+          done
+          if git diff --cached --quiet; then
+            echo "next-owned files already match testing; publishing bare sync"
+          else
+            git commit -m "chore(next): restore next-stream junctions, kernels, manifests"
+          fi
+
+          # Lease so anything landing on next mid-sync fails the push instead
+          # of being erased.
+          git push origin next --force-with-lease=refs/heads/next:"$old"

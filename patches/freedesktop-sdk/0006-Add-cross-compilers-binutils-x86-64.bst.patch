@@ -1,4 +1,4 @@
-From a24a08037087b2a4126effc382e60751aa1d0e64 Mon Sep 17 00:00:00 2001
+From 52838a52e569e548e1d5e13423c40af5f104edfd Mon Sep 17 00:00:00 2001
 From: Valentin David <me@valentindavid.com>
 Date: Fri, 17 Apr 2026 10:48:50 +0100
 Subject: [PATCH 6/7] Add cross-compilers/binutils-x86-64.bst
@@ -97,5 +97,5 @@ index 000000000..6d5110c0b
 +  cross_arch: "x86_64"
 +  cross_abi: "gnu"
 -- 
-2.54.0
+2.55.0
 

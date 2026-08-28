@@ -5,6 +5,9 @@ description: |
   /var/run/cdi/nvidia.yaml is generated at boot and refreshed whenever
   the driver or toolkit binaries change.
 
+build-depends:
+- core/sandbox-tools.bst
+
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 

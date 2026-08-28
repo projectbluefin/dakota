@@ -11,6 +11,9 @@ description: |
 
   bootc applies these from /usr/lib/bootc/kargs.d/ on switch/upgrade.
 
+build-depends:
+- core/sandbox-tools.bst
+
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 

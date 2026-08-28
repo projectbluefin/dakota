@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:bootc-dev/bootc.git
   track: v*
-  ref: v1.16.7-0-gbb8fb41e39cbb8c68b6e602307854a57b58f693a
+  ref: v1.16.10-0-g3e76c16556c55e6d15d31bd47602b231e2131cb2
 - kind: cargo2
   ref:
   - kind: registry
@@ -92,10 +92,10 @@ sources:
     version: 0.23.0
     sha: b25655df2c3cdd83c5e5b293b88acd880332b2ddadd7c30ac43144fdc0033da9
   - kind: git
-    commit: 0954cb338a65a460d297cba93b42f7917e921df1
+    commit: d0433d9efec73836c447ab511a365421dd90da82
     repo: https://github.com/bootc-dev/bcvk
     query:
-      rev: 0954cb338a65a460d297cba93b42f7917e921df1
+      rev: d0433d9efec73836c447ab511a365421dd90da82
     name: bcvk-qemu
     version: 0.1.0
   - kind: registry

@@ -1,11 +1,13 @@
 kind: compose
 
 build-depends:
-  - freedesktop-sdk.bst:components/gcc.bst
-  - oci/layers/bluefin-nvidia-runtime.bst
+  - oci/layers/bluefin-nvidia-stack.bst
+  # The filtered toolchain survives the global devel filter without requiring
+  # a second full-root composition.
+  - oci/layers/brew-toolchain.bst
 
 config:
   exclude:
+    - devel
     - debug
-    - extra
     - static-blocklist
