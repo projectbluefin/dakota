@@ -90,9 +90,15 @@ monitor-pipeline BUILD_RUN_ID="":
     fi
     python3 files/monitor_pipeline.py --build-run-id "{{BUILD_RUN_ID}}"
 
+# Unit tests for .github/scripts/sbom_diff.py.
+[group('dev')]
+test-sbom-diff:
+    python3 -m unittest scripts.test_sbom_diff
+
 [group('dev')]
 validate:
     just check-publish-workflow
+    just test-sbom-diff
     just bst show --deps all oci/bluefin.bst
     just bst show --deps all oci/bluefin-nvidia.bst
 
