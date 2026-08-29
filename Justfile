@@ -80,6 +80,11 @@ check-publish-workflow:
     python3 scripts/check_publish_workflow.py
     python3 -m unittest scripts.test_check_publish_workflow
 
+# Unit tests for files/scripts/bst-progress.py (the build.yml progress filter).
+[group('dev')]
+test-bst-progress:
+    python3 -m unittest scripts.test_bst_progress
+
 [group('dev')]
 monitor-pipeline BUILD_RUN_ID="":
     #!/usr/bin/env bash
@@ -93,6 +98,7 @@ monitor-pipeline BUILD_RUN_ID="":
 [group('dev')]
 validate:
     just check-publish-workflow
+    just test-bst-progress
     just bst show --deps all oci/bluefin.bst
     just bst show --deps all oci/bluefin-nvidia.bst
 
