@@ -1,29 +1,23 @@
 # freedesktop-sdk stable kernel for non-gaming Dakota variants.
 #
 # This reproduces the x86_64/aarch64 recipe of the linux.bst element at
-# Dakota's pinned freedesktop-sdk 25.08 ref, with the shared config
-# enabling ATH12K. The pinned upstream kernel patches only affect
-# RISC-V, PowerPC, and perf-tooling reproducibility (jevents), none of
-# which Dakota builds.
+# Dakota's pinned freedesktop-sdk 26.08 ref (elements/components/linux.bst
+# plus elements/include/linux.yml, with build-depends junction-prefixed).
+# The vendored files/linux/ scripts and patches/linux/ queue are verbatim
+# copies from that ref; re-sync all of them at every fdsdk bump.
 #
-# Two Dakota deltas from the upstream recipe (both shared with
-# linux-ogc.bst, see there):
-#   1. CRYPTO_ZSTD forced =y: the zswap.compressor=zstd karg
-#      (bluefin/zswap-config.bst, all variants) needs the compressor
-#      built in.
-#   2. Modules stripped (INSTALL_MOD_STRIP=1) and vmlinux to the devel
-#      split: the shared config pass enables DEBUG_INFO_BTF (forcing
-#      DEBUG_INFO=y), and Dakota's runtime OCI layers only exclude the
-#      devel/debug domains, so upstream's contract would ship ~0.5 GB
-#      of debug payload in composed images.
+# As of 26.08, upstream builds ATH12K, strips modules (INSTALL_MOD_STRIP=1),
+# and splits vmlinux/System.map to the devel domain itself, so those former
+# Dakota deltas are gone. One Dakota delta remains:
+#   CRYPTO_ZSTD forced =y: the zswap.compressor=zstd karg
+#   (bluefin/zswap-config.bst, all variants) needs the compressor
+#   built in, not =m.
 #
-# Exit condition: once the pinned 25.08 release contains freedesktop-sdk
-# commit 2d9798306 (linux: Build ATH12K), the config divergence ends and
-# the vendored files/linux/ scripts re-sync with upstream. The two deltas
-# above are Dakota-specific and outlive it: only drop this element in
-# favor of components/linux.bst if zswap and image size are re-verified.
+# Exit condition: only drop this element in favor of components/linux.bst
+# if upstream ships CONFIG_CRYPTO_ZSTD=y (or zswap moves off the karg) and
+# zswap is re-verified on a booted image.
 kind: make
-description: freedesktop-sdk stable Linux kernel with ATH12K
+description: freedesktop-sdk stable Linux kernel with CRYPTO_ZSTD built in
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-make.bst
@@ -44,7 +38,6 @@ build-depends:
   strict: true
 
 variables:
-  bootdir: /boot
   indep-libdir: '%{prefix}/lib'
   # Modules are stripped by kbuild (INSTALL_MOD_STRIP=1) *before* the
   # module signature is appended; a post-build strip pass would tear
@@ -66,6 +59,12 @@ environment:
   KBUILD_BUILD_TIMESTAMP: 'Thu Nov 10 15:00:00 UTC 2011'
   KBUILD_BUILD_USER: 'tomjon'
   MAXJOBS: "%{max-jobs}"
+  # arch/x86/Makefile hardcodes -march=x86-64 -mtune=generic, overriding
+  # gcc's --with-arch_64 default. KCFLAGS is appended after KBUILD_CFLAGS,
+  # so a later -march wins.
+  (?):
+  - x86_64_v3:
+      KCFLAGS: "-march=x86-64-v3 -mtune=skylake"
 
 environment-nocache:
 - MAXJOBS
@@ -81,16 +80,12 @@ config:
     . ./fdsdk-config.sh "%{arch}"
 
   - |
-    # Linux 7.1 dropped the RNG_DEFAULT select that enabled this menu;
-    # keep FDSDK's expected SP800-90A DRBGs available.
-    scripts/config --keep-case -e CRYPTO_DRBG_MENU
-
     # The zswap.compressor=zstd karg needs the compressor built in, not =m.
     scripts/config --keep-case -e CRYPTO_ZSTD
 
   - |
-    # Drop expectations only for options this newer stable tree no longer
-    # offers. Existing symbols whose dependencies are unmet remain failures.
+    # Drop expectations for options this newer stable tree no longer offers.
+    # Existing symbols whose dependencies are not met remain hard failures.
     find . -name 'Kconfig*' -exec grep -h '^\(menu\)\{0,1\}config ' {} + \
       | awk '{print $2}' | sort -u > .kconfig-symbols
     cp expected-configs expected-configs.orig
@@ -127,11 +122,12 @@ config:
 
   install-commands:
   - |
-    install -Dm644 "%{image-name}" '%{install-root}%{bootdir}/vmlinuz'
-    install -Dm644 vmlinux '%{install-root}%{bootdir}/vmlinux'
-    install -Dm644 System.map '%{install-root}%{bootdir}/System.map'
-    install -Dm644 .config '%{install-root}%{bootdir}/config'
-    make -j1 INSTALL_MOD_PATH='%{install-root}%{prefix}' INSTALL_MOD_STRIP=1 modules_install
+    release=$(make -s kernelrelease)
+    install -Dm644 "%{image-name}" "%{install-root}%{indep-libdir}/modules/${release}/vmlinuz"
+    install -Dm644 vmlinux "%{install-root}%{indep-libdir}/modules/${release}/vmlinux"
+    install -Dm644 System.map "%{install-root}%{indep-libdir}/modules/${release}/System.map"
+    install -Dm644 .config "%{install-root}%{indep-libdir}/modules/${release}/config"
+    ZSTD_CLEVEL=19 make -j1 INSTALL_MOD_PATH="%{install-root}%{prefix}" INSTALL_MOD_STRIP=1 modules_install
 
   - |
     release=$(make -s kernelrelease)
@@ -168,18 +164,19 @@ config:
       install-commands:
         (>):
         - |
-          make -j1 INSTALL_DTBS_PATH='%{install-root}%{bootdir}/dtbs' dtbs_install
+          release=$(make -s kernelrelease)
+          make -j1 INSTALL_DTBS_PATH="%{install-root}%{indep-libdir}/modules/${release}/dtbs" dtbs_install
 
 public:
   bst:
     split-rules:
       devel:
         (>):
-        - '%{bootdir}/System.map'
+        - '%{indep-libdir}/modules/*/System.map'
         # DEBUG_INFO=y (via the shared config's DEBUG_INFO_BTF) makes
         # vmlinux ~0.5 GB; runtime consumers read /sys/kernel/btf/vmlinux,
         # not this file, so keep it out of the composed images.
-        - '%{bootdir}/vmlinux'
+        - '%{indep-libdir}/modules/*/vmlinux'
     overlap-whitelist:
     - "%{project_licensedir}"
     - "%{project_licensedir}/**"
@@ -187,8 +184,12 @@ public:
 sources:
 - kind: git_repo
   url: kernel:linux/kernel/git/stable/linux.git
-  track: v7.1.8
-  ref: v7.1.8-0-g25c76bea853d0db65b51fb4697a47cbfd9e35e76
+  track: v*
+  exclude:
+  - '*-rc*'
+  ref: v7.2-0-g8d3ae59288f1e7d58d76558a6ee96d533bc5019f
+- kind: patch_queue
+  path: patches/linux
 - kind: local
   path: files/linux/config-utils.sh
 - kind: local
