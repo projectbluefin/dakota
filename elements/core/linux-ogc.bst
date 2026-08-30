@@ -60,8 +60,6 @@ variables:
       src-arch: x86
   - arch == "aarch64":
       kernel_arch: arm64
-  - arch == "riscv64":
-      kernel_arch: riscv
 
 environment:
   ARCH: '%{kernel_arch}'

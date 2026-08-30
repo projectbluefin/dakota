@@ -90,9 +90,19 @@ monitor-pipeline BUILD_RUN_ID="":
     fi
     python3 files/monitor_pipeline.py --build-run-id "{{BUILD_RUN_ID}}"
 
+# Enforce dakota's CPU-arch axis: no `arch == "<value>"` conditional may name
+# an arch that project.conf's `arch` option does not declare, and the
+# project-wide variables switch must define the same variables on every
+# declared arch. See scripts/check_arch_axis.py.
+[group('dev')]
+check-arch-axis:
+    python3 scripts/check_arch_axis.py
+    python3 -m unittest scripts.test_check_arch_axis
+
 [group('dev')]
 validate:
     just check-publish-workflow
+    just check-arch-axis
     just bst show --deps all oci/bluefin.bst
     just bst show --deps all oci/bluefin-nvidia.bst
 
