@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:StorageB/custom-command-menu.git
   track: 'v[0-9]*'
-  ref: v15-beta1-0-g494a4a82199dfcd7138d4aa71eedb189f605da9d
+  ref: v16-0-g66e5d62a6b71f1b38c4d170d6c6244f7609e563f
 - kind: local
   path: files/dconf
 
