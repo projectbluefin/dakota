@@ -181,19 +181,32 @@ confirm issue_number:
     fi
 
     # Build the comment
-    COMMENT=$(printf '### ✋ I also experience this issue\n\n')
-    COMMENT+=$(printf '| Field | Value |\n|-------|-------|\n')
-    COMMENT+=$(printf '| Image | `%s` |\n' "$BOOTED_IMAGE")
-    COMMENT+=$(printf '| Digest | `%s` |\n' "$BOOTED_DIGEST")
-    COMMENT+=$(printf '| Kernel | `%s` |\n' "$KERNEL_VER")
-    COMMENT+=$(printf '| Arch | `%s` |\n' "$ARCH")
-    COMMENT+=$(printf '| Device ID | `%s` |\n' "$HOST_ID")
+    COMMENT=$(cat <<EOF
+    ### ✋ I also experience this issue
+
+    | Field | Value |
+    |-------|-------|
+    | Image | \`${BOOTED_IMAGE}\` |
+    | Digest | \`${BOOTED_DIGEST}\` |
+    | Kernel | \`${KERNEL_VER}\` |
+    | Arch | \`${ARCH}\` |
+    | Device ID | \`${HOST_ID}\` |
+    EOF
+    )
     if [[ -n "$FAILED_UNITS" ]]; then
-        COMMENT+=$(printf '\n**Failed units:** ')
-        COMMENT+=$(echo "$FAILED_UNITS" | tr '\n' ',' | sed 's/,$//')
-        COMMENT+=$(printf '\n')
+        COMMENT+=$(cat <<EOF
+
+    **Failed units:** $(echo "$FAILED_UNITS" | tr '\n' ',' | sed 's/,$//')
+
+    EOF
+    )
     fi
-    COMMENT+=$(printf '\n_Submitted via `ujust confirm %s`_\n' "$ISSUE")
+    COMMENT+=$(cat <<EOF
+
+    _Submitted via \`ujust confirm ${ISSUE}\`_
+
+    EOF
+    )
 
     # Show user what will be posted
     echo "$COMMENT"
@@ -295,17 +308,37 @@ verify issue_number:
     fi
 
     # Build the verification comment
-    COMMENT=$(printf '### %s Verification: **%s**\n\n' "$EMOJI" "$RESULT")
-    COMMENT+=$(printf '| Field | Value |\n|-------|-------|\n')
-    COMMENT+=$(printf '| Image | `%s` |\n' "$BOOTED_IMAGE")
-    COMMENT+=$(printf '| Digest | `%s` |\n' "$BOOTED_DIGEST")
-    COMMENT+=$(printf '| Kernel | `%s` |\n' "$KERNEL_VER")
-    COMMENT+=$(printf '| Arch | `%s` |\n' "$ARCH")
-    COMMENT+=$(printf '| Device ID | `%s` |\n' "$HOST_ID")
+    COMMENT=$(cat <<EOF
+    ### ${EMOJI} Verification: **${RESULT}**
+
+    | Field | Value |
+    |-------|-------|
+    | Image | \`${BOOTED_IMAGE}\` |
+    | Digest | \`${BOOTED_DIGEST}\` |
+    | Kernel | \`${KERNEL_VER}\` |
+    | Arch | \`${ARCH}\` |
+    | Device ID | \`${HOST_ID}\` |
+    EOF
+    )
     if [[ -n "$JOURNAL_SNIPPET" ]]; then
-        COMMENT+=$(printf '\n<details><summary>Journal (errors, last 50 lines)</summary>\n\n```\n%s\n```\n</details>\n' "$JOURNAL_SNIPPET")
+        COMMENT+=$(cat <<EOF
+
+    <details><summary>Journal (errors, last 50 lines)</summary>
+
+    ```
+    ${JOURNAL_SNIPPET}
+    ```
+    </details>
+
+    EOF
+    )
     fi
-    COMMENT+=$(printf '\n_Submitted via `ujust verify %s`_\n' "$ISSUE")
+    COMMENT+=$(cat <<EOF
+
+    _Submitted via \`ujust verify ${ISSUE}\`_
+
+    EOF
+    )
 
     # Show user what will be posted
     echo ""

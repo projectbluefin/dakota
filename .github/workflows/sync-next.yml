@@ -1,9 +1,14 @@
 name: Sync next
 
-# Synthesizes next = testing + the NEXT_OWNED overlay (junctions, their patch
-# queues, kernels, generated manifests). No merge, no rebase, no conflicts.
-# Anything on next outside NEXT_OWNED fails the drop guard instead of being
-# deleted. The list should shrink back toward junctions + manifests once
+# Synthesizes next = testing + the next-stream overlay. Two tiers:
+#   NEXT_OWNED  - wholly stream-specific content (junctions, patch queues,
+#                 kernels, generated manifests): restored verbatim from next.
+#   NEXT_MERGED - testing files carrying a small next-only tweak: 3-way
+#                 merged so edits landing on testing flow through and only
+#                 next's tweak is reapplied. A conflict fails the job; push
+#                 the resolved file to next and the next sync carries it.
+# Anything on next outside both lists fails the drop guard instead of being
+# deleted. The lists should shrink back toward junctions + manifests once
 # testing reaches fdsdk 26.08.
 
 on:
@@ -25,17 +30,19 @@ env:
     elements/freedesktop-sdk.bst
     elements/core/linux-fdsdk.bst
     elements/core/linux-ogc.bst
-    elements/bluefin/deps.bst
-    elements/bluefin-nvidia/nvidia-drivers.bst
-    elements/gaming/host-platform.bst
-    elements/oci/layers/bluefin-stack.bst
     files/linux
     patches/freedesktop-sdk
     patches/freedesktop-sdk.manifest.json
     patches/linux
     patches/linux-ogc
+    files/linux-ogc
     files/filemap.json
     files/fakecap-manifest.tsv
+  NEXT_MERGED: >-
+    elements/bluefin/deps.bst
+    elements/bluefin-nvidia/nvidia-drivers.bst
+    elements/gaming/host-platform.bst
+    elements/oci/layers/bluefin-stack.bst
 
 jobs:
   sync-next:
@@ -73,13 +80,14 @@ jobs:
           old=$(git rev-parse HEAD)
           git fetch origin testing
           read -ra owned <<< "$NEXT_OWNED"
+          read -ra merged <<< "$NEXT_MERGED"
 
-          # Refuse to drop divergence outside NEXT_OWNED.
+          # Refuse to drop divergence outside NEXT_OWNED + NEXT_MERGED.
           base=$(git merge-base HEAD origin/testing)
-          mapfile -t excludes < <(for p in "${owned[@]}"; do echo ":(exclude)$p"; done)
+          mapfile -t excludes < <(for p in "${owned[@]}" "${merged[@]}"; do echo ":(exclude)$p"; done)
           unsanctioned=$(git diff --name-only "$base" HEAD -- . "${excludes[@]}")
           if [ -n "$unsanctioned" ]; then
-            echo "ERROR: next diverges from testing outside NEXT_OWNED — refusing to drop:"
+            echo "ERROR: next diverges from testing outside NEXT_OWNED/NEXT_MERGED — refusing to drop:"
             echo "$unsanctioned"
             exit 1
           fi
@@ -95,6 +103,35 @@ jobs:
             else
               echo "note: $p absent at old next tip; skipping restore"
             fi
+          done
+
+          # 3-way merge NEXT_MERGED files: base = merge-base, ours = testing
+          # (the worktree after reset), theirs = old next tip. Testing's edits
+          # flow through; only next's tweak is reapplied on top.
+          tmp=$(mktemp -d)
+          for p in "${merged[@]}"; do
+            if ! git cat-file -e "$old:$p" 2>/dev/null; then
+              echo "note: $p absent at old next tip; keeping testing copy"
+              continue
+            fi
+            if [ ! -f "$p" ]; then
+              echo "note: $p deleted on testing; dropping next copy"
+              continue
+            fi
+            if ! git cat-file -e "$base:$p" 2>/dev/null; then
+              echo "ERROR: $p has no merge-base version; cannot 3-way merge." \
+                   "Push a reconciled copy to next, then re-run the sync."
+              exit 1
+            fi
+            git show "$base:$p" > "$tmp/base"
+            git show "$old:$p"  > "$tmp/next"
+            if ! git merge-file -L testing -L merge-base -L next "$p" "$tmp/base" "$tmp/next"; then
+              echo "ERROR: conflict carrying next's tweak to $p (markers above)." \
+                   "Push the resolved file to next, then re-run the sync."
+              git diff -- "$p"
+              exit 1
+            fi
+            git add -- "$p"
           done
           if git diff --cached --quiet; then
             echo "next-owned files already match testing; publishing bare sync"

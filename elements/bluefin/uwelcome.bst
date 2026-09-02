@@ -9,11 +9,11 @@ sources:
   filename: uwelcome
   (?):
   - arch == "x86_64":
-      url: github_files:projectbluefin/uwelcome/releases/download/v0.3.4/uwelcome_0.3.4_linux_amd64
-      ref: f9eba23e8b273ba4add3e4ddfe63a17241caacb82548b78cde187bd5c8021ab6
+      url: github_files:projectbluefin/uwelcome/releases/download/v0.3.5/uwelcome_0.3.5_linux_amd64
+      ref: f13733173f3612ffb5de3cf4d49b608198b4db65a24e6421c4c83df4d72d7aab
   - arch == "aarch64":
-      url: github_files:projectbluefin/uwelcome/releases/download/v0.3.4/uwelcome_0.3.4_linux_arm64
-      ref: 93697c18d9dd99fa77401765576495d0c51b7dbf3a892c45b18bb3487f864362
+      url: github_files:projectbluefin/uwelcome/releases/download/v0.3.5/uwelcome_0.3.5_linux_arm64
+      ref: 5b38d182fd7152bac541d0bc8abdf1a04cab848ab0c62d6bba5ef79477342afb
 
 build-depends:
 - core/sandbox-tools.bst
