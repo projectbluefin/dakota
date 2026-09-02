@@ -35,6 +35,7 @@ env:
     patches/freedesktop-sdk.manifest.json
     patches/linux
     patches/linux-ogc
+    files/linux-ogc
     files/filemap.json
     files/fakecap-manifest.tsv
   NEXT_MERGED: >-
