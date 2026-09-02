@@ -12,6 +12,14 @@ ROOT = Path(".")
 PUBLISH = ROOT / ".github/workflows/publish.yml"
 BUILD = ROOT / ".github/workflows/build.yml"
 CI_CONFIG_ACTION = ROOT / ".github/actions/generate-bst-ci-config/action.yml"
+VARIANTS = ROOT / ".github/image-variants.json"
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".github/scripts"))
+# Prefer the workspace under test so the checker validates the tree it is
+# pointed at, not the tree it happens to live in.
+sys.path.insert(0, str((ROOT / ".github/scripts").resolve()))
+import image_variants  # noqa: E402
+
 
 
 def extract_composite_shell(action: str) -> str | None:
@@ -137,22 +145,65 @@ def check_build_workflow(build: str, errors: list[str]) -> None:
             errors.append(f"build workflow still contains {description}")
 
 
+def check_image_variants(publish: str, errors: list[str]) -> None:
+    """The published variant set must agree with its declaration (#1434)."""
+    try:
+        declaration = image_variants.load(VARIANTS)
+    except image_variants.DeclarationError as exc:
+        errors.append(str(exc))
+        return
+
+    declaration_errors = image_variants.validate(declaration)
+    if declaration_errors:
+        errors.extend(declaration_errors)
+        return
+
+    errors.extend(
+        image_variants.check_workflow_drift(
+            declaration, publish, image_variants.CONSUMERS
+        )
+    )
+
+    # Preserve the intent of the removed literal assertion: the default SBOM
+    # variant stays continue-on-error. Checked against the declaration, which
+    # the drift gate above has already tied to the workflow.
+    sbom = {
+        entry["variant"]: entry
+        for entry in image_variants.matrix_for(declaration, "sbom")
+    }
+    default = sbom.get("default")
+    if default is None:
+        errors.append("publish-sbom must retain the default variant")
+        return
+    if default.get("continue") is not True:
+        errors.append("publish-sbom default variant must stay continue-on-error")
+    if default.get("element") != "oci/bluefin.bst":
+        errors.append("publish-sbom default variant must build oci/bluefin.bst")
+    if default.get("sbom_filename") != "dakota.spdx.json":
+        errors.append("publish-sbom default variant must emit dakota.spdx.json")
+
+
 def check_publish_workflow(publish: str, errors: list[str]) -> None:
     sbom_match = re.search(r"publish-sbom:\n(?P<body>.*?)(?:\n\S|\Z)", publish, re.S)
     if not sbom_match:
         errors.append("could not find publish-sbom job in .github/workflows/publish.yml")
     else:
         sbom_body = sbom_match.group("body")
-        default_continue = re.search(
-            r"- variant: default\n"
-            r"\s+element: oci/bluefin\.bst\n"
-            r"\s+image_suffix: ''\n"
-            r"\s+sbom_filename: dakota\.spdx\.json\n"
-            r"\s+continue: true",
-            sbom_body,
-        )
-        if not default_continue:
-            errors.append("publish-sbom default variant must stay continue-on-error")
+        if "continue-on-error: ${{ matrix.continue }}" not in sbom_body:
+            errors.append("publish-sbom job must wire continue-on-error to the matrix")
+
+    if publish.count("enable-remote-execution: 'false'") < 2:
+        errors.append("publish export and SBOM jobs must remain local/fetch-only")
+    if publish.count("enable-push: 'false'") < 2:
+        errors.append("publish export and SBOM jobs must keep remote caches read-only")
+
+
+def check_publish_workflow(publish: str, errors: list[str]) -> None:
+    sbom_match = re.search(r"publish-sbom:\n(?P<body>.*?)(?:\n\S|\Z)", publish, re.S)
+    if not sbom_match:
+        errors.append("could not find publish-sbom job in .github/workflows/publish.yml")
+    else:
+        sbom_body = sbom_match.group("body")
         if "continue-on-error: ${{ matrix.continue }}" not in sbom_body:
             errors.append("publish-sbom job must wire continue-on-error to the matrix")
 
@@ -176,6 +227,7 @@ def main() -> int:
 
     check_build_workflow(build, errors)
     check_publish_workflow(publish, errors)
+    check_image_variants(publish, errors)
 
     if errors:
         for error in errors:

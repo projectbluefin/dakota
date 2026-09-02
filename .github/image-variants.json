@@ -1,0 +1,150 @@
+{
+  "$comment": [
+    "Single source of truth for the set of dakota image variants and which",
+    "pipeline roles each variant participates in. See issue #1434.",
+    "",
+    "Adding or removing a variant is a single edit here. Every variant MUST",
+    "declare a membership decision for EVERY role in `roles` below: either a",
+    "participation object, or {\"excluded\": \"<reason>\"}. There is no implicit",
+    "membership, so a forgotten variant fails the check-publish-workflow gate",
+    "closed instead of silently reducing pipeline coverage.",
+    "",
+    "Roles with \"derived\": true are the ones publish.yml's matrices must match.",
+    ".github/scripts/image_variants.py projects this file into each role's",
+    "matrix and the check-publish-workflow gate fails if publish.yml has drifted",
+    "from it, so the restated copies can no longer diverge unnoticed. Replacing",
+    "those inline matrices with `fromJSON` of this file is the follow-up phase;",
+    "it needs a token with the `workflows` permission, which the agent App does",
+    "not hold. Run `image_variants.py --role <role>` to get the exact payload.",
+    "",
+    "Roles with \"derived\": false are still restated literally in their own",
+    "workflow and are not yet gated. Their membership is recorded here so the",
+    "divergence is visible in one place. Reconciling them is a maintainer",
+    "behavior decision tracked by #1434, NOT a mechanical refactor."
+  ],
+  "roles": {
+    "publish": {
+      "derived": true,
+      "consumer": ".github/workflows/publish.yml (publish-image)",
+      "fields": [
+        "variant",
+        "export_variant",
+        "element",
+        "image_suffix",
+        "gaming",
+        "sbom_filename",
+        "continue"
+      ]
+    },
+    "sbom": {
+      "derived": true,
+      "consumer": ".github/workflows/publish.yml (publish-sbom)",
+      "fields": ["variant", "element", "image_suffix", "sbom_filename", "continue"]
+    },
+    "tag_testing": {
+      "derived": true,
+      "consumer": ".github/workflows/publish.yml (promote)",
+      "fields": ["variant", "image_suffix", "continue"]
+    },
+    "promote_stable": {
+      "derived": false,
+      "consumer": ".github/workflows/execute-release.yml",
+      "fields": ["image"]
+    },
+    "smoke": {
+      "derived": false,
+      "consumer": ".github/workflows/publish-smoke.yml",
+      "fields": ["image"]
+    },
+    "scan": {
+      "derived": false,
+      "consumer": ".github/workflows/vulnerability-scan.yml",
+      "fields": ["image"]
+    },
+    "rollback": {
+      "derived": false,
+      "consumer": ".github/workflows/rollback-stable.yml",
+      "fields": ["image"]
+    }
+  },
+  "variants": [
+    {
+      "variant": "default",
+      "image": "dakota",
+      "element": "oci/bluefin.bst",
+      "image_suffix": "",
+      "sbom_filename": "dakota.spdx.json",
+      "roles": {
+        "publish": { "continue": false },
+        "sbom": { "continue": true },
+        "tag_testing": { "continue": false },
+        "promote_stable": {},
+        "smoke": {},
+        "scan": {},
+        "rollback": {}
+      }
+    },
+    {
+      "variant": "nvidia",
+      "image": "dakota-nvidia",
+      "element": "oci/bluefin-nvidia.bst",
+      "image_suffix": "-nvidia",
+      "sbom_filename": "dakota-nvidia.spdx.json",
+      "roles": {
+        "publish": { "continue": true },
+        "sbom": { "continue": true },
+        "tag_testing": { "continue": true },
+        "promote_stable": {},
+        "smoke": {},
+        "scan": {},
+        "rollback": {}
+      }
+    },
+    {
+      "variant": "gaming",
+      "image": "dakota-gaming",
+      "export_variant": "default",
+      "element": "oci/bluefin.bst",
+      "image_suffix": "-gaming",
+      "gaming": "true",
+      "roles": {
+        "publish": { "continue": true },
+        "sbom": { "excluded": "no SBOM entry wired for gaming builds yet" },
+        "tag_testing": { "continue": true },
+        "promote_stable": {},
+        "smoke": {
+          "excluded": "publish-smoke.yml has never covered the gaming variants (#1434)"
+        },
+        "scan": {
+          "excluded": "vulnerability-scan.yml has never covered the gaming variants (#1434)"
+        },
+        "rollback": {
+          "excluded": "rollback-stable.yml reverts only dakota/dakota-nvidia (#1434)"
+        }
+      }
+    },
+    {
+      "variant": "nvidia-gaming",
+      "image": "dakota-nvidia-gaming",
+      "export_variant": "nvidia",
+      "element": "oci/bluefin-nvidia.bst",
+      "image_suffix": "-nvidia-gaming",
+      "gaming": "true",
+      "roles": {
+        "publish": { "continue": true },
+        "sbom": { "excluded": "no SBOM entry wired for gaming builds yet" },
+        "tag_testing": { "continue": true },
+        "promote_stable": {},
+        "smoke": {
+          "excluded": "publish-smoke.yml has never covered the gaming variants (#1434)"
+        },
+        "scan": {
+          "excluded": "vulnerability-scan.yml has never covered the gaming variants (#1434)"
+        },
+        "rollback": {
+          "excluded": "rollback-stable.yml reverts only dakota/dakota-nvidia (#1434)"
+        }
+      }
+    }
+  ]
+}
