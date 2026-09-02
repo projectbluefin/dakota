@@ -45,7 +45,7 @@ variables:
   # OGC patchset revision of the pinned tag; keep in sync with the
   # `ref:` under sources (v<kver>-ogcN-...). Not derivable at build
   # time: the tree ships no EXTRAVERSION or localversion files.
-  ogc-localversion: '-ogc1'
+  ogc-localversion: '-ogc4'
   bootdir: /boot
   indep-libdir: '%{prefix}/lib'
   # Modules are stripped by kbuild (INSTALL_MOD_STRIP=1) *before* the
@@ -132,14 +132,28 @@ config:
     scripts/config --keep-case -d LOCALVERSION_AUTO
 
   - |
+    # Dakota deltas go through config-utils.sh enable/module so they land in
+    # expected-configs and the post-olddefconfig gate verifies they survived;
+    # raw scripts/config calls would be silently droppable.
+    . ./config-utils.sh
+
     # Keep fdsdk's expected SP800-90A DRBGs: linux 7.1 dropped the
     # RNG_DEFAULT select that used to switch this menu on, and with it
     # off olddefconfig discards the child options.
-    scripts/config --keep-case -e CRYPTO_DRBG_MENU
+    enable CRYPTO_DRBG_MENU
 
-  - |
     # The zswap.compressor=zstd karg needs the compressor built in, not =m.
-    scripts/config --keep-case -e CRYPTO_ZSTD
+    enable CRYPTO_ZSTD
+
+    # The OGC tree is not WERROR-clean (their own packaging and Fedora both
+    # build without it); keep -Werror off this kernel so benign warnings in
+    # the gaming patchset don't fail the build.
+    remove WERROR
+
+    # Hardware-enablement deltas from the Fedora config audit (VM guests,
+    # homelab HBAs, laptop camera/audio/input completion); shared with
+    # linux-fdsdk.bst.
+    . ./dakota-config.sh
 
   - |
     # Drop expectations for options this tree no longer offers (the
@@ -240,12 +254,14 @@ public:
 sources:
 - kind: git_repo
   url: github:OpenGamingCollective/linux.git
-  track: v7.1.8-ogc*
-  ref: v7.1.8-ogc1-0-g86a4e13f16fb876282a12cc7680b3eb73d990e6b
+  track: v7.2.1-ogc*
+  ref: v7.2.1-ogc4-0-g14c028f83498b2900fecd0940a058a3ac0622afe
 - kind: local
   path: files/linux/config-utils.sh
 - kind: local
   path: files/linux/fdsdk-config.sh
+- kind: local
+  path: files/linux/dakota-config.sh
 - kind: local
   path: files/linux-ogc/ogc.config.set
 - kind: local
