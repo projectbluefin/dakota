@@ -1,10 +1,11 @@
 # Open Gaming Collective (OGC) kernel for Dakota gaming variants, selected
 # via the junction override in elements/freedesktop-sdk.bst. Reproduces
-# FDSDK's artifact contract exactly: vmlinuz/config at %{bootdir}, modules at
-# /usr/lib/modules/<kver>/ with a `build` symlink into
-# /usr/src/linux-<kver> (nvidia-drivers.bst compiles against it).
+# FDSDK's artifact contract exactly: vmlinuz/vmlinux/config/System.map and
+# modules all under /usr/lib/modules/<kver>/ (the 26.08 layout — nothing in
+# /boot), with a `build` symlink into /usr/src/linux-<kver>
+# (nvidia-drivers.bst compiles against it).
 #
-# The recipe is FDSDK 25.08 components/linux.bst with three deltas:
+# The recipe is FDSDK 26.08 components/linux.bst with three deltas:
 #   1. Source: OGC's stable-tree fork; FDSDK's patch queue is dropped,
 #      the OGC tree carries its own gaming patchset.
 #   2. Config: FDSDK's fdsdk-config.sh pass (vendored at files/linux/,
@@ -13,9 +14,8 @@
 #   3. Modules stripped (INSTALL_MOD_STRIP=1) and vmlinux to the devel
 #      split: OGC forces DEBUG_INFO=y for BTF.
 #
-# Bumps: `just bst source track core/linux-ogc.bst` follows stable v7.1.8-ogc*
-# tags while testing remains on the common 7.1.8 baseline; update the
-# ogc-localversion variable to match the new tag. On a
+# Bumps: `just bst source track core/linux-ogc.bst` follows stable v*-ogc*
+# tags (release candidates included on next); update ogc-localversion to match. On a
 # stable-series jump, nvidia-drivers.bst must compile against the new
 # tree before shipping.
 kind: make
@@ -46,7 +46,6 @@ variables:
   # `ref:` under sources (v<kver>-ogcN-...). Not derivable at build
   # time: the tree ships no EXTRAVERSION or localversion files.
   ogc-localversion: '-ogc4'
-  bootdir: /boot
   indep-libdir: '%{prefix}/lib'
   # Modules are stripped by kbuild (INSTALL_MOD_STRIP=1) *before* the
   # module signature is appended; a post-build strip pass would tear
@@ -132,15 +131,15 @@ config:
     scripts/config --keep-case -d LOCALVERSION_AUTO
 
   - |
-    # Dakota deltas go through config-utils.sh enable/module so they land in
-    # expected-configs and the post-olddefconfig gate verifies they survived;
-    # raw scripts/config calls would be silently droppable.
-    . ./config-utils.sh
-
     # Keep fdsdk's expected SP800-90A DRBGs: linux 7.1 dropped the
     # RNG_DEFAULT select that used to switch this menu on, and with it
     # off olddefconfig discards the child options.
-    enable CRYPTO_DRBG_MENU
+    scripts/config --keep-case -e CRYPTO_DRBG_MENU
+
+  - |
+    # Dakota deltas go through config-utils.sh enable/module so they land in
+    # expected-configs and the post-olddefconfig gate verifies they survived.
+    . ./config-utils.sh
 
     # The zswap.compressor=zstd karg needs the compressor built in, not =m.
     enable CRYPTO_ZSTD
@@ -151,8 +150,8 @@ config:
     remove WERROR
 
     # Hardware-enablement deltas from the Fedora config audit (VM guests,
-    # homelab HBAs, laptop camera/audio/input completion); shared with
-    # linux-fdsdk.bst.
+    # homelab HBAs, laptop camera/audio/input completion); shared with the
+    # testing-stream kernels.
     . ./dakota-config.sh
 
   - |
@@ -199,11 +198,12 @@ config:
 
   install-commands:
   - |
-    install -Dm644 "%{image-name}" '%{install-root}%{bootdir}/vmlinuz'
-    install -Dm644 vmlinux '%{install-root}%{bootdir}/vmlinux'
-    install -Dm644 System.map '%{install-root}%{bootdir}/System.map'
-    install -Dm644 .config '%{install-root}%{bootdir}/config'
-    make -j1 INSTALL_MOD_PATH='%{install-root}%{prefix}' INSTALL_MOD_STRIP=1 modules_install
+    release=$(make -s kernelrelease)
+    install -Dm644 "%{image-name}" "%{install-root}%{indep-libdir}/modules/${release}/vmlinuz"
+    install -Dm644 vmlinux "%{install-root}%{indep-libdir}/modules/${release}/vmlinux"
+    install -Dm644 System.map "%{install-root}%{indep-libdir}/modules/${release}/System.map"
+    install -Dm644 .config "%{install-root}%{indep-libdir}/modules/${release}/config"
+    ZSTD_CLEVEL=19 make -j1 INSTALL_MOD_PATH='%{install-root}%{prefix}' INSTALL_MOD_STRIP=1 modules_install
 
   - |
     release=$(make -s kernelrelease)
@@ -238,24 +238,30 @@ config:
       install-commands:
         (>):
         - |
-          make -j1 INSTALL_DTBS_PATH='%{install-root}%{bootdir}/dtbs' dtbs_install
+          release=$(make -s kernelrelease)
+          make -j1 INSTALL_DTBS_PATH="%{install-root}%{indep-libdir}/modules/${release}/dtbs" dtbs_install
 
 public:
   bst:
     split-rules:
       devel:
         (>):
-        - '%{bootdir}/System.map'
+        - '%{indep-libdir}/modules/*/System.map'
         # DEBUG_INFO=y (forced by OGC for BTF) makes vmlinux ~0.5 GB;
         # runtime consumers (scx schedulers) read /sys/kernel/btf/vmlinux,
         # not this file, so keep it out of the composed images.
-        - '%{bootdir}/vmlinux'
+        - '%{indep-libdir}/modules/*/vmlinux'
 
 sources:
 - kind: git_repo
   url: github:OpenGamingCollective/linux.git
-  track: v7.2.1-ogc*
+  # rc-based OGC tags are fair game on the next stream.
+  track: v*-ogc*
   ref: v7.2.1-ogc4-0-g14c028f83498b2900fecd0940a058a3ac0622afe
+# Dakota fixups for the OGC patchset itself; review at every tag bump and
+# drop each patch once the fix lands upstream.
+- kind: patch_queue
+  path: patches/linux-ogc
 - kind: local
   path: files/linux/config-utils.sh
 - kind: local
