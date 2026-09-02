@@ -32,15 +32,15 @@ sources:
 - kind: git_repo
   url: github:memorysafety/sudo-rs.git
   track: 'v[0-9]*.[0-9]*.[0-9]*'
-  ref: v0.2.14-0-gbc4be2fd85be3063e7cd789c6843a5512f09ceee # v0.2.13
+  ref: v0.2.15-0-ge4cfa9cf7b71e287dd5046633c0f5276072d147d # v0.2.13
 - kind: cargo2
   url: crates:crates
   ref:
   - kind: registry
     name: glob
-    version: 0.3.3
-    sha: 0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280
+    version: 0.3.4
+    sha: e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b
   - kind: registry
     name: libc
-    version: 0.2.186
-    sha: 68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66
+    version: 0.2.189
+    sha: 3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2

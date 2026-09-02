@@ -81,12 +81,21 @@ config:
     . ./fdsdk-config.sh "%{arch}"
 
   - |
+    # Dakota deltas go through config-utils.sh enable/module so they land in
+    # expected-configs and the post-olddefconfig gate verifies they survived;
+    # raw scripts/config calls would be silently droppable.
+    . ./config-utils.sh
+
     # Linux 7.1 dropped the RNG_DEFAULT select that enabled this menu;
     # keep FDSDK's expected SP800-90A DRBGs available.
-    scripts/config --keep-case -e CRYPTO_DRBG_MENU
+    enable CRYPTO_DRBG_MENU
 
     # The zswap.compressor=zstd karg needs the compressor built in, not =m.
-    scripts/config --keep-case -e CRYPTO_ZSTD
+    enable CRYPTO_ZSTD
+
+    # Hardware-enablement deltas from the Fedora config audit (VM guests,
+    # homelab HBAs, laptop camera/audio/input completion).
+    . ./dakota-config.sh
 
   - |
     # Drop expectations only for options this newer stable tree no longer
@@ -187,9 +196,11 @@ public:
 sources:
 - kind: git_repo
   url: kernel:linux/kernel/git/stable/linux.git
-  track: v7.1.8
-  ref: v7.1.8-0-g25c76bea853d0db65b51fb4697a47cbfd9e35e76
+  track: v7.2.2
+  ref: v7.2.2-0-g52c36105f76e96b638152a42e735f2e7767ed946
 - kind: local
   path: files/linux/config-utils.sh
 - kind: local
   path: files/linux/fdsdk-config.sh
+- kind: local
+  path: files/linux/dakota-config.sh
