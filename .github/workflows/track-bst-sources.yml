@@ -128,6 +128,13 @@ jobs:
             branch: auto/track-uutils-coreutils
             title: "chore(deps): update uutils-coreutils"
             base_branch: testing
+          # gradia-capture tracks the master branch head (no upstream tags), so
+          # every bump is unreleased code: manual-merge so it gets a look first.
+          - group: manual-merge
+            element: bluefin/shell-extensions/gradia-capture.bst
+            branch: auto/track-gradia-capture
+            title: "chore(deps): update gradia-capture extension"
+            base_branch: testing
 
     steps:
       - name: Should this group run?
