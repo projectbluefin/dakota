@@ -7,6 +7,8 @@ main() (filemap assembly, oci/layers skipping, TSV manifest, --dry-run).
 import importlib.util
 import io
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -171,6 +173,7 @@ class MainTests(unittest.TestCase):
             mock.patch.object(sys, "argv", ["gen-filemap.py", *argv]),
             mock.patch.object(sys, "stderr", new=io.StringIO()),
             mock.patch.object(gen_filemap, "list_elements", return_value=list(contents)),
+            mock.patch.object(gen_filemap, "list_uncached_elements", return_value=[]),
             mock.patch.object(gen_filemap, "list_all_contents", return_value=contents),
         ]
         if output_path is not None:
@@ -233,6 +236,7 @@ class MainTests(unittest.TestCase):
                                              "--target", "oci/custom.bst"]), \
              mock.patch.object(sys, "stderr", new=io.StringIO()), \
              mock.patch.object(gen_filemap, "list_elements", return_value=[]) as list_elements, \
+             mock.patch.object(gen_filemap, "list_uncached_elements", return_value=[]), \
              mock.patch.object(gen_filemap, "list_all_contents", return_value={}), \
              redirect_stdout(io.StringIO()):
             gen_filemap.main()
@@ -242,10 +246,97 @@ class MainTests(unittest.TestCase):
         with mock.patch.object(sys, "argv", ["gen-filemap.py", "--dry-run"]), \
              mock.patch.object(sys, "stderr", new=io.StringIO()), \
              mock.patch.object(gen_filemap, "list_elements", return_value=[]) as list_elements, \
+             mock.patch.object(gen_filemap, "list_uncached_elements", return_value=[]), \
              mock.patch.object(gen_filemap, "list_all_contents", return_value={}), \
              redirect_stdout(io.StringIO()):
             gen_filemap.main()
         list_elements.assert_called_once_with(gen_filemap.DEFAULT_TARGET)
+
+
+class UncachedGateTests(unittest.TestCase):
+    """main() must refuse to generate against a partial artifact cache."""
+
+    def test_uncached_elements_abort_generation(self) -> None:
+        contents = {"bluefin/ghostty.bst": ["/usr/bin/ghostty"]}
+        stderr = io.StringIO()
+        with mock.patch.object(sys, "argv", ["gen-filemap.py", "--dry-run"]), \
+             mock.patch.object(sys, "stderr", stderr), \
+             mock.patch.object(gen_filemap, "list_elements", return_value=list(contents)), \
+             mock.patch.object(gen_filemap, "list_uncached_elements",
+                               return_value=["bluefin/zig.bst"]), \
+             mock.patch.object(gen_filemap, "list_all_contents") as contents_mock:
+            rc = gen_filemap.main()
+        self.assertEqual(rc, 1)
+        self.assertIn("uncached: bluefin/zig.bst", stderr.getvalue())
+        contents_mock.assert_not_called()
+
+    def test_state_parsing_flags_non_cached(self) -> None:
+        show_output = "\n".join([
+            "core/linux-fdsdk.bst:cached",
+            "bluefin/zig.bst:buildable",
+            "bluefin/ghostty.bst:cached",
+            "freedesktop-sdk.bst:components/example.bst:fetch needed",
+        ])
+        with mock.patch.object(gen_filemap, "bst", return_value=show_output):
+            self.assertEqual(gen_filemap.list_uncached_elements("x"),
+                             ["bluefin/zig.bst",
+                              "freedesktop-sdk.bst:components/example.bst"])
+
+    @unittest.skipUnless(shutil.which("just"), "just is required")
+    def test_state_format_survives_just_wrapper(self) -> None:
+        # Exercise the real Justfile without launching a container.
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            podman = root / "podman"
+            podman.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+            podman.chmod(0o755)
+            env = {
+                "PATH": tempdir + os.pathsep + os.environ.get("PATH", ""),
+                "HOME": tempdir,
+            }
+            with mock.patch.dict(os.environ, env):
+                # Wrap rather than mock away bst(): capture the arguments
+                # received by the fake podman after shell interpolation.
+                with mock.patch.object(
+                    gen_filemap, "bst", wraps=gen_filemap.bst
+                ) as bst:
+                    gen_filemap.list_uncached_elements("target.bst")
+                    args = gen_filemap.bst(*bst.call_args.args).splitlines()
+            index = args.index("--format")
+            self.assertEqual(args[index + 1], "%{name}:%{state}")
+            self.assertEqual(args[index + 2], "--deps")
+
+
+class KernelFilemapConsistencyTests(unittest.TestCase):
+    """The committed filemap must map the kernels the elements actually pin.
+
+    This is the tripwire for regenerating the filemap against artifacts from
+    an older kernel: the 2026-09 regeneration shipped 7.1.8 module paths into
+    images running 7.2.2.
+    """
+
+    @staticmethod
+    def _pinned_version(element_path: Path, suffix: str = "") -> str:
+        import re
+        ref = re.search(r"^  ref: v([0-9][^-\s]*)-",
+                        element_path.read_text(), re.M)
+        assert ref, f"no pinned ref in {element_path}"
+        return ref.group(1) + suffix
+
+    def test_filemap_matches_pinned_kernel_version(self) -> None:
+        # The filemap is generated from DEFAULT_TARGET (the default variant),
+        # so it only ever contains the linux-fdsdk kernel; the ogc kernel
+        # lives in the gaming variant's tree and has never been mapped.
+        filemap_path = REPOSITORY / "files" / "filemap.json"
+        fdsdk = REPOSITORY / "elements" / "core" / "linux-fdsdk.bst"
+        if not (filemap_path.exists() and fdsdk.exists()):
+            self.skipTest("repo files not present")
+        version = self._pinned_version(fdsdk)
+        text = filemap_path.read_text()
+        # assertIn would embed the 70MB filemap in the failure message.
+        self.assertTrue(f"/usr/lib/modules/{version}" in text,
+                        f"filemap has no module paths for pinned kernel {version}; "
+                        "regenerate it against current artifacts")
 
 
 if __name__ == "__main__":
