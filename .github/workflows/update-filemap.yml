@@ -178,5 +178,5 @@ jobs:
           gh pr create \
             --title "chore: regenerate chunkah filemap and fakecap manifest" \
             --body-file /tmp/pr-body.md \
-            --base main \
+            --base testing \
             --head "$BRANCH" || echo "PR already exists for $BRANCH"
