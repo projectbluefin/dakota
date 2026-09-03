@@ -79,6 +79,7 @@ bst *ARGS:
 check-publish-workflow:
     python3 scripts/check_publish_workflow.py
     python3 -m unittest scripts.test_check_publish_workflow
+    python3 -m unittest scripts.test_gen_filemap
 
 [group('dev')]
 monitor-pipeline BUILD_RUN_ID="":
@@ -93,8 +94,14 @@ monitor-pipeline BUILD_RUN_ID="":
 [group('dev')]
 validate:
     just check-publish-workflow
+    just test-render-card
     just bst show --deps all oci/bluefin.bst
     just bst show --deps all oci/bluefin-nvidia.bst
+
+# Unit tests for .github/scripts/render_card.py.
+[group('dev')]
+test-render-card:
+    python3 -m unittest scripts.test_render_card
 
 # Verify the local freedesktop-sdk patch queue matches its committed
 # manifest, offline. The manifest is written by `just patch-sync` (the only
