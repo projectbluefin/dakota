@@ -74,7 +74,9 @@ bst *ARGS:
         "{{bst2_image}}" \
         bash -c 'bst --colors "$@"' -- ${EFFECTIVE_BST_FLAGS} {{ARGS}}
 
-# Validate BST element graph — mirrors CI validate job.
+# The ONLY recipe CI runs directly (.github/workflows/validate.yml).
+# New python test suites must be registered here to be enforced; anything
+# added to `validate` below runs on developer machines only.
 [group('dev')]
 check-publish-workflow:
     python3 scripts/check_publish_workflow.py
@@ -92,6 +94,9 @@ monitor-pipeline BUILD_RUN_ID="":
     fi
     python3 files/monitor_pipeline.py --build-run-id "{{BUILD_RUN_ID}}"
 
+# Local convenience wrapper. CI does NOT run this recipe; it runs
+# `check-publish-workflow` plus its own bst show steps. Do not register
+# CI-facing checks here.
 [group('dev')]
 validate:
     just check-publish-workflow
