@@ -83,6 +83,7 @@ check-publish-workflow:
     python3 -m unittest scripts.test_check_publish_workflow
     python3 -m unittest scripts.test_gen_filemap
     python3 -m unittest scripts.test_image_variants
+    python3 -m unittest scripts.test_migrate_var_home_passwd
 
 [group('dev')]
 monitor-pipeline BUILD_RUN_ID="":
