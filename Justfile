@@ -80,7 +80,9 @@ bst *ARGS:
 [group('dev')]
 check-publish-workflow:
     python3 scripts/check_publish_workflow.py
+    python3 scripts/check_arch_axis.py
     python3 -m unittest scripts.test_check_publish_workflow
+    python3 -m unittest scripts.test_check_arch_axis
     python3 -m unittest scripts.test_gen_filemap
     python3 -m unittest scripts.test_image_variants
 
