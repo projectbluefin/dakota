@@ -33,6 +33,79 @@ class DeclarationError(Exception):
     """The variant declaration is malformed or internally inconsistent."""
 
 
+def consumer_path(spec: dict) -> str:
+    """The workflow file a role's `consumer` string names.
+
+    `consumer` may qualify the file with a job name — ".../publish.yml
+    (publish-image)" — so the path is the leading token.
+    """
+    return str(spec.get("consumer", "")).split(" ", 1)[0]
+
+
+def mentions_image(text: str, image: str) -> bool:
+    """Whether `text` names the image as a whole token.
+
+    Boundaries exclude word characters and `-` so that `dakota` does not
+    match inside `dakota-nvidia` or `sbom-dakota`, and `dakota-nvidia` does
+    not match inside `dakota-nvidia-gaming`. A trailing `.` is a boundary so
+    `dakota.spdx.json` still counts as a mention of `dakota`.
+    """
+    return re.search(
+        rf"(?<![0-9A-Za-z_-]){re.escape(image)}(?![0-9A-Za-z_-])", text
+    ) is not None
+
+
+def check_consumer_membership(declaration: dict, read_text) -> list[str]:
+    """Verify non-derived consumers name exactly their declared variants.
+
+    Roles with `derived: true` restate the declaration as a matrix that
+    `check_workflow_drift` compares field by field. The remaining roles
+    restate it in four different grammars — a JSON literal, a shell `for`
+    list, per-variant named steps, hardcoded shell blocks — so there is no
+    matrix to compare. What every grammar does share is the published image
+    name, so membership is gated on that: an image the declaration includes
+    must appear in its consumer, and an image the declaration excludes must
+    not. Both drift directions fail closed (#1434).
+
+    `read_text` maps a repository-relative path to its contents.
+    """
+    errors: list[str] = []
+    for role, spec in declaration.get("roles", {}).items():
+        if spec.get("derived"):
+            continue
+        path = consumer_path(spec)
+        if not path:
+            errors.append(f"role '{role}' must name its 'consumer' workflow")
+            continue
+        try:
+            text = read_text(path)
+        except OSError as exc:
+            errors.append(f"role '{role}' names consumer '{path}' which cannot be read: {exc}")
+            continue
+
+        for entry in declaration.get("variants", []):
+            image = entry.get("image")
+            if not image:
+                continue
+            membership = entry.get("roles", {}).get(role)
+            included = membership is not None and "excluded" not in membership
+            mentioned = mentions_image(text, image)
+            if included and not mentioned:
+                errors.append(
+                    f"role '{role}': .github/image-variants.json includes image "
+                    f"'{image}' but {path} never names it — the consumer has "
+                    f"dropped a declared variant"
+                )
+            elif not included and mentioned:
+                reason = (membership or {}).get("excluded", "not declared for this role")
+                errors.append(
+                    f"role '{role}': .github/image-variants.json excludes image "
+                    f"'{image}' ({reason}) but {path} names it — update the "
+                    f"declaration instead of letting it drift"
+                )
+    return errors
+
+
 def load(path: Path = DECLARATION) -> dict:
     try:
         return json.loads(path.read_text())
@@ -254,14 +327,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     drift = check_workflow_drift(declaration, args.workflow.read_text(), CONSUMERS)
+    drift += check_consumer_membership(
+        declaration, lambda path: Path(path).read_text()
+    )
     if drift:
         for error in drift:
             print(error, file=sys.stderr)
         return 1
 
+    non_derived = sum(
+        1 for spec in declaration["roles"].values() if not spec.get("derived")
+    )
     print(
         f"image-variants.json declares {len(declaration['variants'])} variants; "
-        f"{len(CONSUMERS)} publish.yml matrices agree"
+        f"{len(CONSUMERS)} publish.yml matrices and {non_derived} non-derived "
+        f"consumers agree"
     )
     return 0
 

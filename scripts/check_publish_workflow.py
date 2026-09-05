@@ -164,6 +164,15 @@ def check_image_variants(publish: str, errors: list[str]) -> None:
         )
     )
 
+    # publish.yml's matrices are gated field by field above. The remaining
+    # roles restate the variant set as prose-shaped literals in their own
+    # workflows, so they are gated on the image names they name (#1434).
+    errors.extend(
+        image_variants.check_consumer_membership(
+            declaration, lambda path: (ROOT / path).read_text()
+        )
+    )
+
     # Preserve the intent of the removed literal assertion: the default SBOM
     # variant stays continue-on-error. Checked against the declaration, which
     # the drift gate above has already tied to the workflow.

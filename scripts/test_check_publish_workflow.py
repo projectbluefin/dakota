@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import copy
 import shutil
 import subprocess
 import sys
@@ -200,6 +201,122 @@ class ImageVariantsMatrixTests(unittest.TestCase):
                 self.declaration, workflow, self.image_variants.CONSUMERS
             ),
             [],
+        )
+
+
+class ConsumerMembershipTests(unittest.TestCase):
+    """Non-derived consumers must name exactly their declared variants (#1434)."""
+
+    def setUp(self) -> None:
+        sys.path.insert(0, str(REPOSITORY / ".github/scripts"))
+        import image_variants
+
+        self.image_variants = image_variants
+        self.declaration = image_variants.load(REPOSITORY / ".github/image-variants.json")
+
+    def read_repository(self, path: str) -> str:
+        return (REPOSITORY / path).read_text()
+
+    def declaration_copy(self) -> dict:
+        return copy.deepcopy(self.declaration)
+
+    def test_repository_consumers_agree_with_the_declaration(self) -> None:
+        self.assertEqual(
+            self.image_variants.check_consumer_membership(
+                self.declaration, self.read_repository
+            ),
+            [],
+        )
+
+    def test_every_non_derived_role_is_actually_checked(self) -> None:
+        # A role silently skipped by the gate is the failure mode this whole
+        # check exists to prevent, so assert the set it walks.
+        checked = {
+            role
+            for role, spec in self.declaration["roles"].items()
+            if not spec.get("derived")
+        }
+        self.assertEqual(
+            checked, {"promote_stable", "smoke", "scan", "rollback"}
+        )
+
+    def test_consumer_dropping_a_declared_image_fails(self) -> None:
+        def read(path: str) -> str:
+            text = self.read_repository(path)
+            if path.endswith("publish-smoke.yml"):
+                text = text.replace("dakota-nvidia", "dakota-removed")
+            return text
+
+        errors = self.image_variants.check_consumer_membership(
+            self.declaration, read
+        )
+        self.assertTrue(
+            any("includes image 'dakota-nvidia'" in e for e in errors), errors
+        )
+
+    def test_consumer_gaining_an_excluded_image_fails(self) -> None:
+        def read(path: str) -> str:
+            text = self.read_repository(path)
+            if path.endswith("vulnerability-scan.yml"):
+                text = text.replace(
+                    '{"image_name":"dakota-nvidia"}',
+                    '{"image_name":"dakota-nvidia"},{"image_name":"dakota-gaming"}',
+                )
+            return text
+
+        errors = self.image_variants.check_consumer_membership(
+            self.declaration, read
+        )
+        self.assertTrue(
+            any("excludes image 'dakota-gaming'" in e for e in errors), errors
+        )
+
+    def test_unreadable_consumer_fails_closed(self) -> None:
+        def read(path: str) -> str:
+            if path.endswith("rollback-stable.yml"):
+                raise FileNotFoundError(path)
+            return self.read_repository(path)
+
+        errors = self.image_variants.check_consumer_membership(
+            self.declaration, read
+        )
+        self.assertTrue(any("cannot be read" in e for e in errors), errors)
+
+    def test_derived_roles_are_not_membership_checked(self) -> None:
+        # publish.yml is gated field by field by check_workflow_drift; the
+        # name gate must not double-report it.
+        declaration = self.declaration_copy()
+        errors = self.image_variants.check_consumer_membership(
+            declaration, lambda path: ""
+        )
+        self.assertTrue(errors)
+        self.assertFalse(
+            [e for e in errors if "publish.yml" in e],
+            "derived roles must be left to the matrix drift gate",
+        )
+
+    def test_image_names_are_matched_as_whole_tokens(self) -> None:
+        mentions = self.image_variants.mentions_image
+        self.assertFalse(mentions("ghcr.io/projectbluefin/dakota-nvidia", "dakota"))
+        self.assertFalse(mentions("sbom-dakota", "dakota"))
+        self.assertFalse(mentions("group: dakota-execute-release", "dakota"))
+        self.assertFalse(mentions("dakota-nvidia-gaming", "dakota-nvidia"))
+        self.assertTrue(mentions("ghcr.io/projectbluefin/dakota:stable", "dakota"))
+        self.assertTrue(mentions('{"image":"dakota"}', "dakota"))
+        self.assertTrue(mentions("artifact dakota.spdx.json", "dakota"))
+
+    def test_consumer_path_drops_the_job_qualifier(self) -> None:
+        self.assertEqual(
+            self.image_variants.consumer_path(
+                {"consumer": ".github/workflows/publish.yml (publish-image)"}
+            ),
+            ".github/workflows/publish.yml",
+        )
+        self.assertEqual(
+            self.image_variants.consumer_path(
+                {"consumer": ".github/workflows/rollback-stable.yml"}
+            ),
+            ".github/workflows/rollback-stable.yml",
         )
 
 

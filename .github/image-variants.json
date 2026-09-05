@@ -18,8 +18,12 @@
     "not hold. Run `image_variants.py --role <role>` to get the exact payload.",
     "",
     "Roles with \"derived\": false are still restated literally in their own",
-    "workflow and are not yet gated. Their membership is recorded here so the",
-    "divergence is visible in one place. Reconciling them is a maintainer",
+    "workflow, in a grammar with no matrix to compare (a JSON literal, a shell",
+    "`for` list, per-variant named steps). Those are gated on image names:",
+    "`check_consumer_membership` fails the gate if a consumer stops naming an",
+    "image declared for its role, or starts naming one this file excludes.",
+    "Reconciling their *membership* — whether the gaming variants should be",
+    "smoke-tested, scanned and rolled back at all — remains a maintainer",
     "behavior decision tracked by #1434, NOT a mechanical refactor."
   ],
   "roles": {
