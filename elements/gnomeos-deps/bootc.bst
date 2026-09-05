@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:bootc-dev/bootc.git
   track: v*
-  ref: v1.16.10-0-g3e76c16556c55e6d15d31bd47602b231e2131cb2
+  ref: v1.16.11-0-gadd7a909584c832c563bdc3a45c61e42f736ecf2
 - kind: cargo2
   ref:
   - kind: registry
@@ -92,12 +92,16 @@ sources:
     version: 0.23.0
     sha: b25655df2c3cdd83c5e5b293b88acd880332b2ddadd7c30ac43144fdc0033da9
   - kind: git
-    commit: d0433d9efec73836c447ab511a365421dd90da82
+    commit: 13d860c2a916d0f4cdcc5a817af0042b9cafee86
     repo: https://github.com/bootc-dev/bcvk
     query:
-      rev: d0433d9efec73836c447ab511a365421dd90da82
+      rev: 13d860c2a916d0f4cdcc5a817af0042b9cafee86
     name: bcvk-qemu
     version: 0.1.0
+  - kind: registry
+    name: bindgen
+    version: 0.72.1
+    sha: 993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895
   - kind: registry
     name: bitflags
     version: 1.3.2
@@ -156,8 +160,16 @@ sources:
     sha: 42f22d5c0b1147e8bd9105fa004450f673c139d7e632f7edc3980f94a51f20f3
   - kind: registry
     name: cargo-platform
+    version: 0.1.9
+    sha: e35af189006b9c0f00a064685c727031e3ed2d8020f7ba284d78cc2671bd36ea
+  - kind: registry
+    name: cargo-platform
     version: 0.3.3
     sha: dd0061da739915fae12ea00e16397555ed4371a6bb285431aab930f61b0aa4ba
+  - kind: registry
+    name: cargo_metadata
+    version: 0.19.2
+    sha: dd5eb614ed4c27c5d706420e4320fbe3216ab31fa1c33cd8246ac36dae4479ba
   - kind: registry
     name: cargo_metadata
     version: 0.23.1
@@ -166,6 +178,10 @@ sources:
     name: cc
     version: 1.2.61
     sha: d16d90359e986641506914ba71350897565610e87ce0ad9e6f28569db3dd5c6d
+  - kind: registry
+    name: cexpr
+    version: 0.6.0
+    sha: 6fac387a98bb7c37292057cffc56d62ecb629900026402633ae9160df93a8766
   - kind: registry
     name: cfg-expr
     version: 0.20.7
@@ -186,6 +202,10 @@ sources:
     name: chrono
     version: 0.4.45
     sha: 1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327
+  - kind: registry
+    name: clang-sys
+    version: 1.9.1
+    sha: 157a8ba7b480713b56f4c09fd13fc3e0a22a5dfab8097ba61cbc5feef950788a
   - kind: registry
     name: clap
     version: 4.6.5
@@ -231,61 +251,61 @@ sources:
     version: 1.0.0
     sha: 55b672471b4e9f9e95499ea597ff64941a309b2cdbffcc46f2cc5e2d971fd335
   - kind: git
-    commit: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+      tag: v0.9.0
     name: composefs
-    version: 0.7.0
+    version: 0.9.0
   - kind: git
-    commit: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+      tag: v0.9.0
     name: composefs-boot
-    version: 0.7.0
+    version: 0.9.0
   - kind: git
-    commit: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+      tag: v0.9.0
     name: composefs-ctl
-    version: 0.7.0
+    version: 0.9.0
   - kind: git
-    commit: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+      tag: v0.9.0
     name: composefs-fuse
-    version: 0.7.0
+    version: 0.9.0
   - kind: git
-    commit: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+      tag: v0.9.0
     name: composefs-ioctls
-    version: 0.7.0
+    version: 0.9.0
   - kind: git
-    commit: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+      tag: v0.9.0
     name: composefs-oci
-    version: 0.7.0
+    version: 0.9.0
   - kind: git
-    commit: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+      tag: v0.9.0
     name: composefs-splitdirfdstream
-    version: 0.7.0
+    version: 0.9.0
   - kind: git
-    commit: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
     repo: https://github.com/composefs/composefs-rs
     query:
-      rev: 0fbc853325ff92dbb842e715611bed7ddf9fe169
+      tag: v0.9.0
     name: composefs-storage
-    version: 0.7.0
+    version: 0.9.0
   - kind: registry
     name: compression-codecs
     version: 0.4.38
@@ -422,6 +442,10 @@ sources:
     name: document-features
     version: 0.2.12
     sha: d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61
+  - kind: registry
+    name: dunce
+    version: 1.0.5
+    sha: 92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813
   - kind: registry
     name: dyn-clone
     version: 1.0.20
@@ -591,6 +615,10 @@ sources:
     version: 0.20.10
     sha: 8ab79e1ed126803a8fb827e3de0e2ff95191912b8db65cee467edb56fc4cc215
   - kind: registry
+    name: glob
+    version: 0.3.4
+    sha: e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b
+  - kind: registry
     name: gobject-sys
     version: 0.20.10
     sha: ec9aca94bb73989e3cfdbf8f2e0f1f6da04db4d291c431f444838925c4c63eda
@@ -712,6 +740,10 @@ sources:
     sha: a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695
   - kind: registry
     name: itertools
+    version: 0.13.0
+    sha: 413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186
+  - kind: registry
+    name: itertools
     version: 0.15.0
     sha: 8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc
   - kind: registry
@@ -746,6 +778,10 @@ sources:
     name: libc
     version: 0.2.189
     sha: 3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2
+  - kind: registry
+    name: libloading
+    version: 0.8.9
+    sha: d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55
   - kind: registry
     name: liboverdrop
     version: 0.1.0
@@ -823,6 +859,10 @@ sources:
     version: 0.9.1
     sha: 488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a
   - kind: registry
+    name: minimal-lexical
+    version: 0.2.1
+    sha: 68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a
+  - kind: registry
     name: miniz_oxide
     version: 0.8.9
     sha: 1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316
@@ -838,6 +878,10 @@ sources:
     name: nix
     version: 0.31.2
     sha: 5d6d0705320c1e6ba1d912b5e37cf18071b6c2e9b7fa8215a1e8a7651966f5d3
+  - kind: registry
+    name: nom
+    version: 7.1.3
+    sha: d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a
   - kind: registry
     name: nom
     version: 8.0.0
@@ -1075,6 +1119,10 @@ sources:
     version: 0.1.27
     sha: b50b8869d9fc858ce7266cce0194bd74df58b9d0e3f6df3a9fc8eb470d95c09d
   - kind: registry
+    name: rustc-hash
+    version: 2.1.3
+    sha: 6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d
+  - kind: registry
     name: rustc_version
     version: 0.4.1
     sha: cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92
@@ -1095,6 +1143,10 @@ sources:
     version: 1.0.23
     sha: 9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f
   - kind: registry
+    name: same-file
+    version: 1.0.6
+    sha: 93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502
+  - kind: registry
     name: schemars
     version: 1.2.2
     sha: 687274d293b6cdc6e73e0fee520bf2049650090d7164f87672d212a3c530cf4a
@@ -1106,6 +1158,14 @@ sources:
     name: scopeguard
     version: 1.2.0
     sha: 94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49
+  - kind: registry
+    name: selinux
+    version: 0.5.0
+    sha: 5ed8a2f05a488befa851d8de2e3b55bc3889d4fac6758d120bd94098608f63fb
+  - kind: registry
+    name: selinux-sys
+    version: 0.6.15
+    sha: debaba5832b4831ffe0ba9118b526c752c960f41c46c4ef197d9a15f5179d6fd
   - kind: registry
     name: semver
     version: 1.0.28
@@ -1423,6 +1483,10 @@ sources:
     version: 0.5.4
     sha: 6ba782755fc073877e567c2253c0be48e4aa9a254c232d36d3985dfae0bd5205
   - kind: registry
+    name: walkdir
+    version: 2.5.0
+    sha: 29790946404f91d9c5d06f9874efddea1dc06c5efe94541a7d6863108e3a5e4b
+  - kind: registry
     name: want
     version: 0.3.1
     sha: bfa7760aed19e106de2c7c0b581b509f2f25d3dacaf737cb82ac61bc6d760b0e
@@ -1482,6 +1546,10 @@ sources:
     name: winapi-i686-pc-windows-gnu
     version: 0.4.0
     sha: ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6
+  - kind: registry
+    name: winapi-util
+    version: 0.1.11
+    sha: c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22
   - kind: registry
     name: winapi-x86_64-pc-windows-gnu
     version: 0.4.0
