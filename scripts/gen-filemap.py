@@ -92,6 +92,27 @@ def list_elements(target: str) -> list[str]:
             if strip_ansi(line).strip().endswith(".bst")]
 
 
+def list_uncached_elements(target: str) -> list[str]:
+    """Return element names in *target*'s tree whose artifact is not cached.
+
+    An uncached element silently vanishes from `bst artifact list-contents`
+    output, so a filemap generated against a partial cache drops whole
+    components without any error (the 2026-09 regeneration lost 34 elements
+    this way).  Callers must treat a non-empty result as fatal.
+    """
+    # The Justfile interpolates arguments into shell source, so avoid
+    # whitespace in the format. Split from the right for junction names.
+    out = bst("show", "--format", "%{name}:%{state}", "--deps", "all", target)
+    uncached = []
+    for raw_line in (strip_ansi(l).strip() for l in out.splitlines()):
+        if ":" not in raw_line:
+            continue
+        name, state = raw_line.rsplit(":", 1)
+        if name.endswith(".bst") and state.strip() != "cached":
+            uncached.append(name)
+    return uncached
+
+
 def list_all_contents(elements: list[str]) -> dict[str, list[str]]:
     """Return {element_name: [absolute_paths]} for all *elements* in one call."""
     print(f"Querying artifact contents for {len(elements)} elements...", file=sys.stderr)
@@ -142,6 +163,15 @@ def main() -> int:
 
     elements = list_elements(args.target)
     print(f"Found {len(elements)} elements in dependency tree.", file=sys.stderr)
+
+    uncached = list_uncached_elements(args.target)
+    if uncached:
+        print(f"ERROR: {len(uncached)} elements have no cached artifact; "
+              "a filemap generated now would silently drop them. "
+              "Pull or build the full tree first.", file=sys.stderr)
+        for name in uncached:
+            print(f"  uncached: {name}", file=sys.stderr)
+        return 1
 
     contents = list_all_contents(elements)
 
