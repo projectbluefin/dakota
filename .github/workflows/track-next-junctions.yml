@@ -52,7 +52,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Just
-        uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8 # v2
+        uses: taiki-e/install-action@7b8d4719ee4aaa279bdf55df38dacb9ebfe12a6c # v2
         with:
           tool: just
 
