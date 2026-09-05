@@ -60,8 +60,6 @@ variables:
       src-arch: x86
   - arch == "aarch64":
       kernel_arch: arm64
-  - arch == "riscv64":
-      kernel_arch: riscv
 
 environment:
   ARCH: '%{kernel_arch}'
@@ -234,7 +232,7 @@ config:
     ln -sr "${targetdir}" "%{install-root}%{indep-libdir}/modules/${release}/build"
 
   (?):
-  - arch in ["aarch64", "riscv64"]:
+  - arch == "aarch64":
       install-commands:
         (>):
         - |
