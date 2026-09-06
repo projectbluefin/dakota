@@ -5,6 +5,10 @@ sources:
   url: github:projectbluefin/common.git
   track: main
   ref: v2026.08-80-g45080bc5a4fee999abc71a6410048350a41ef726
+# Consume common's fastfetch layout directly; only adapt the install-date input.
+# Drop this patch once common provides a shared install-date helper.
+- kind: patch
+  path: patches/common/0001-fastfetch-install-date.patch
 - kind: git_module
   url: github:projectbluefin/branding/
   path: bluefin-branding

@@ -11,16 +11,10 @@ build-depends:
 variables:
   strip-binaries: ""
 
-public:
-  bst:
-    overlap-whitelist:
-    - /usr/share/ublue-os/fastfetch.jsonc
-
 config:
   install-commands:
   - install -Dm644 ublue-firstboot-date.service "%{install-root}/usr/lib/systemd/system/ublue-firstboot-date.service"
   - install -Dm644 bluefin-remove-installer.service "%{install-root}/usr/lib/systemd/system/bluefin-remove-installer.service"
-  - install -Dm644 fastfetch.jsonc "%{install-root}/usr/share/ublue-os/fastfetch.jsonc"
   - install -Dm644 ublue-booted-image.service "%{install-root}/usr/lib/systemd/system/ublue-booted-image.service"
   - install -Dm755 ublue-booted-image-sync "%{install-root}/usr/bin/ublue-booted-image-sync"
   - mkdir -p "%{install-root}/usr/lib/systemd/system/multi-user.target.wants/"

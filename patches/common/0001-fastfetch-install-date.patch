@@ -1,0 +1,13 @@
+Upstream-Status: Pending
+
+Use Dakota's first-boot date rather than inferring installation from /var/log.
+Keep all presentation in projectbluefin/common; this is the only config delta.
+Exit: Drop when the pinned common config uses a shared install-date helper
+that supports /var/lib/ublue-os/install-date. Not yet submitted upstream.
+
+--- a/system_files/bluefin/usr/share/ublue-os/fastfetch.jsonc
++++ b/system_files/bluefin/usr/share/ublue-os/fastfetch.jsonc
+@@ -47,2 +47,2 @@
+-      "text": "date -d$(ls -alct /var/log --time-style=full-iso|tail -1|awk '{print $6}') +'Forged on %b %d %G'",
++      "text": "date -d\"$(cat /var/lib/ublue-os/install-date 2>/dev/null || date +%Y-%m-%d)\" +'Forged on %b %d %G'",
+       "shell": "/bin/bash"
