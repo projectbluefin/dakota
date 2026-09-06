@@ -73,6 +73,8 @@ depends:
   - freedesktop-sdk.bst:components/skopeo.bst
   - freedesktop-sdk.bst:components/flatpak-builder.bst
 
+  - bluefin/virtualization.bst
+
   - freedesktop-sdk.bst:components/bpf.bst
   - freedesktop-sdk.bst:components/vmlinuxh.bst
   - gnome-build-meta.bst:gnomeos-deps/bpftop.bst

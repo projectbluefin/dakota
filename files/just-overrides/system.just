@@ -13,68 +13,164 @@ bluefin-cli:
 devmode:
     @ujust toggle-devmode
 
-# Toggle the Developer Experience (groups + optional dev flatpaks and fonts)
+# Manage Dakota developer tools (legacy name; never automatically disables them)
 [group('System')]
 toggle-devmode:
+    @/usr/libexec/dakota-devmode menu
+
+# Set up VMM and local libvirt together, or disable activation without removing data
+[group('System')]
+manage-virtualization:
+    @/usr/libexec/dakota-devmode virtualization
+
+# Install Virtual Machine Manager together with its working system libvirt backend
+[group('System')]
+setup-virtualization:
+    @/usr/libexec/dakota-devmode setup
+
+# Explicitly choose installed developer apps to remove, keeping their user data
+[group('System')]
+uninstall-dev-apps:
+    @/usr/libexec/dakota-devmode uninstall
+
+# Add or retry optional tools, including combined VMM/libvirt setup
+[group('System')]
+install-dev-tools:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Dakota bakes the developer stack into every image (podman, distrobox,
-    # skopeo, git, flatpak-builder, the brew toolchain, ...) and publishes no
-    # -dx variant, so unlike Bluefin there is no image rebase here. Developer
-    # mode is group membership plus optional extras, and works the same on a
-    # fresh ISO install with no registry-bound bootc image.
-    if id -nG "$(id -un)" | grep -qw docker ; then
-        gum confirm "Developer mode is on (docker/libvirt/incus/serial groups). Disable it?" || exit 0
-        for g in docker incus-admin libvirt dialout ; do
-            sudo gpasswd -d "$(id -un)" "$g" 2>/dev/null || true
-        done
-        echo "Developer groups removed. Log out and back in for this to take effect."
-        exit 0
+    echo "Dakota ships Podman, Distrobox, Git, Skopeo, and flatpak-builder in every image."
+    echo "This setup offers optional IDEs, development apps, virtualization, and fonts; it does not install Docker."
+    echo "No image switch, group changes, or reboot is needed."
+    if [[ ! -t 0 || ! -t 1 ]]; then
+        echo "Run ujust install-dev-tools in a terminal to choose optional tools." >&2
+        exit 1
     fi
+    # Keep optional installs independent so one failure does not block the other.
+    status=0
+    ujust install-dev-ides || status=$?
+    ujust install-dev-flatpaks || status=$?
+    if gum confirm "Include virtualization (Virtual Machine Manager + system libvirt)?"; then
+        ujust setup-virtualization || status=$?
+    fi
+    ujust install-dev-fonts || status=$?
+    if [ "$status" -ne 0 ]; then
+        echo "Some optional tools could not be installed; use the retry commands above." >&2
+        exit "$status"
+    fi
+    echo "Optional developer setup finished. Run ujust devmode again to add tools or retry."
 
-    gum confirm "Would you like to enable developer mode?" || exit 0
-    ujust dx-group
-    if gum confirm "Do you want to also install the default development flatpaks?" ; then
-        ADD_DEVMODE=1 ujust install-system-flatpaks 0 1
-    fi
-    if gum confirm "Do you want to install extra monospace fonts?" ; then
-        brew bundle install --file=/usr/share/ublue-os/homebrew/fonts.Brewfile
-    fi
-    echo "Log out and back in (or reboot) to pick up the new group memberships."
-
-# Configure docker,incus-admin,libvirt, container manager, serial permissions
+# Compatibility entry point: Dakota no longer applies blanket developer groups
 [group('System')]
 dx-group:
-    #!/usr/bin/pkexec bash
-    append_group() {
-        local group_name="$1"
-        if ! grep -q "^$group_name:" /etc/group; then
-            echo "Appending $group_name to /etc/group"
-            grep "^$group_name:" /usr/lib/group | tee -a /etc/group > /dev/null
+    @echo "Rootless Podman does not require docker group membership."
+    @echo "No group memberships were changed; no reboot is needed for this command."
+
+# Choose optional IDEs from Homebrew and GNOME Builder from Flathub
+[group('System')]
+install-dev-ides:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! -t 0 || ! -t 1 ]]; then
+        echo "Run ujust install-dev-ides in a terminal to choose IDEs." >&2
+        exit 1
+    fi
+    echo "Use the arrow keys to navigate and x to select IDEs, then Enter to install."
+    echo "Nothing is preselected. Press Escape or submit an empty selection to skip."
+    echo "Homebrew options use ublue-os/tap; GNOME Builder uses the existing system Flathub remote."
+    echo "JetBrains Toolbox manages IDE installations; it is not itself an IDE."
+    options=("Visual Studio Code (Homebrew)" "Visual Studio Code Insiders (Homebrew)"
+        "VSCodium (Homebrew)" "Antigravity IDE (Homebrew)")
+    # These tap casks currently download x86_64-only builds.
+    if [[ "$(uname -m)" == x86_64 ]]; then
+        options+=("Zed (Homebrew)" "JetBrains Toolbox (Homebrew)")
+    else
+        echo "Zed and JetBrains Toolbox are omitted: their tap casks currently target x86_64."
+    fi
+    options+=("GNOME Builder (Flatpak)")
+    if selections=$(gum choose --no-limit --selected="" --header="Choose optional IDEs" "${options[@]}"); then
+        [[ -n "$selections" ]] || { echo "IDE installation skipped."; exit 0; }
+    else
+        choice_status=$?
+        case "$choice_status" in
+            1|130) echo "IDE installation skipped."; exit 0 ;;
+            *) echo "IDE selection failed. Retry with: ujust install-dev-ides" >&2; exit "$choice_status" ;;
+        esac
+    fi
+    failed=()
+    while IFS= read -r selection; do
+        case "$selection" in
+            "Visual Studio Code (Homebrew)") cask=visual-studio-code-linux ;;
+            "Visual Studio Code Insiders (Homebrew)") cask=visual-studio-code-linux@insiders ;;
+            "VSCodium (Homebrew)") cask=vscodium-linux ;;
+            "Antigravity IDE (Homebrew)") cask=antigravity-ide-linux ;;
+            "Zed (Homebrew)") cask=zed-linux ;;
+            "JetBrains Toolbox (Homebrew)") cask=jetbrains-toolbox-linux ;;
+            "GNOME Builder (Flatpak)")
+                if flatpak info --system org.gnome.Builder >/dev/null 2>&1 || flatpak info --user org.gnome.Builder >/dev/null 2>&1; then
+                    echo "GNOME Builder is already installed; leaving it unchanged."
+                elif ! flatpak install --system --assumeyes flathub org.gnome.Builder; then
+                    failed+=("$selection")
+                fi
+                continue
+                ;;
+            *) echo "Unknown IDE selection: $selection" >&2; failed+=("$selection"); continue ;;
+        esac
+        if /home/linuxbrew/.linuxbrew/bin/brew list --cask "ublue-os/tap/$cask" >/dev/null 2>&1; then
+            echo "$selection is already installed; leaving it unchanged."
+        elif ! /home/linuxbrew/.linuxbrew/bin/brew install --cask "ublue-os/tap/$cask"; then
+            failed+=("$selection")
         fi
-    }
+    done <<< "$selections"
+    if [[ ${#failed[@]} -ne 0 ]]; then
+        printf 'Could not install: %s\n' "${failed[@]}" >&2
+        echo "Other selections were still attempted. Retry with: ujust install-dev-ides" >&2
+        exit 1
+    fi
+    echo "Selected IDE setup finished. Existing IDEs and user settings were not removed."
 
-    GROUPS_ADD=("docker" "incus-admin" "libvirt" "dialout")
+# Install optional development Flatpaks (IDEs and virtualization are chosen separately)
+[group('System')]
+install-dev-flatpaks:
+    @ADD_DEVMODE=1 ujust install-system-flatpaks 1 1
 
-    for GROUP_ADD in "${GROUPS_ADD[@]}" ; do
-        append_group $GROUP_ADD
-        usermod -aG $GROUP_ADD {{ `id -un` }}
-    done
-
-    echo "Reboot system and log back in to use docker, libvirt, incus, and serial connections."
+# Install optional accessibility, office, and other fonts through Homebrew
+[group('System')]
+install-dev-fonts:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Includes OpenDyslexic Nerd Font (different family names from original OpenDyslexic)."
+    echo "This does not remove original OpenDyslexic fonts or change application font selections."
+    gum confirm "Install optional extra fonts through Homebrew?" || exit 0
+    if brew bundle install --file=/usr/share/ublue-os/homebrew/dakota-fonts.Brewfile; then
+        echo "Optional fonts installed."
+    else
+        status=$?
+        echo "Optional font installation failed; some fonts may have installed." >&2
+        echo "Developer tools are unaffected. Retry with: ujust install-dev-fonts" >&2
+        exit "$status"
+    fi
 
 # Install system flatpaks for rebasers
 [group('System')]
 install-system-flatpaks $confirm="1" $dx_only="0":
     #!/usr/bin/env bash
-    if [[ "$(jq '."image-flavor"' /usr/share/ublue-os/image-info.json)" =~ dx ]] ; then
-        ADD_DEVMODE="${ADD_DEVMODE:-1}"
-    fi
-    if [ "${ADD_DEVMODE:-0}" == "1" ] ; then
+    set -euo pipefail
+    case "$confirm:$dx_only" in
+        0:0|0:1|1:0|1:1) ;;
+        *) echo "confirm and dx_only must be 0 or 1" >&2; exit 2 ;;
+    esac
+    if [ "${ADD_DEVMODE:-0}" == "1" ] || [ "$dx_only" == 1 ] ; then
         if [ "$confirm" != 0 ] ; then
-            gum confirm "Install development flatpaks?" || exit 0
+            gum confirm "Install optional development Flatpaks?" || exit 0
         fi
-        brew bundle --file="${TARGET_FLATPAK_FILE:-/usr/share/ublue-os/homebrew/system-dx-flatpaks.Brewfile}"
+        if brew bundle --file="${TARGET_FLATPAK_FILE:-/usr/share/ublue-os/homebrew/dakota-dev-flatpaks.Brewfile}"; then
+            echo "Optional development Flatpaks installed."
+        else
+            status=$?
+            echo "Optional development Flatpak installation failed; some apps may have installed." >&2
+            echo "Developer tools are unaffected. Retry with: ujust install-dev-flatpaks" >&2
+            exit "$status"
+        fi
     fi
     [ "$dx_only" == 1 ] && exit 0
     if [ "$confirm" != 0 ] ; then

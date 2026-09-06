@@ -157,14 +157,8 @@ install-flutter:
     fi
     gum style --foreground 82 "✓ Podman socket active"
 
-    # Add user to docker group (ublue-os standard — requires reboot)
-    if ! groups | grep -q '\bdocker\b'; then
-        gum style "Adding user to docker group via ujust dx-group..."
-        ujust dx-group
-        gum style --foreground 214 "⚠ Reboot required for group membership to take effect."
-    else
-        gum style --foreground 82 "✓ Already in docker group"
-    fi
+    # The per-user Podman socket does not need Docker daemon permissions.
+    gum style "Rootless Podman needs no docker group membership or reboot."
     echo ""
 
     # --- Step 7: Antigravity IDE settings (safe merge) ---
