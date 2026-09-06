@@ -18,6 +18,7 @@ depends:
   - bluefin/ghostty.bst
 
   - bluefin/fastfetch.bst
+  - bluefin/nerd-fonts-symbols.bst
   - bluefin/gum.bst
   - bluefin/tealdeer.bst
   - bluefin/ydotool.bst
