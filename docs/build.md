@@ -7,7 +7,7 @@
 | `podman` (rootful + rootless) | BST container + export/boot | Pre-installed on Bluefin |
 | `just` | All build/test commands | Pre-installed on Bluefin |
 | `qemu` | VM boot | `brew install qemu` |
-| `virtiofsd` | `just boot-fast` only | `rpm-ostree install virtiofsd` then reboot |
+| `virtiofsd` | `just boot-fast` only | Host package manager / `brew install virtiofsd` |
 | `bcvk` | Ephemeral VM from container | Auto-installed by `just boot-fast` via cargo |
 | ~100 GB disk, ~16 GB RAM | BST cache + parallel builds | — |
 
@@ -29,8 +29,8 @@
 ```bash
 just validate                  # graph check — always run first (~5 min, no build)
 
-export BUILD_SKIP_NVIDIA=1
-just build default             # build image — warm cache: 2–5 min; cold: 60–90 min
+just build default             # build default image — warm cache: 2–5 min; cold: 60–90 min
+# or: just build all           # build all variants (default + nvidia)
 
 just lint                      # bootc container lint — must pass before PR
 

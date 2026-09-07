@@ -1,52 +1,84 @@
 ---
 name: dakota-packaging
-description: Add, remove, or update software built from source in Dakota, including Go, Rust, Zig, binaries, and GNOME extensions.
+description: Add, remove, or update native software built from source in Dakota, including Go, Rust, Zig, C/Meson, and binary releases.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
-# Dakota packaging
+# Dakota Packaging
 
-Package software as BuildStream elements. Dakota does not consume RPMs, DNF
-repositories, COPRs, or Containerfile overlays.
+Package software as BuildStream elements. Dakota builds natively from source and does not consume RPMs, DNF repositories, COPRs, or Containerfile overlays.
 
-## Add or update software
+## When to Use
 
-1. Find the closest element using the same build system or source type.
-2. Confirm the upstream source, license, release tag, and architecture support.
-3. Add an element under the narrowest appropriate subtree.
-4. Add it to the dependency stack and OCI composition only where needed.
-5. Track and fetch the source, then run `just validate` and build that element.
-6. Inspect installed paths before expanding an OCI layer filter.
+- Adding a new native CLI tool, service, or library to Dakota
+- Updating an existing package element under `elements/bluefin/` or `elements/core/`
+- Generating offline crate sources for Rust programs
+- Removing deprecated software and cleaning up dependency stacks
 
-## Source rules
+## When NOT to Use
 
-- Prefer source builds from pinned tags or commits.
-- Prebuilt archives need per-architecture URLs and checksums/refs.
-- Do not hand-write Cargo crate sources. Generate them from `Cargo.lock`:
+- Packaging GNOME Shell extensions → load `dakota-extensions`
+- Host Homebrew integration or formulas → load `dakota-workstation`
+- Layer composition in `elements/oci/layers/` → load `dakota-image`
+- ujust user commands → load `dakota-ujust`
 
-  ```bash
-  python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock
-  ```
+## Core Process
 
-- Keep generated source blocks separate from hand-maintained build commands.
-- Use upstream build systems rather than copying artifacts from a developer
-  workstation.
+1. **Locate Reference Pattern**: Identify an existing element with the same toolchain (Go, Rust, Zig, Meson, CMake, Autotools, or binary).
+2. **Verify Upstream**: Confirm upstream source, open-source license, release tag, and multi-arch support (`x86_64` and `aarch64`).
+3. **Declare Element**: Create `elements/bluefin/<name>.bst` or under the appropriate subdirectory.
+4. **Wire Dependencies**: Wire into `elements/bluefin/deps.bst` (the aggregator stack) or the relevant layer composition element.
+5. **Generate Offline Sources (Rust)**:
+   ```bash
+   python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock
+   ```
+6. **Validate and Build**:
+   ```bash
+   just validate
+   just bst build bluefin/<name>.bst
+   ```
+7. **Inspect Output**: Check installed paths and permissions inside the artifact before expanding layer filters.
 
-## Language notes
+## Language Invariants
 
-- **Go:** set deterministic build flags and install the resulting binary from the
-  sandbox; do not fetch modules during the build.
-- **Rust:** use the generated `cargo2` source manifest and build offline.
-- **Zig:** pin the supported toolchain and source release; verify target triples.
-- **GNOME extensions:** package source and schemas, and verify compatibility with
-  the GNOME branch Dakota currently tracks.
-- **Binary releases:** validate architecture naming and install licenses alongside
-  the payload.
+- **Go**: Use `go build` with flags ensuring deterministic, offline compilation (`-buildvcs=false`, `-trimpath`). Statically or dynamically link as appropriate. Do not run `go get` or `go install` across the network.
+- **Rust**: Never hand-craft crate lists. Always use `files/scripts/generate_cargo_sources.py` from `Cargo.lock` to generate `kind: cargo2` source blocks. Build with `cargo --frozen --offline`.
+- **Zig**: Pin the exact toolchain version; specify the target triple explicitly.
+- **C/Meson/Autotools**: Inherit build dependencies from junctions (`freedesktop-sdk.bst:components/...`). Do not install unpinned dependencies.
+- **Binary Releases**: Require per-architecture URLs, SHA256 checksums, and license installation to `%{install-root}%{datadir}/licenses/<package>/`.
 
-## Removal
+## Package Removal Hygiene
 
-Trace reverse dependencies and OCI filters before deleting an element. Remove
-stale references, generated metadata, patches, and service enablement together;
-then run `just validate`.
+When deleting a package:
+1. Trace reverse dependencies with `just bst show --deps all oci/bluefin.bst | grep <element>`.
+2. Remove entry from `elements/bluefin/deps.bst` and layer compose elements.
+3. Delete static files, systemd unit symlinks, and any patches in `patches/`.
+4. Run `just validate` to confirm the graph is sound.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I can quickly fetch this dependency during build." | Sandboxes lack network access. All assets must be declared in element sources. |
+| "Writing Cargo sources by hand is faster for small crates." | Hand-rolled Cargo blocks miss sub-dependencies and checksums. Always use `generate_cargo_sources.py`. |
+| "A binary release doesn't need license files." | Legal distribution requires licenses packaged alongside binaries. |
+
+## Red Flags
+
+- Network calls (`curl`, `wget`, `git clone`) inside `install-commands`
+- Hand-maintained Cargo source blocks without `generate_cargo_sources.py`
+- Storing pre-compiled binaries in git instead of downloading release archives via sources
+- Unpinned git tracking branches (`track: main` without a pinned `ref:`)
+
+## Verification
+
+- [ ] `just validate` passes
+- [ ] Element builds cleanly via `just bst build bluefin/<name>.bst`
+- [ ] No network access is attempted during sandbox compilation
+- [ ] Installed binaries, configs, and licenses land in standard `/usr` hierarchy
+- [ ] Element is added to `elements/bluefin/deps.bst`
 
 ## References
 

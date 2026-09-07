@@ -150,11 +150,11 @@ sudo podman start egg-registry
 - [ ] The target rebooted successfully
 - [ ] Post-upgrade runtime state was checked, not assumed
 
-## Lessons Learned
+## Known Failure Modes & Invariants
 
-### zstd:chunked broken with bootc composefs
+### zstd:chunked Incompatibility with bootc composefs
 
-Do not use `--compression-format=zstd:chunked` for local registry pushes. It breaks `bootc switch`/`bootc upgrade` when the image uses composefs.
+Do not use `--compression-format=zstd:chunked` for local registry pushes. It breaks `bootc switch` and `bootc upgrade` when the image uses composefs.
 
 ```bash
 # Correct
@@ -164,7 +164,7 @@ just push-local localhost:5000
 sudo podman push --compression-format=zstd:chunked localhost:5000/dakota:latest
 ```
 
-### bootc switch same-content trap
+### bootc switch Same-Content Trap
 
 `bootc switch <tag>` silently does nothing if the tag resolves to the already-booted digest. Force the upgrade with the exact digest:
 
@@ -175,50 +175,14 @@ DIGEST=$(curl -sI http://<zot-registry>/v2/dakota/manifests/<TAG> \
 sudo bootc switch --transport registry <zot-registry>/dakota@${DIGEST}
 ```
 
-### Assertions must execute — not just check file presence
+### Functional Assertions Over File Presence
 
-`test -f /path/to/file` is not a functional test. Any recipe must be tested by executing it and checking output:
+Checking file existence (`test -f`) is insufficient. Always execute the recipe or binary and assert output:
 
 ```bash
-# BAD — only confirms the file exists
+# Ineffective: only confirms the file exists
 --assert 'installed:test -f /usr/share/ublue-os/just/default.just'
 
-# GOOD — confirms the recipe actually runs
+# Effective: confirms the command runs and outputs expected text
 --assert 'recipe-runs:echo n | TERM=dumb ujust report 2>&1 | grep -qiE "Collecting"'
 ```
-
-### BST failure cache trap
-
-When BST caches a failed build, retrying without clearing the cache immediately fails again with `[00:00:00]` elapsed.
-
-```bash
-just bst artifact delete bluefin/myelement.bst
-just bst build bluefin/myelement.bst
-```
-
-### Pre-existing failures vs your changes
-
-Before attributing a build failure to your branch, confirm the same element fails on `upstream/main`:
-
-```bash
-git stash
-git checkout upstream/main
-just bst build bluefin/<failing-element>.bst
-git checkout -
-git stash pop
-```
-
-If it fails on upstream too, file an issue immediately and continue.
-
-### just 1.47.1 heredoc tokenizer
-
-just 1.47.1 aggressively tokenizes heredoc content in shebang recipes, rejecting lines starting with `-`, `...`, `$(uname -m)` with flags past column 25, or `(1/5/15 min)`.
-
-**Fix:** Replace heredocs with `printf '%s\n'` per line and pre-compute command substitutions into variables.
-
-### ujust vs just distinction
-
-- `just` = developer build system (`Justfile` in repo root)
-- `ujust` = user-facing commands in the running image (`files/just-overrides/default.just`)
-
-Changes to `files/just-overrides/default.just` require a BST element rebuild to land in the image.

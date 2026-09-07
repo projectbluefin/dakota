@@ -38,9 +38,8 @@ Why it bricks: Homebrew's vendored-gem Bundler install is **not transactional**.
 If a native extension build fails (e.g. `make` missing), the gem's Ruby files
 stay in `vendor/bundle` without the matching `.so`. Ruby then loads mismatched
 gem code against the built-in extension of a different version and **every brew
-command crashes at startup** (2026-07-30 incident: `brew style` installed
-`json` 2.21.1 Ruby files, portable Ruby fell back to its built-in JSON 2.18
-native ext → `undefined method 'default_sort_keys_proc='`).
+command crashes at startup** (for example, `brew style` installing `json` Ruby
+files while portable Ruby falls back to its built-in JSON native extension).
 
 ### 2. Brew must always be invoked as `/home/linuxbrew/.linuxbrew/bin/brew`
 
@@ -91,19 +90,12 @@ RPM/DNF/`ujust devmode` — this is a BuildStream image.
 4. Verify: `brew --version`, `brew search <x>`, and `brew style <file>` in a
    tap checkout (the class of command that triggered the incident).
 
-## Lessons Learned
+## Failure Modes & Recovery Traps
 
-### A failed `brew install-bundler-gems` re-arms the broken state (2026-08-01)
+### Re-arming Trap: Do Not Re-run `brew install-bundler-gems`
 
-Bundler extracts gem files **before** building native extensions. Every failed
-attempt recreates the exact mismatched-gem crash it was trying to fix. Never
-retry the brew-level command to "see if it works now" on an affected machine —
-fix the PATH problem first (direct Bundler invocation above), or you re-break
-startup for every brew command including the timers.
+Bundler extracts gem files **before** building native extensions. Every failed attempt recreates the exact mismatched-gem crash it was trying to fix. Never retry the high-level brew command to test if it works on an affected machine — fix the PATH and invoke Bundler directly via the repair procedure above.
 
-### The update timers run brew with systemd's default PATH (2026-08-01)
+### Timer Execution Environment
 
-`brew-update.service` / `brew-upgrade.service` (system units, `User=1000`)
-invoke brew with the stock systemd PATH. Combined with the `bin/brew` PATH
-filter, timer-context native builds only ever see `/usr/bin` — another reason
-make must live in the image, not in the prefix or a user dotfile.
+`brew-update.service` and `brew-upgrade.service` (systemd user units) invoke brew with the default systemd PATH. Because `bin/brew` enforces a hard PATH filter, timer-context native builds only ever see `/usr/bin`. This is why GNU Make must live in the base image, never in a user profile or prefix.

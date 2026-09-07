@@ -1,63 +1,73 @@
 ---
 name: dakota-ci
 description: Diagnose or change Dakota validation, build, publish, e2e, cache, remote-execution, and architecture workflows.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
 # Dakota CI
 
-Workflow YAML is the current source of truth. Do not rely on historical runbooks
-when the workflow says something different.
+Workflow YAML in `.github/workflows/` is the current source of truth. Do not rely on historical runbooks when the workflow says something different.
 
-## Route the problem
+## When to Use
 
-| Area | Source |
+- Modifying or debugging GitHub Actions workflows in `.github/workflows/`
+- Diagnosing runner startup, syntax, matrix, or permission failures
+- Changing build, publish, or validation triggers and artifact flows
+- Investigating remote CAS caching or remote execution integration
+
+## When NOT to Use
+
+- Stable promotion, image signing, cosign attestation, or rollback → load `dakota-release`
+- BST element syntax or internal build errors → load `dakota-buildstream`
+- Reviewing PRs and issue management → load `dakota-review`
+
+## Core Process
+
+1. **Route the Workflow**: Identify the failing workflow:
+   - `validate.yml`: PR graph checks and patch drift
+   - `build.yml` / `build-aarch64.yml`: Remote execution x86/ARM builds into CAS
+   - `publish.yml`: CAS artifact checkout, squashing, tagging, signing
+   - `e2e.yml`: Manual testsuite dispatch against published images
+2. **Inspect at Run SHA**: Read the workflow YAML at the exact commit that executed.
+3. **Isolate Root Cause**: Distinguish syntax/permission failure (zero jobs run), source fetch failure, remote CAS cache failure, or BST compilation error.
+4. **Enforce Least Privilege**: Ensure workflow caller permissions strictly match what reusable workflows demand.
+5. **Validate Locally**: Run `just check-publish-workflow` and `just validate` before submitting.
+
+## Invariants
+
+- **Third-Party Actions**: Pin all third-party actions to full 40-character commit SHAs with an inline version comment. `projectbluefin/actions@v1` is an intentional managed-tag exception.
+- **Build vs Publish Separation**: `build.yml` writes artifacts to the remote CAS; `publish.yml` only exports artifacts already present in the CAS for that exact resolved SHA.
+- **e2e Workflow Gate**: `e2e.yml` runs only via `workflow_dispatch` against an already-published tag. It does **not** gate PRs.
+- **Atomic Matrices**: Do not cancel or serialize matrix siblings (`default`, `nvidia`, `gaming`, `nvidia-gaming`) without explicit human approval.
+- **Truth in Reporting**: Never report CI as green while workflows are pending, queued, or skipped.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
 |---|---|
-| Graph and patch validation | `.github/workflows/validate.yml` |
-| x86 variant builds | `.github/workflows/build.yml` |
-| aarch64 build and boot | `build-aarch64.yml`, `boot-test-aarch64.yml` |
-| Image export and publication | `publish.yml` |
-| Manual image e2e and testsuite | `e2e.yml`, `run-testsuite.yml` |
-| Next stream scheduling | `nightly-next-build.yml`, `sync-next.yml` |
-| Stable promotion | Load `dakota-release` |
+| "I will add `e2e.yml` to PR checks so we catch regressions earlier." | PRs do not push images to GHCR. Running e2e on a PR tests a stale public tag, not the PR. |
+| "A commit SHA is overkill; a version tag like `@v2` is fine." | Tags are mutable. Security policy requires 40-character commit SHAs for third-party actions. |
+| "CI is basically green, only one matrix variant is still running." | All matrix siblings must complete. Partial runs leave broken variant pairs. |
 
-## Diagnose before editing
+## Red Flags
 
-1. Identify whether the failure happened before jobs started, during source
-   fetch, BuildStream execution, artifact transfer, image publication, or test.
-2. Read the failing workflow at the commit that ran—not only the current branch.
-3. Inspect the first failing job and preserve its exact error.
-4. Compare other runs only to distinguish infrastructure-wide failures from a
-   branch regression.
-5. Verify GitHub Actions behavior in current official documentation before
-   changing triggers, permissions, expressions, reusable calls, or concurrency.
-6. Apply the narrowest fix and run `just validate` plus any workflow-specific
-   local check exposed by the Justfile.
+- Unpinned third-party actions (using `@v1`, `@main` instead of SHA)
+- Adding `e2e.yml` as a required pull-request status check
+- Modifying release gates or promotion steps in `build.yml` or `publish.yml`
+- Asserting CI passed when checks are still in progress
 
-## Rules
+## Verification
 
-- Third-party actions use full commit SHAs with version comments.
-  `projectbluefin/actions@v1` is an intentional managed-tag exception.
-- Caller permissions must cover every permission requested by a reusable
-  workflow; invalid permission names cause startup failure without job logs.
-- Build and publish are separate: publish can only materialize an OCI artifact
-  that the build placed in the CAS.
-- Remote cache access and remote execution are separate capabilities. Diagnose
-  them separately.
-- Do not serialize intentional matrix siblings or cancel unrelated active runs
-  without explicit operator direction.
-- Do not require a full local image build before publishing a targeted,
-  validated fix; CI owns full-image verification.
-- Keep observational jobs off the release-critical dependency path unless they
-  are deliberately promoted to hard gates.
+- [ ] `just check-publish-workflow` passes
+- [ ] `just test-render-card` passes
+- [ ] All modified workflow files pass YAML linting and schema validation
+- [ ] Third-party actions are pinned to full commit SHAs with version comments
+- [ ] PR description specifies local checks run vs CI status
 
-## Validation
-
-- YAML parses and expressions are supported in their event context.
-- `just validate` passes when BST-affecting files changed.
-- Required checks still start for every protected-branch event they gate.
-- The reported result distinguishes local validation, pending CI, and green CI.
-
-## Reference
+## References
 
 - [`docs/ci.md`](../../../docs/ci.md)
 - [`.github/workflows/`](../../../.github/workflows/)
+- [`Justfile`](../../../Justfile)

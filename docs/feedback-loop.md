@@ -119,16 +119,15 @@ Contributors can verify fixes on their own machines before merge. For
 hardware-specific bugs, contributors with the affected hardware build the
 PR branch and test directly.
 
-### CI (automated e2e tests on GitHub Actions)
+### CI (automated validation and build on GitHub Actions)
 
 | Step | What happens | Evidence produced |
 |------|-------------|-------------------|
-| Build | Full BST build on GHA runner | Build success/failure |
-| QEMU boot | Desktop image boots in QEMU | Automated boot verification |
-| e2e suite | projectbluefin/testsuite reusable workflow | PASS/FAIL status on PR |
+| Validate | BST graph and patch drift check (`validate.yml`) | PASS/FAIL status on PR |
+| Build & Publish | Full BST build and CAS artifact publication on `testing` | Published immutable `:SHA` + `:testing` |
+| e2e suite | Manual testsuite dispatch against published image (`e2e.yml`) | Automated boot & integration verification |
 
-The e2e CI workflow gates merge. It runs automatically on every PR and confirms
-the image boots and the desktop works before any code lands on main.
+The `validate.yml` workflow gates PR merges. Full builds and publications run after merge to `testing`. The `e2e.yml` testsuite workflow is dispatched manually against published images, ensuring tests run against actual built artifacts rather than stale tags.
 
 ---
 
@@ -140,9 +139,9 @@ Stage              User evidence          Contributor evidence     CI evidence
 Bug filed          ujust report gist      —                        —
 Discussion         ujust confirm (me too) —                        —
 Fix in PR          —                      just validate/build/test CI validate
-e2e gate           —                      —                        e2e tests pass
 Merged             —                      —                        —
-Nightly ships      —                      —                        —
+Nightly ships      —                      —                        build.yml + publish.yml
+e2e verify         —                      —                        e2e.yml (dispatch)
 Verification       ujust verify           —                        —
 Closed             3x verified-fixed      —                        —
 ```
