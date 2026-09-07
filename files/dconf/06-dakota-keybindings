@@ -3,6 +3,12 @@
 # which is not installed in dakota. Override to use xdg-terminal-exec (Ghostty).
 # See: https://github.com/projectbluefin/common/pull/265
 
+[org/gnome/desktop/wm/keybindings]
+switch-input-source=['<Shift><Super>space']
+
+[org/gnome/settings-daemon/plugins/media-keys]
+custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom1/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom2/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom3/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom4/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom5/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom6/']
+
 [org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0]
 binding='<Control><Alt>t'
 command='/usr/bin/xdg-terminal-exec'
@@ -12,3 +18,8 @@ name='Terminal'
 binding='<Control><Alt>Return'
 command='/usr/bin/xdg-terminal-exec'
 name='Terminal Alt'
+
+[org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom4]
+binding='<Super>space'
+command='vicinae toggle'
+name='Vicinae Launcher'

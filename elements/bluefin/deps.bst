@@ -46,6 +46,7 @@ depends:
   - bluefin/fprintd-system-auth.bst
   - bluefin/efibootmgr.bst
   - bluefin/xdg-terminal-exec.bst
+  - bluefin/vicinae.bst
   - bluefin/nautilus-python.bst
   - bluefin/gnome-ponytail-daemon.bst
   # Restores the VTE typelibs the app-drop strips out (dakota#1022)
