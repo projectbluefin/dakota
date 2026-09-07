@@ -7,6 +7,7 @@
 - [ ] Image-affecting changes include lint/boot evidence from local testing or CI
 - [ ] Commit trailer: `Assisted-by:` or `Signed-off-by:` — **not** `Co-authored-by:`
 - [ ] `Closes #NNN` is present when the PR resolves an issue
+- [ ] Factory Model (Two Outputs): any newly discovered invariants or failure modes are written back to `.agents/skills/` or `docs/` in this same PR
 - [ ] I am using an agent and I take responsibility for this PR
 
 ## Junction bumps (`gnome-build-meta.bst` or `freedesktop-sdk.bst`)
@@ -14,7 +15,7 @@
 - [ ] Only junction `.bst` files changed — no `patches/` modifications in the same commit
 - [ ] All existing patches in the relevant `patches/` directory still apply cleanly
 
-> Junction-only bumps from `mergeraptor[bot]` are pre-approved once `validate` and `e2e` pass (or e2e is skipped for non-image paths).
+> Junction-only bumps from `mergeraptor[bot]` are pre-approved once `validate` passes and affected elements build cleanly.
 
 ## Patch additions or removals (`patches/`)
 

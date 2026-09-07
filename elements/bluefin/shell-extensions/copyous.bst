@@ -2,6 +2,7 @@ kind: manual
 
 sources:
 - kind: zip
+  base-dir: ""
   url: github_files:boerdereinar/copyous/releases/download/v2.0.1/copyous%40boerdereinar.dev.zip
   ref: 7c2bfdecd66b78dc1f2491ae74e16216fca7190307411de21966da9fd47d4141
 

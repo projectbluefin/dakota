@@ -1,48 +1,72 @@
 ---
 name: dakota-release
 description: Stable promotion, image signing, digest locking, rollback, and release automation for Dakota.
+metadata:
+  context7-sources:
+    - /sigstore/cosign
+    - /bootc-dev/bootc
 ---
 
-# Dakota release and promotion
+# Dakota Release and Promotion
 
-Release changes cross a security boundary. Stop for human approval before
-changing signing identities, token permissions, provenance, or promotion gates.
+Release workflows cross a cryptographic and security boundary. Stop for human approval before changing signing identities, token permissions, provenance, or promotion gates.
 
-## Current invariants
+## When to Use
 
-- `testing` is built and published before promotion.
-- `main` is a release bookmark, not a development target.
-- `next` and `btw` are rolling streams and never promote to `stable`.
-- Stable promotion intentionally does not add the testsuite e2e gate. Preserve
-  its freshness check, cosign verification, and digest-based copy.
-- Promotion operates on immutable digests or the tested source SHA, never on a
-  tag re-resolved after verification.
+- Modifying `.github/workflows/execute-release.yml` or `rollback-stable.yml`
+- Auditing or updating cosign keyless OIDC signatures or SLSA build provenance attestations
+- Managing image digest pinning, release receipts, or immutable tag promotion
+- Managing the Mon/Wed/Fri stable promotion schedule or rollback procedures
 
-## Safe change process
+## When NOT to Use
 
-1. Read `.github/workflows/execute-release.yml`, its reusable callees, and
-   `.github/workflows/rollback-stable.yml`.
-2. Draw the exact SHA/digest flow from build receipt to target tag.
-3. Verify cosign, skopeo, GitHub permissions, and reusable-workflow behavior in
-   current official documentation.
-4. Preserve least privilege and fail closed on missing evidence.
-5. Validate workflow syntax and test non-destructive resolution steps.
-6. Require human approval before any live dispatch, tag copy, rollback, or merge.
+- Routine CI build or validation workflow updates → load `dakota-ci`
+- Local container image builds or testing → load `dakota-image`
+- PR review workflows → load `dakota-review`
 
-## Security details
+## Core Process
 
-- Anchor `--certificate-identity-regexp` with `^...$` and restrict it to the
-  publishing workflow and allowed refs.
-- Lock the SHA that was tested. Compare live branch state to that SHA and fail
-  if it advanced; never lock a newly resolved head after testing.
-- Install privileged runner binaries through a temporary file and `sudo
-  install`; do not assume the runner user can write `/usr/local/bin`.
-- Treat missing signatures, digest mismatches, stale source state, and partial
-  variant sets as hard failures.
-- Keep all image variants paired through promotion and rollback.
+1. **Trace Digest Flow**: Map the exact SHA/digest path from build receipt to the target publication tag.
+2. **Verify Cryptographic Policy**: Confirm cosign certificate identity and issuer rules match repository policy.
+3. **Lock Tested SHA**: Always pin and verify the tested source commit SHA; fail closed if upstream advanced during testing.
+4. **Preserve Variant Matrix**: Ensure all variants (`default`, `nvidia`, `gaming`, `nvidia-gaming`) are promoted or rolled back together.
+5. **Human Gate**: Stop and obtain human confirmation before executing any production promotion, signing change, or tag rollback.
+
+## Invariants
+
+- **Bookmark Invariant**: `main` is a stable-release bookmark, not a branch for contributor PRs.
+- **Rolling Streams**: `next` and `btw` are rolling development streams; they never promote to `:stable`.
+- **Promotion Gates**: Stable promotion intentionally avoids the testsuite e2e gate. It enforces freshness locking, cosign verification, and digest-based copy.
+- **Cryptographic Anchoring**: Anchor `--certificate-identity-regexp` with `^...$` and restrict it strictly to the authorized publishing workflow and branch.
+- **Digest-Based Promotion**: Promotion operates on immutable digests (`@sha256:...`) or tested source SHAs, never by re-resolving a mutable tag name.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "Adding an e2e test gate to promotion makes stable safer." | Promotion occurs hours after build. Re-running e2e adds flakiness and delays security hotfixes. CI owns test gates during build. |
+| "A regex without `^` and `$` is good enough for cosign identity." | Unanchored regular expressions allow malicious forks or subpaths to forge signatures. Always anchor with `^` and `$`. |
+| "We can promote just the default image if nvidia is failing." | All image variants must remain in lockstep. Partial promotions break ecosystem guarantees. |
+
+## Red Flags
+
+- Pull requests targeting `main` instead of `testing`
+- Adding testsuite e2e gates into `execute-release.yml`
+- Re-resolving mutable tags instead of copying by immutable digest
+- Unanchored `--certificate-identity-regexp` in cosign verification commands
+- Promoting a new release without human approval
+
+## Verification
+
+- [ ] All third-party release actions are pinned to 40-character commit SHAs
+- [ ] Certificate identity regex is anchored with `^` and `$`
+- [ ] Digest copy commands use skopeo/cosign without intermediate re-tagging
+- [ ] Rollback workflow preserves variant parity across all 4 streams
+- [ ] Human approval obtained before any release execution
 
 ## References
 
 - [`.github/workflows/execute-release.yml`](../../../.github/workflows/execute-release.yml)
 - [`.github/workflows/rollback-stable.yml`](../../../.github/workflows/rollback-stable.yml)
 - [`docs/ci.md`](../../../docs/ci.md)
+- [`SECURITY.md`](../../../SECURITY.md)

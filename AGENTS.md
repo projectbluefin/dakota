@@ -8,6 +8,27 @@ installation. Make image changes through BST elements.
 Project skills live in `.agents/skills/` and are discovered by Pi and GitHub
 Copilot. Load only the skill matching the task; do not read every skill.
 
+## Factory model invariants
+
+- **Two Outputs Rule**: Every session produces exactly **two** outputs: the work and the learning. Output 1 without Output 2 leaves the factory no smarter than before you arrived. Commit new patterns or constraints in the same PR as the code change.
+- **Docs Are the Model**: Skills and documentation are evergreen operating procedures. Never append dated session logs (`2026-08-01: we found X`), running issue numbers, or resolved checklists. Codify learnings as timeless architectural invariants and failure modes.
+- **Context7 Freshness Protocol**: For any named tool, library, or framework (BuildStream, bootc, systemd, cosign), verify syntax using Context7 (`DETECT → FETCH → EMBED → CITE`) and record verified sources in skill frontmatter.
+
+## Skill routing
+
+| Task / Domain | Skill to Load |
+|---|---|
+| BST elements, junctions, patches, or build graph errors | `dakota-buildstream` |
+| GitHub Actions workflows, matrix builds, CI publication | `dakota-ci` |
+| GNOME Shell extensions, ESM modules, dconf defaults | `dakota-extensions` |
+| Factory exit checklist, two-output write-back, skill audit | `dakota-factory` |
+| OCI layer composition, boot testing, VM checks, OTA | `dakota-image` |
+| Native Go, Rust, Zig, C, or binary packaging in BST | `dakota-packaging` |
+| Stable promotion, image signing, cosign, rollback | `dakota-release` |
+| Reviewing PRs, triage, user-donated reports, labels | `dakota-review` |
+| End-user recipes in `files/just-overrides/default.just` | `dakota-ujust` |
+| Host Homebrew prefix, GCC/Make invariants, services | `dakota-workstation` |
+
 ## Non-negotiable safety
 
 - **Never write to any `ublue-os/*` repository.** No issues, comments, PRs,

@@ -1,38 +1,70 @@
 ---
 name: dakota-workstation
 description: Dakota host Homebrew integration and workstation-specific services.
+metadata:
+  context7-sources:
+    - /homebrew/brew
 ---
 
-# Dakota workstation integration
+# Dakota Workstation Integration
 
-## Route the task
+Dakota runs Homebrew directly on the host rather than in a container, with persistent user data at `/home/linuxbrew/.linuxbrew`.
 
-- Host Homebrew packaging or a damaged persistent prefix: read
-  [`references/host-homebrew.md`](references/host-homebrew.md).
-- End-user `ujust` recipe changes: load `dakota-ujust`.
-- Local image update testing: load `dakota-image`.
+## When to Use
 
-## Host Homebrew invariants
+- Editing host Homebrew packaging elements (`elements/bluefin/brew.bst`, `brew-tarball.bst`)
+- Managing workstation services or systemd unit presets in `files/systemd/`
+- Diagnosing broken host brew prefixes or bottle rejection errors (see `references/host-homebrew.md`)
 
-- Invoke brew through `/home/linuxbrew/.linuxbrew/bin/brew`; the
-  `/var/home/linuxbrew` spelling can make bottle prefix detection fail.
-- Wherever the image supplies GCC for host Homebrew source builds, it must also
-  supply GNU Make in the system PATH.
-- `/home/linuxbrew/.linuxbrew` is persistent user data. Image upgrades do not
-  repair a partially installed Ruby gem or damaged prefix; never delete it as a
-  routine fix.
-- Fix shared path regressions in `projectbluefin/common` when possible, while
-  respecting the prohibition on all writes to `ublue-os/*`.
+## When NOT to Use
 
-## Service and integration changes
+- Packaging system applications or CLI tools for the base image → load `dakota-packaging`
+- Writing end-user ujust recipes → load `dakota-ujust`
+- OCI layer composition → load `dakota-image`
 
-1. Trace the element that installs the file and the OCI layer that composes it.
-2. Confirm whether the state is image-owned or persistent user data.
-3. Make service enablement declarative in BST install commands or presets.
-4. Validate first-install, update, and rollback behavior separately when state
-   persists across deployments.
-5. Run `just validate` and the narrowest boot or integration test that exercises
-   the change.
+## Core Process
 
-Do not paper over host integration failures with DNF, RPMs, or mutable
-post-install package operations.
+1. **Route the Area**:
+   - Host Homebrew integration or prefix issues: consult [`references/host-homebrew.md`](references/host-homebrew.md).
+   - Workstation services / systemd units: locate target BST element and presets in `files/systemd/`.
+2. **Verify State Boundaries**:
+   - Differentiate image-owned immutable files (`/usr`) from persistent user state (`/home/linuxbrew`).
+3. **Declare Services in BST**:
+   - Enable units declaratively in BST element `install-commands` or via systemd preset files.
+4. **Validate**:
+   - Run `just validate` to ensure dependency graphs and layer composition remain sound.
+
+## Invariants
+
+- **Prefix Spelling Invariant**: Invoke brew strictly through `/home/linuxbrew/.linuxbrew/bin/brew`. The `/var/home` spelling breaks bottle prefix detection and forces broken source builds.
+- **GNU Make Invariant**: The image must supply GNU Make in `/usr/bin` alongside GCC. Homebrew's internal PATH filter strips all other locations during native gem builds.
+- **Persistent State Invariant**: `/home/linuxbrew/.linuxbrew` is persistent user data. Reboots and image updates will not repair corrupted gems.
+- **No ublue-os Writes**: Fix shared path regressions in `projectbluefin/common`. Never submit PRs or issues to `ublue-os/*`.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "Deleting `/home/linuxbrew` is a quick way to fix a broken brew." | User-installed packages live in `/home/linuxbrew`. Deleting it causes user data loss. Follow prefix repair steps instead. |
+| "Users can put `make` in their dotfiles PATH." | Homebrew hard-filters PATH to `/usr/bin:/bin:/usr/sbin:/sbin` before running native builds. `make` must live in `/usr/bin`. |
+| "The `/var/home` symlink resolves, so either path works." | Homebrew checks string equivalence against its compiled prefix; `/var/home` triggers bottle rejection. |
+
+## Red Flags
+
+- Spelling brew prefix paths as `/var/home/linuxbrew`
+- Removing GNU Make from the base toolchain elements
+- Adding `dnf` or `rpm-ostree` commands to repair host packages
+- Touching `ublue-os/*` repositories
+
+## Verification
+
+- [ ] Brew prefix is referenced as `/home/linuxbrew/.linuxbrew`
+- [ ] `/usr/bin/make` is present alongside `/usr/bin/gcc` in layer elements
+- [ ] `just validate` passes
+- [ ] Service enablement is declarative in BST elements
+
+## References
+
+- [`references/host-homebrew.md`](references/host-homebrew.md)
+- [`elements/bluefin/brew.bst`](../../../elements/bluefin/brew.bst)
+- [`elements/oci/layers/bluefin.bst`](../../../elements/oci/layers/bluefin.bst)

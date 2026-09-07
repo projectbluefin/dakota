@@ -1,52 +1,76 @@
 ---
 name: dakota-buildstream
 description: BuildStream elements, junctions, patches, dependency graphs, and build failures in Dakota. Use when editing elements, project.conf, junctions, or patches.
+metadata:
+  context7-sources:
+    - /apache/buildstream
 ---
 
 # Dakota BuildStream
 
-Dakota builds the image from source. Never translate an RPM, DNF, COPR, or
-Containerfile workflow into this repository.
+Dakota builds the bootc desktop image entirely from source using BuildStream 2.
+Never translate RPM, DNF, COPR, or Containerfile workflows into this repository.
 
-## Workflow
+## When to Use
 
-1. Read the target element, its dependencies, and the nearest working example.
-2. Inspect the graph with `just bst show --deps all <element>`.
-3. Verify unfamiliar BuildStream syntax against current official documentation.
-4. Make the smallest deterministic element change.
-5. Run `just validate`; build the narrowest affected element when practical.
-6. For patches, run `just patch-drift-check` and document the upstream status
-   and removal condition in the patch itself.
+- Creating, editing, or removing `.bst` elements in `elements/`
+- Modifying `project.conf` or junction configurations (`elements/gnome-build-meta.bst`, `elements/freedesktop-sdk.bst`)
+- Managing downstream patches in `patches/`
+- Triaging build, sandbox, or artifact cache failures in local runs or CI
+
+## When NOT to Use
+
+- Workstation Homebrew integration → load `dakota-workstation`
+- End-user ujust recipes → load `dakota-ujust`
+- GNOME Shell extensions packaging → load `dakota-extensions`
+- Image layer composition and boot verification → load `dakota-image`
+
+## Core Process
+
+1. **Inspect Graph**: Run `just bst show --deps all <element>` to trace dependencies and dependents.
+2. **Consult Nearest Pattern**: Check elements with similar build systems (`manual`, `autotools`, `meson`, `cmake`).
+3. **Verify Syntax**: Check syntax against official BuildStream documentation (`/apache/buildstream`).
+4. **Implement Deterministically**: Ensure build/install steps are reproducible (no network, timestamps, or host identity).
+5. **Validate Graph**: Run `just validate`. For element-specific tests, build the narrowest target (`just bst build <element>`).
+6. **Patch Hygiene**: For junction patches, update `patches/`, verify with `just patch-drift-check`, and set `Upstream-Status:` headers.
 
 ## Invariants
 
-- `kind: compose` produces layer filesystem content. `kind: stack` is only a
-  dependency aggregator and produces an empty artifact.
-- Add runtime dependencies to the appropriate dependency stack; do not install
-  software after OCI assembly.
-- Patch junction projects through a `patch_queue` source. Never modify
-  `.bst/staged-junctions/`.
-- Pin source tags or commits. Exclude prereleases where stable tracking requires
-  it.
-- Keep builds reproducible: no network calls, wall-clock timestamps, hostname,
-  username, or mutable branch state in build/install commands.
-- Use `mkdir -p` before creating links into a directory.
-- Generated source manifests remain generated. For Cargo:
-
+- **Compose vs Stack**: `kind: compose` generates layer filesystem artifacts. `kind: stack` only aggregates dependencies and outputs zero filesystem files.
+- **No Post-Install Packaging**: All runtime software must be integrated via BST elements before OCI composition.
+- **Junction Patches**: Patch junctions via `kind: patch_queue` sources. Never modify `.bst/staged-junctions/`.
+- **Source Pinning**: Pin git sources to commit SHAs or release tags. Never track mutable branches in production elements.
+- **Reproducibility**: No network calls, `$(date)`, `$(hostname)`, `whoami`, or random seeds in build commands.
+- **Directory Creation**: Run `mkdir -p` before creating links or writing files into target directories.
+- **Generated Cargo Sources**: Generate crate manifests via:
   ```bash
   python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock
   ```
 
-## Failure triage
+## Common Rationalizations
 
-- Find the first failing element and first meaningful error; downstream failures
-  are often consequences.
-- Distinguish source fetch, sandbox/build, artifact cache, and remote-execution
-  failures before editing code.
-- Compare local overrides with the pinned junction version whenever a junction
-  changes.
-- Do not “fix” remote-execution or machine configuration by baking host-specific
-  behavior into an element.
+| Rationalization | Reality |
+|---|---|
+| "I can install this package with DNF in a container step." | Dakota has no DNF or RPM database. All packages are BST elements. |
+| "A `kind: stack` element will put its files into the image layer." | Stack elements produce empty artifacts. Layers require `kind: compose`. |
+| "I'll fetch dependencies during `install-commands`." | Sandboxes lack network access during build. All sources must be declared in `sources:`. |
+| "I'll patch the staged junction file directly in `.bst/`." | Staged junction edits are wiped on cache cleans. Use `patches/` with `patch_queue`. |
+
+## Red Flags
+
+- `rpm-ostree`, `dnf`, `apt`, or `pip install` inside build instructions
+- Using `kind: stack` inside `elements/oci/layers/`
+- `ref:` pointing to a branch name instead of a git commit or tag
+- Using `$(date)` or `$(hostname)` in install commands
+- Adding patches without an `Upstream-Status:` header and exit condition
+
+## Verification
+
+- [ ] `just validate` passes without errors
+- [ ] `just bst show --deps all <element>` resolves cleanly
+- [ ] Narrowest element builds in isolation via `just bst build <element>`
+- [ ] `just patch-drift-check` passes if junction patches were touched
+- [ ] Commit message follows `<type>(<scope>): <desc>` with `Assisted-by:` trailer
 
 ## References
 
