@@ -13,6 +13,7 @@ depends:
   - bluefin/shell-extensions/copyous.bst
   - bluefin/shell-extensions/custom-command-menu.bst
   - bluefin/shell-extensions/dash-to-dock.bst
+  - bluefin/shell-extensions/fuzzy-application-search.bst
   - bluefin/shell-extensions/gradia-capture.bst
   - bluefin/shell-extensions/gsconnect.bst
   - bluefin/shell-extensions/power-status-color.bst
