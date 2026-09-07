@@ -1,0 +1,17 @@
+Upstream-Status: Pending
+
+Configure Ghostty dual-theme to track GNOME's Dark/Light style toggle button.
+Dakota uses Ghostty as its primary terminal emulator.
+Exit: Drop once common ships dual-theme by default.
+
+--- a/system_files/shared/etc/skel/.config/ghostty/config.ghostty
++++ b/system_files/shared/etc/skel/.config/ghostty/config.ghostty
+@@ -1,7 +1,7 @@
+ # Bluefin GNOME profile for Ghostty
+ # To override the theme, add `theme = <name>` to your config.
+ # Run `ghostty +list-themes` to see all available themes.
+-theme = Catppuccin Mocha
++theme = light:Catppuccin Latte,dark:Catppuccin Mocha
+ 
+ # Run as a single GTK instance, consistent with GNOME app conventions
+ gtk-single-instance = true

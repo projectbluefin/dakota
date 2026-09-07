@@ -9,6 +9,10 @@ sources:
 # Drop this patch once common provides a shared install-date helper.
 - kind: patch
   path: patches/common/0001-fastfetch-install-date.patch
+# Dakota uses Ghostty as primary terminal: enable dual-theme to track GNOME Dark/Light style.
+# Drop this patch once common ships dual-theme by default.
+- kind: patch
+  path: patches/common/0002-ghostty-dual-theme.patch
 - kind: git_module
   url: github:projectbluefin/branding/
   path: bluefin-branding

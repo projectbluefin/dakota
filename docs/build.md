@@ -73,6 +73,14 @@ The common source import also does not supply `fastfetch-user-count` or
 `bazaar-install-count`; those weekly-statistics inputs remain a separate parity
 gap, not a reason to fork the config or invent counts.
 
+## Ghostty theme ownership
+
+`bluefin/common.bst` imports Ghostty's GNOME profile from `projectbluefin/common`.
+Because Dakota uses Ghostty as its primary terminal emulator,
+`patches/common/0002-ghostty-dual-theme.patch` configures `theme = light:Catppuccin Latte,dark:Catppuccin Mocha`
+so that Ghostty follows the GNOME Dark/Light style toggle button out of the box.
+Drop this patch once common carries dual-theme by default.
+
 ## What NOT to do
 
 | Don't | Why |
