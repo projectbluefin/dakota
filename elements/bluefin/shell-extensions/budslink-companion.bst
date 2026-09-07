@@ -2,9 +2,9 @@ kind: manual
 
 sources:
 - kind: git_repo
-  url: github:maniacx/Bluetooth-Battery-Meter.git
-  track: GNOME46
-  ref: 1862ef79b69756aee2297bd15a6ae6656b7c11ab
+  url: github:maniacx/BudsLink-Companion.git
+  track: Gnome-Extension
+  ref: c11b6cf5626ee5417efc0af91148736e0697c354
 
 build-depends:
 - core/sandbox-tools.bst
@@ -25,7 +25,7 @@ config:
     _dest="%{install-root}%{datadir}/gnome-shell/extensions/${_uuid}"
     install -d "${_dest}"
 
-    cp -R extension.js prefs.js metadata.json stylesheet.css icons lib preferences ui script schemas "${_dest}/"
+    cp -R extension.js prefs.js metadata.json stylesheet.css icons lib preferences ui schemas "${_dest}/"
     install -Dm644 LICENSE "${_dest}/LICENSE"
     install -Dm644 README.md "${_dest}/README.md"
 
@@ -38,7 +38,7 @@ config:
 
     glib-compile-schemas --strict "${_dest}/schemas"
 
-    install -Dm644 schemas/org.gnome.shell.extensions.Bluetooth-Battery-Meter.gschema.xml \
-      "%{install-root}%{datadir}/glib-2.0/schemas/org.gnome.shell.extensions.Bluetooth-Battery-Meter.gschema.xml"
+    install -Dm644 schemas/org.gnome.shell.extensions.BudsLink-Companion.gschema.xml \
+      "%{install-root}%{datadir}/glib-2.0/schemas/org.gnome.shell.extensions.BudsLink-Companion.gschema.xml"
   - |
     %{install-extra}

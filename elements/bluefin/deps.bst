@@ -32,6 +32,7 @@ depends:
   - bluefin/swapfile.bst
   - bluefin/firstboot-date.bst
   - bluefin/firstboot-services.bst
+  - bluefin/flatpak-apps.bst
   - bluefin/wallpaper-month.bst
   - bluefin/bootc-install-config.bst
   - bluefin/composefs-loop-udisks-ignore.bst

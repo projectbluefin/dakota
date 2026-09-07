@@ -7,8 +7,8 @@ depends:
   # FIXME: cleanup custom make destdirs set when not needed
   - bluefin/shell-extensions/app-indicators.bst
   - bluefin/shell-extensions/bazaar-companion.bst
-  - bluefin/shell-extensions/bluetooth-battery-meter.bst
   - bluefin/shell-extensions/blur-my-shell.bst
+  - bluefin/shell-extensions/budslink-companion.bst
   - bluefin/shell-extensions/caffeine.bst
   - bluefin/shell-extensions/copyous.bst
   - bluefin/shell-extensions/custom-command-menu.bst
