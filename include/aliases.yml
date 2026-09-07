@@ -33,6 +33,7 @@ aliases:
   github_files: https://github.com/
   gitlab_files: https://gitlab.com/
   gnome_downloads: https://download.gnome.org/sources/
+  gnome_extensions: https://extensions.gnome.org/download-extension/
   gnome_nightly: https://nightly.gnome.org/
   gnupg_ftp: https://www.gnupg.org/ftp/
   gstreamer: https://gstreamer.freedesktop.org/
