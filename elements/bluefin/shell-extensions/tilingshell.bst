@@ -2,6 +2,7 @@ kind: manual
 
 sources:
 - kind: zip
+  base-dir: ""
   url: github_files:domferr/tilingshell/releases/download/17.3/tilingshell%40ferrarodomenico.com.zip
   ref: 63ab8230b62c1a888d5af40e47aef0676e5e99ac367e35f51a797fe3b9a79370
 

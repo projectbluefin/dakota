@@ -2,6 +2,8 @@
 name: dakota-extensions
 description: Package, update, and configure GNOME Shell extensions, Quick Settings panels, and schemas in Dakota. Use when editing elements/bluefin/shell-extensions/ or dconf extension defaults.
 metadata:
+  verified-sources:
+    - https://buildstream.gitlab.io/buildstream-plugins-community/sources/zip.html
   context7-sources:
     - /git_gitlab_gnome_org/gnome_gnome-shell
 ---
@@ -31,6 +33,11 @@ Dakota packages curated GNOME Shell extensions built from source or upstream rep
 2. **Create Element**:
    - Add `elements/bluefin/shell-extensions/<name>.bst` using `kind: manual`.
    - Source from pinned git commit or release tag.
+   - For release ZIPs with `metadata.json` at the archive root, set `base-dir: ""`
+     in the `kind: zip` source. The plugin default (`'*'`) extracts a child
+     directory instead, dropping root-level files. Inspect the pinned archive's
+     layout before choosing an extraction root; source-tree archives may have a
+     wrapper directory.
    - Extract UUID via `jq` and install files into:
      ```bash
      _uuid="$(jq -r .uuid metadata.json)"
@@ -48,6 +55,9 @@ Dakota packages curated GNOME Shell extensions built from source or upstream rep
 5. **Configure Default Enablement**:
    - If enabled by default, add the UUID to `enabled-extensions` in the appropriate dconf override file under `files/dconf/`.
 6. **Validate & Build**:
+   Graph validation (`bst show`) does not stage sources or execute installation
+   commands. Build the changed extension and inspect its installed metadata and
+   schemas; a green graph check alone cannot verify archive extraction.
    ```bash
    just validate
    just bst build bluefin/shell-extensions/<name>.bst
