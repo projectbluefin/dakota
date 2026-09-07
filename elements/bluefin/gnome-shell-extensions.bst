@@ -17,6 +17,7 @@ depends:
   - bluefin/shell-extensions/gradia-capture.bst
   - bluefin/shell-extensions/gsconnect.bst
   - bluefin/shell-extensions/power-status-color.bst
+  - bluefin/shell-extensions/quick-settings-audio-panel.bst
   - bluefin/shell-extensions/quicksettings-audio-devices-hider.bst
   - bluefin/shell-extensions/quicksettings-audio-devices-renamer.bst
   - bluefin/shell-extensions/syncthing-toggle.bst
