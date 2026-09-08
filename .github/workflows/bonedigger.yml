@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   lifecycle:
-    uses: projectbluefin/bonedigger/.github/workflows/lifecycle.yml@ebdd828be9a9c2f0c1fcac62574b6824463f8cba # require diagnostic Gists
+    uses: projectbluefin/bonedigger/.github/workflows/lifecycle.yml@e4fc04c6e35845a3c2b75d498e8640c51c3b5057 # require diagnostic Gists
     with:
       brand_name: "Dakota"
     secrets: inherit
