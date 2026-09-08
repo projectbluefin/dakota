@@ -65,6 +65,8 @@ depends:
   # transitively via gnome-control-center otherwise (projectbluefin/dakota#1163)
   - gnome-build-meta.bst:core-deps/libgtop.bst
 
+  - bluefin/virtualization.bst
+
   - freedesktop-sdk.bst:components/buildstream2.bst
   - freedesktop-sdk.bst:components/containers-common.bst
   - freedesktop-sdk.bst:components/debuginfod.bst
@@ -74,8 +76,6 @@ depends:
   - freedesktop-sdk.bst:components/podman.bst
   - freedesktop-sdk.bst:components/skopeo.bst
   - freedesktop-sdk.bst:components/flatpak-builder.bst
-
-  - bluefin/virtualization.bst
 
   - freedesktop-sdk.bst:components/bpf.bst
   - freedesktop-sdk.bst:components/vmlinuxh.bst
