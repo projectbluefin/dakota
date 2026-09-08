@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Freedesktop-SDK Developers
+# SPDX-License-Identifier: MIT
+
 has() {
   state="$(scripts/config --keep-case -s "${1}")"
   case "${state}" in
