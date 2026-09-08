@@ -1,6 +1,6 @@
 ---
 name: dakota-factory
-description: Reinforce the Project Bluefin factory model: two-output rule, docs-as-the-model hygiene, Context7 freshness protocol, and skill auditing. Use when finishing sessions, auditing skills, or writing back learned patterns.
+description: "Reinforce the Project Bluefin factory model: two-output rule, docs-as-the-model hygiene, Context7 freshness protocol, and skill auditing. Use when finishing sessions, auditing skills, or writing back learned patterns."
 metadata:
   context7-sources:
     - /addyosmani/agent-skills
