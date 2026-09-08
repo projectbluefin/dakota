@@ -16,6 +16,7 @@ depends:
 
 
   - bluefin/ghostty.bst
+  - bluefin/chairlift.bst
 
   - bluefin/fastfetch.bst
   - bluefin/nerd-fonts-symbols.bst
