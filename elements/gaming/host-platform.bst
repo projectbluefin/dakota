@@ -57,8 +57,8 @@ depends:
   # native apps; mixer/net/image/ttf are common runtime deps for indie titles.
   - freedesktop-sdk.bst:components/sdl3.bst
   - freedesktop-sdk.bst:components/sdl2-compat.bst
-  - freedesktop-sdk.bst:components/sdl2-mixer.bst
-  - freedesktop-sdk.bst:components/sdl2-net.bst
+  - freedesktop-sdk.bst:components/sdl3-mixer.bst
+  - freedesktop-sdk.bst:components/sdl3-net.bst
   - freedesktop-sdk.bst:components/sdl3-image.bst
   - freedesktop-sdk.bst:components/sdl3-ttf.bst
 
