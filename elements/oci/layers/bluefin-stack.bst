@@ -8,6 +8,7 @@ depends:
   - core/ntsync-modules-load.bst
   - gnome-build-meta.bst:gnomeos/initramfs/signed-modules.bst
   - gnome-build-meta.bst:oci/initramfs.bst
+  - bluefin/tuxedo-drivers.bst
 
   - gnome-build-meta.bst:gnomeos-deps/bootc.bst
   - gnome-build-meta.bst:oci/integration/bootc-config.bst
@@ -31,6 +32,13 @@ public:
       # so this is the deterministic winner. No [zramN] section = no zram device.
       - printf '# zram disabled; Dakota swaps via zswap + /var/swap/swapfile\n' > /usr/lib/systemd/zram-generator.conf
 
+      # Re-run depmod against the composed root so modprobe sees
+      # out-of-tree modules (e.g. tuxedo-drivers) alongside in-tree modules.
+      - |
+        KVER=$(ls /usr/lib/modules | head -n1)
+        if [ -n "$KVER" ]; then
+            depmod -a "$KVER"
+        fi
       - rm -rfv /boot /run
 
       # Required for bootc to create the image
