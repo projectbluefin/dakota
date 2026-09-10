@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Offline test double. Never delegates to the host's real Homebrew.
+set -euo pipefail
+: "${FIXTURE:?}" "${MOCK_PREFIX:?}"
+printf '%s\n' "$*" >> "${FIXTURE}/commands"
+if [[ ${HOMEBREW_DEVELOPER:-} == 1 ]]; then printf '%s\n' "$*" >> "${FIXTURE}/developer-commands"; fi
+case "$*" in
+    tap)
+        printf 'ublue-os/tap\n'
+        if [[ -e ${FIXTURE}/frostyard ]]; then printf 'frostyard/tap\n'; fi ;;
+    'tap ublue-os/tap'|'trust ublue-os/tap')
+        [[ ! -e ${FIXTURE}/tap-fail ]] ;;
+    'info --json=v2 --cask ublue-os/tap/chairlift')
+        if [[ -e ${FIXTURE}/info-fail ]]; then exit 1; fi
+        jq -n --arg url "$(< "${FIXTURE}/target-url")" --arg sha "$(< "${FIXTURE}/target-sha")" \
+            --arg version "$(< "${FIXTURE}/target-version")" \
+            '{casks:[{token:"chairlift",tap:"ublue-os/tap",version:$version,sha256:$sha,url:$url}]}' ;;
+    'fetch --cask ublue-os/tap/chairlift')
+        [[ ! -e ${FIXTURE}/fetch-fail ]] || exit 1
+        if [[ -e ${FIXTURE}/change-during-fetch ]]; then
+            printf '%064d\n' 2 > "${FIXTURE}/target-sha"
+        fi ;;
+    'uninstall --cask frostyard/tap/chairlift'|'uninstall --cask ublue-os/tap/chairlift')
+        [[ ! -e ${FIXTURE}/uninstall-fail ]] || exit 1
+        rm -rf "${MOCK_PREFIX}/Caskroom/chairlift"
+        rm -f "${MOCK_PREFIX}/bin/chairlift" "${MOCK_PREFIX}/bin/chairlift-wrapper"
+        if [[ -e ${FIXTURE}/change-during-uninstall ]]; then
+            printf '%064d\n' 2 > "${FIXTURE}/target-sha"
+        fi ;;
+    'untap frostyard/tap')
+        [[ ${HOMEBREW_DEVELOPER:-} == 1 ]] || exit 90
+        [[ ! -e ${FIXTURE}/untap-fail ]] || exit 1
+        [[ -e ${FIXTURE}/untap-noop ]] || rm -f "${FIXTURE}/frostyard" ;;
+    'install --cask --require-sha ublue-os/tap/chairlift'|'reinstall --cask --require-sha ublue-os/tap/chairlift')
+        [[ ! -e ${FIXTURE}/install-fail ]] || exit 1
+        mkdir -p "${MOCK_PREFIX}/Caskroom/chairlift/.metadata"
+        jq -n --arg version "$(< "${FIXTURE}/target-version")" \
+            '{source:{tap:"ublue-os/tap",version:$version}}' \
+            > "${MOCK_PREFIX}/Caskroom/chairlift/.metadata/INSTALL_RECEIPT.json"
+        if [[ -e ${FIXTURE}/wrong-receipt ]]; then
+            printf '{"source":{"tap":"frostyard/tap","version":"0.10.1"}}\n' \
+                > "${MOCK_PREFIX}/Caskroom/chairlift/.metadata/INSTALL_RECEIPT.json"
+        fi
+        if [[ ! -e ${FIXTURE}/missing-binaries ]]; then
+            version=$(< "${FIXTURE}/target-version")
+            mkdir -p "${MOCK_PREFIX}/Caskroom/chairlift/${version}"
+            for binary in chairlift chairlift-wrapper; do
+                printf '#!/bin/sh\nexit 0\n' > "${MOCK_PREFIX}/Caskroom/chairlift/${version}/${binary}"
+                chmod +x "${MOCK_PREFIX}/Caskroom/chairlift/${version}/${binary}"
+                ln -sfn "${MOCK_PREFIX}/Caskroom/chairlift/${version}/${binary}" "${MOCK_PREFIX}/bin/${binary}"
+            done
+        fi ;;
+    shellenv)
+        # Expanded by the generic preinstall's eval, not by this mock shell.
+        # shellcheck disable=SC2016
+        printf 'export PATH="%s/bin:$PATH"\n' "$MOCK_PREFIX" ;;
+    bundle*)
+        [[ "$*" != *chairlift.Brewfile* ]] || exit 91
+        [[ ${HOMEBREW_NO_AUTO_UPDATE:-} != 1 ]] || exit 92 ;;
+    update)
+        [[ ${HOMEBREW_NO_AUTO_UPDATE:-} != 1 ]] || exit 92
+        [[ $(umask) != 0077 ]] || exit 93
+        if [[ -p ${FIXTURE}/update-ready ]]; then
+            printf 'ready\n' > "${FIXTURE}/update-ready"
+            read -r _ < "${FIXTURE}/update-release"
+        fi ;;
+    upgrade)
+        [[ ${HOMEBREW_NO_AUTO_UPDATE:-} != 1 ]] || exit 92
+        [[ $(umask) != 0077 ]] || exit 93 ;;
+    *) printf 'Unexpected mock brew invocation: %s\n' "$*" >&2; exit 99 ;;
+esac

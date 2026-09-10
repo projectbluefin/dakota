@@ -84,6 +84,7 @@ check-publish-workflow:
     python3 -m unittest scripts.test_gen_filemap
     python3 -m unittest scripts.test_image_variants
     python3 -m unittest scripts.test_desktop_defaults
+    just test-chairlift-migration
 
 [group('dev')]
 monitor-pipeline BUILD_RUN_ID="":
@@ -104,6 +105,11 @@ validate:
     just test-render-card
     just bst show --deps all oci/bluefin.bst
     just bst show --deps all oci/bluefin-nvidia.bst
+
+# Offline migration/assembly checks; never invokes the host Homebrew.
+[group('test')]
+test-chairlift-migration:
+    bash scripts/test_chairlift_migration.sh
 
 # Unit tests for .github/scripts/render_card.py.
 [group('dev')]
