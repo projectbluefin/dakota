@@ -3,8 +3,8 @@ kind: junction
 sources:
 - kind: git_repo
   url: gitlab:freedesktop-sdk/freedesktop-sdk.git
-  track: freedesktop-sdk-25.08*
-  ref: freedesktop-sdk-25.08.16-0-gc4f8b7234c787e8282fb9d4f208b08f9f677eba9
+  track: freedesktop-sdk-26.08*
+  ref: freedesktop-sdk-26.08.0-0-gdb97cce32cecadc7a3e98f06d557ebfa6ba9ad46
 - kind: patch_queue
   path: patches/freedesktop-sdk
 
@@ -18,6 +18,10 @@ config:
         bootstrap_build_arch: 'x86_64'
     - arch == 'aarch64':
         bootstrap_build_arch: 'aarch64'
+    - arch == "ppc64le":
+        bootstrap_build_arch: "ppc64le"
+    - arch == "riscv64":
+        bootstrap_build_arch: "x86_64"
 
   overrides:
     components/at-spi2-core.bst: gnome-build-meta.bst:sdk/at-spi2-core.bst
@@ -27,14 +31,15 @@ config:
     components/gdk-pixbuf.bst: gnome-build-meta.bst:sdk/gdk-pixbuf.bst
     components/glib-networking.bst: gnome-build-meta.bst:sdk/glib-networking.bst
     components/glib.bst: gnome-build-meta.bst:sdk/glib.bst
+    components/glycin.bst: gnome-build-meta.bst:sdk/glycin.bst
     components/gobject-introspection.bst: gnome-build-meta.bst:sdk/gobject-introspection.bst
     components/python3-gi-docgen.bst: gnome-build-meta.bst:sdk/gi-docgen.bst
     components/graphene.bst: gnome-build-meta.bst:sdk/graphene.bst
     components/gsettings-desktop-schemas.bst: gnome-build-meta.bst:sdk/gsettings-desktop-schemas.bst
-    components/gtk-doc.bst: gnome-build-meta.bst:sdk/gtk-doc.bst
     components/gtk3.bst: gnome-build-meta.bst:sdk/gtk+-3.bst
     components/libibus.bst: gnome-build-meta.bst:sdk/libibus.bst
     components/json-glib.bst: gnome-build-meta.bst:sdk/json-glib.bst
+    components/libglycin.bst: gnome-build-meta.bst:sdk/libglycin.bst
     components/libnotify.bst: gnome-build-meta.bst:sdk/libnotify.bst
     components/librsvg.bst: gnome-build-meta.bst:sdk/librsvg.bst
     components/libsoup.bst: gnome-build-meta.bst:sdk/libsoup.bst
@@ -52,12 +57,19 @@ config:
     components/zenity.bst: gnome-build-meta.bst:void/zenity.bst
 
     components/linux-module-cert.bst: gnome-build-meta.bst:gnomeos/linux-module-cert.bst
-    components/systemd-base.bst: gnome-build-meta.bst:core-deps/systemd-base.bst
+    components/_private/systemd-base.bst: gnome-build-meta.bst:core-deps/systemd-base.bst
     components/systemd.bst: gnome-build-meta.bst:core-deps/systemd.bst
     components/systemd-ukify.bst: gnome-build-meta.bst:core-deps/systemd-ukify.bst
     components/systemd-libs.bst: gnome-build-meta.bst:core-deps/systemd-libs.bst
 
-    components/geoclue-base.bst: gnome-build-meta.bst:gnomeos-deps/geoclue-base.bst
+    # swick has signed up for dealing with all the issues from building these from git
+    components/_private/xdg-desktop-portal-base.bst: gnome-build-meta.bst:core-deps/xdg-desktop-portal-base.bst
+    components/xdg-desktop-portal.bst: gnome-build-meta.bst:core-deps/xdg-desktop-portal.bst
+    components/flatpak.bst: gnome-build-meta.bst:core-deps/flatpak.bst
+
+    # gnome-calendar still requires libical 3.x. Nothing in the flatpak runtimes depends
+    # on it, so this can be reverted in a stable branch
+    components/libical.bst: gnome-build-meta.bst:core-deps/libical3.bst
 
     # Keep kernel selection at the junction boundary so every consumer
     # (unsigned-modules, initramfs, nvidia-drivers) resolves the same
