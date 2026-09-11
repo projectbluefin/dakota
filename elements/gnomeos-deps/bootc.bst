@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:bootc-dev/bootc.git
   track: v*
-  ref: v1.16.11-0-gadd7a909584c832c563bdc3a45c61e42f736ecf2
+  ref: v1.16.12-0-g3cd5ee81daec5081643970c8e354bdf01dfc09e6
 - kind: cargo2
   ref:
   - kind: registry
@@ -61,8 +61,8 @@ sources:
     sha: 924ed96dd52d1b75e9c1a3e6275715fd320f5f9439fb5a4a11fa51f4221158d2
   - kind: registry
     name: async-compression
-    version: 0.4.42
-    sha: e79b3f8a79cccc2898f31920fc69f304859b3bd567490f75ebf51ae1c792a9ac
+    version: 0.4.43
+    sha: 3976abdc8fe7d1133d43d304afd42abdf5bc3e1319d263d223bde07b5efc4be8
   - kind: registry
     name: async-io
     version: 2.6.0
@@ -247,65 +247,69 @@ sources:
     version: 7.2.2
     sha: 958c5d6ecf1f214b4c2bbbbf6ab9523a864bd136dcf71a7e8904799acfe1ad47
   - kind: registry
+    name: comfy-table
+    version: 8.0.0
+    sha: 136c8c4c3823846e8ba6d4bda011b4e5d5827b8bb0ac26c31f9ab31abe9f54f2
+  - kind: registry
     name: comma
     version: 1.0.0
     sha: 55b672471b4e9f9e95499ea597ff64941a309b2cdbffcc46f2cc5e2d971fd335
   - kind: git
-    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
+    commit: f720d6c79ac6b082fb1e182eed3b291f88e2a7f4
     repo: https://github.com/composefs/composefs-rs
     query:
-      tag: v0.9.0
+      tag: v0.9.2
     name: composefs
-    version: 0.9.0
+    version: 0.9.2
   - kind: git
-    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
+    commit: f720d6c79ac6b082fb1e182eed3b291f88e2a7f4
     repo: https://github.com/composefs/composefs-rs
     query:
-      tag: v0.9.0
+      tag: v0.9.2
     name: composefs-boot
-    version: 0.9.0
+    version: 0.9.2
   - kind: git
-    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
+    commit: f720d6c79ac6b082fb1e182eed3b291f88e2a7f4
     repo: https://github.com/composefs/composefs-rs
     query:
-      tag: v0.9.0
+      tag: v0.9.2
     name: composefs-ctl
-    version: 0.9.0
+    version: 0.9.2
   - kind: git
-    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
+    commit: f720d6c79ac6b082fb1e182eed3b291f88e2a7f4
     repo: https://github.com/composefs/composefs-rs
     query:
-      tag: v0.9.0
+      tag: v0.9.2
     name: composefs-fuse
-    version: 0.9.0
+    version: 0.9.2
   - kind: git
-    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
+    commit: f720d6c79ac6b082fb1e182eed3b291f88e2a7f4
     repo: https://github.com/composefs/composefs-rs
     query:
-      tag: v0.9.0
+      tag: v0.9.2
     name: composefs-ioctls
-    version: 0.9.0
+    version: 0.9.2
   - kind: git
-    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
+    commit: f720d6c79ac6b082fb1e182eed3b291f88e2a7f4
     repo: https://github.com/composefs/composefs-rs
     query:
-      tag: v0.9.0
+      tag: v0.9.2
     name: composefs-oci
-    version: 0.9.0
+    version: 0.9.2
   - kind: git
-    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
+    commit: f720d6c79ac6b082fb1e182eed3b291f88e2a7f4
     repo: https://github.com/composefs/composefs-rs
     query:
-      tag: v0.9.0
+      tag: v0.9.2
     name: composefs-splitdirfdstream
-    version: 0.9.0
+    version: 0.9.2
   - kind: git
-    commit: 90f30e8abbcb5af60421b6b749cbf189b2a8895e
+    commit: f720d6c79ac6b082fb1e182eed3b291f88e2a7f4
     repo: https://github.com/composefs/composefs-rs
     query:
-      tag: v0.9.0
+      tag: v0.9.2
     name: composefs-storage
-    version: 0.9.0
+    version: 0.9.2
   - kind: registry
     name: compression-codecs
     version: 0.4.38
