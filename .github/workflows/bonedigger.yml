@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   lifecycle:
-    uses: projectbluefin/bonedigger/.github/workflows/lifecycle.yml@aa3185566171de43106976cd5a0ac72ee3106868 # clanker-queue-rollout
+    uses: projectbluefin/bonedigger/.github/workflows/lifecycle.yml@03f32c481d0c435606a5f0fc2745e7116d70bbaa # require diagnostic Gists
     with:
       brand_name: "Dakota"
     secrets: inherit
