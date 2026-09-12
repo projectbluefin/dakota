@@ -1,0 +1,14 @@
+diff --git a/arch/powerpc/boot/types.h b/arch/powerpc/boot/types.h
+index 8a4c418b7260..6f34b31b85f9 100644
+--- a/arch/powerpc/boot/types.h
++++ b/arch/powerpc/boot/types.h
+@@ -40,7 +40,9 @@ typedef s64 int64_t;
+ #define min_t(type, a, b) min(((type) a), ((type) b))
+ #define max_t(type, a, b) max(((type) a), ((type) b))
+ 
++#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 202300L
+ typedef int bool;
++#endif
+ 
+ #ifndef true
+ #define true 1

@@ -1,0 +1,47 @@
+From 75585cbb5ad903573a7fe623a62820f04ef7f166 Mon Sep 17 00:00:00 2001
+From: Jordan Petridis <jpetridis@gnome.org>
+Date: Mon, 4 Aug 2025 20:22:27 +0300
+Subject: [PATCH] project.conf: Add GNOME CAS servers
+
+This is meant as a downstream patch. Till now everyone
+has to configure the servers in their buildstream config,
+and in order to have this work ootb we need to patch
+the project.conf of fdo-sdk in order for the junction
+to also make use of the CAS server.
+---
+ project.conf | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/project.conf b/project.conf
+index b3fd0f84a..982bddfcb 100644
+--- a/project.conf
++++ b/project.conf
+@@ -149,6 +149,12 @@ artifacts:
+     retry-limit: 4
+     retry-delay: 500
+     request-timeout: 300
++- url: https://gbm.gnome.org:11003
++  connection-config:
++    keepalive-time: 60
++    retry-limit: 4
++    retry-delay: 500
++    request-timeout: 300
+ 
+ source-caches:
+ - url: https://cache.freedesktop-sdk.io:11001
+@@ -157,6 +163,12 @@ source-caches:
+     retry-limit: 4
+     retry-delay: 500
+     request-timeout: 300
++- url: https://gbm.gnome.org:11003
++  connection-config:
++    keepalive-time: 60
++    retry-limit: 4
++    retry-delay: 500
++    request-timeout: 300
+ 
+ sandbox:
+   build-arch: '%{target_arch}'
+-- 
+2.55.0
+
