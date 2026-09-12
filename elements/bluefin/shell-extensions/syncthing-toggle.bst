@@ -2,11 +2,9 @@ kind: manual
 
 sources:
 - kind: git_repo
-  url: github:rehhouari/gnome-shell-extension-syncthing-toggle.git
+  url: github:projectbluefin/bluefin-bling.git
   track: main
-  ref: 658424caf8238b57b11e0e373aff92a7c41ecb7c
-- kind: patch
-  path: patches/shell-extensions/syncthing-service-control.patch
+  ref: 67e89b215e390eb136a0fdf97bad2c0eba8b5b15
 
 build-depends:
 - core/sandbox-tools.bst
@@ -23,15 +21,13 @@ variables:
 config:
   install-commands:
   - |
-    sed -i "s/_('Syncthing')/_('Sync Folder')/g" toggle.js
-
+    cd extensions/syncthing-toggle
     _uuid="$(jq -r .uuid metadata.json)"
     _dest="%{install-root}%{datadir}/gnome-shell/extensions/${_uuid}"
     install -d "${_dest}"
 
     cp -R extension.js prefs.js toggle.js metadata.json icons schemas "${_dest}/"
-    install -Dm644 LICENSE "${_dest}/LICENSE"
-    install -Dm644 README.md "${_dest}/README.md"
+    install -Dm644 ../../README.md "${_dest}/README.md"
 
     glib-compile-schemas --strict "${_dest}/schemas"
 

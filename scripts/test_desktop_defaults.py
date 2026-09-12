@@ -88,6 +88,7 @@ class DesktopDefaultsTests(unittest.TestCase):
         enabled = self.enabled_extensions()
         for uuid in (
             "syncthing-toggle@rehhouari.github.com",
+            "syncthing-toggle@projectbluefin.io",
             "tailscale-gnome-qs@tailscale-qs.github.io",
             "copyous@boerdereinar.dev",
             "quick-settings-audio-panel@rayzeq.github.io",
