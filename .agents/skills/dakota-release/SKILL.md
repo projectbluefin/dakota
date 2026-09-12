@@ -29,7 +29,7 @@ Release workflows cross a cryptographic and security boundary. Stop for human ap
 1. **Trace Digest Flow**: Map the exact SHA/digest path from build receipt to the target publication tag.
 2. **Verify Cryptographic Policy**: Confirm cosign certificate identity and issuer rules match repository policy.
 3. **Lock Tested SHA**: Always pin and verify the tested source commit SHA; fail closed if upstream advanced during testing.
-4. **Preserve Variant Matrix**: Ensure all variants (`default`, `nvidia`, `gaming`, `nvidia-gaming`) are promoted or rolled back together.
+4. **Verify Variant Coverage**: Inspect the actual promotion and rollback workflows independently. `rollback-stable.yml` currently rolls back only `dakota` and `dakota-nvidia`, plus optional default-image multiarch tags. It does not roll back `gaming` or `nvidia-gaming`; recovery of those variants needs a separately reviewed plan, not an assumption of four-variant parity.
 5. **Human Gate**: Stop and obtain human confirmation before executing any production promotion, signing change, or tag rollback.
 
 ## Invariants
@@ -46,7 +46,7 @@ Release workflows cross a cryptographic and security boundary. Stop for human ap
 |---|---|
 | "Adding an e2e test gate to promotion makes stable safer." | Promotion occurs hours after build. Re-running e2e adds flakiness and delays security hotfixes. CI owns test gates during build. |
 | "A regex without `^` and `$` is good enough for cosign identity." | Unanchored regular expressions allow malicious forks or subpaths to forge signatures. Always anchor with `^` and `$`. |
-| "We can promote just the default image if nvidia is failing." | All image variants must remain in lockstep. Partial promotions break ecosystem guarantees. |
+| "The rollback workflow covers every published variant." | Its current coverage is the default/NVIDIA pair, not the gaming variants. Verify each affected tag before claiming recovery. |
 
 ## Red Flags
 
@@ -61,7 +61,7 @@ Release workflows cross a cryptographic and security boundary. Stop for human ap
 - [ ] All third-party release actions are pinned to 40-character commit SHAs
 - [ ] Certificate identity regex is anchored with `^` and `$`
 - [ ] Digest copy commands use skopeo/cosign without intermediate re-tagging
-- [ ] Rollback workflow preserves variant parity across all 4 streams
+- [ ] Every affected variant is accounted for; the default/NVIDIA rollback is not reported as recovery of gaming variants
 - [ ] Human approval obtained before any release execution
 
 ## References

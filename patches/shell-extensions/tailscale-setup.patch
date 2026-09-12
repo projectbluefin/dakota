@@ -1,0 +1,327 @@
+Subject: Provide Tailscale setup and recover from unavailable or unauthorized daemon
+Upstream-Status: Inappropriate [Dakota desktop setup integration]
+
+--- a/tailscale-gnome-qs@tailscale-qs.github.io/extension.js
++++ b/tailscale-gnome-qs@tailscale-qs.github.io/extension.js
+@@ -33,6 +33,17 @@
+ // This is the live instance of the Quick Settings menu
+ const QuickSettingsMenu = Main.panel.statusArea.quickSettings;
+ 
++function openSetup() {
++    try {
++        const app = Gio.DesktopAppInfo.new('org.projectbluefin.dakota.TailscaleSetup.desktop');
++        if (!app)
++            throw new Error('Tailscale Setup is not installed.');
++        app.launch([], global.create_app_launch_context(0, -1));
++    } catch (error) {
++        Main.notifyError('Tailscale Setup', error.message);
++    }
++}
++
+ import {Tailscale} from './tailscale.js';
+ import {filterMullvadNodes, createMullvadExitNodeButton} from './mullvad.js';
+ 
+@@ -113,6 +124,7 @@
+           this.add_child(sub);
+           sub.text = subtitle;
+ 
++          this._pressTimeout = null;
+           this._connectEvents = [];
+           this._connectEvents.push(this.connect('activate', () => onClick?.()));
+ 
+@@ -290,7 +302,17 @@
+ 
+           this._tailscale = tailscale;
+           this.title = 'Tailscale';
+-          tailscale.bind_property('running', this, 'checked', GObject.BindingFlags.SYNC_CREATE | GObject.BindingFlags.BIDIRECTIONAL);
++          tailscale.bind_property('running', this, 'checked', GObject.BindingFlags.SYNC_CREATE);
++          this.connect('clicked', () => {
++              if (tailscale.needs_setup) {
++                  this.checked = tailscale.running;
++                  openSetup();
++              } else {
++                  tailscale.running = this.checked;
++              }
++          });
++          const setupItem = this.menu.addAction(_('Set up Tailscale…'), openSetup);
++          setupItem.visible = Main.sessionMode.allowSettings;
+ 
+           // Header action bar section
+           const actionLayout = new Clutter.GridLayout();
+@@ -307,12 +329,15 @@
+           // This function is unique to this class. It adds a nice header with an
+           // icon, title and optional subtitle. It's recommended you do so for
+           // consistency with other menus.
+-          tailscale.connectObject('notify::exit-node-name', () => {
+-              this.subtitle = tailscale.exit_node_name;
++          const updateHeader = () => {
++              this.subtitle = tailscale.needs_setup || !tailscale.running
++                  ? tailscale.connection_state : tailscale.exit_node_name || tailscale.connection_state;
+               this.menu.setHeader(icon, this.title, this.subtitle);
+-              disableExitNodeButton.reactive = tailscale.exit_node !== '';
+-          }, this);
+-          this.menu.setHeader(icon, this.title, tailscale.exit_node_name);
++              disableExitNodeButton.reactive = !tailscale.needs_setup && tailscale.exit_node !== '';
++          };
++          tailscale.connectObject('notify::exit-node-name', updateHeader,
++              'notify::connection-state', updateHeader, 'notify::running', updateHeader, this);
++          updateHeader();
+ 
+           // NODES
+           const mnodes = new PopupScrollableSubMenuMenuItem(_('Nodes'), false, {});
+@@ -439,7 +464,7 @@
+               for (const p of obj.profiles) {
+                   if (!p.NetworkProfile || !p.NetworkProfile.DomainName)
+                       continue; // Skip invalid profiles
+-                  const enabled = obj._prefs.ControlURL === p.ControlURL && obj._prefs.Config.UserProfile.ID === p.UserProfile.ID;
++                  const enabled = obj._prefs?.ControlURL === p.ControlURL && obj._prefs?.Config?.UserProfile?.ID === p.UserProfile?.ID;
+                   const onClick = () => {
+                       tailscale.profiles = p.ID;
+                   };
+@@ -449,6 +474,12 @@
+           };
+           tailscale.connectObject('notify::profiles', obj => updateProfiles(obj), this);
+           this.menu.addMenuItem(profiles);
++          const updatePermissions = () => {
++              for (const item of [mnodes, prefs, profiles])
++                  item.setSensitive(!tailscale.needs_setup);
++          };
++          tailscale.connectObject('notify::needs-setup', updatePermissions, this);
++          updatePermissions();
+       }
+ 
+       destroy() {
+--- a/tailscale-gnome-qs@tailscale-qs.github.io/tailscale.js
++++ b/tailscale-gnome-qs@tailscale-qs.github.io/tailscale.js
+@@ -4,7 +4,6 @@
+ import Soup from 'gi://Soup';
+ 
+ // Promisify methods once at module load to avoid wrapper accumulation in loops
+-Gio._promisify(Gio.DataInputStream.prototype, 'read_line_async');
+ Gio._promisify(Soup.Session.prototype, 'send_and_read_async');
+ 
+ class TailscaleApiClient {
+@@ -14,32 +13,12 @@
+         });
+         this.session = new Soup.Session({
+             'remote-connectable': address,
+-            'timeout': 0,
++            'timeout': 10,
+             'idle-timeout': 0,
+         });
++        this.cancellable = new Gio.Cancellable();
+         this.encoder = new TextEncoder();
+         this.decoder = new TextDecoder();
+-    }
+-
+-    async* stream(method, path, cancellable) {
+-        const message = Soup.Message.new(method, `http://local-tailscaled.sock${path}`);
+-
+-        const baseStream = this.session.send(message, cancellable);
+-        const stream = new Gio.DataInputStream({base_stream: baseStream});
+-        try {
+-            const contentType = message.response_headers.get_one('Content-Type');
+-            while (true) {
+-                // eslint-disable-next-line no-await-in-loop
+-                const [_response, length] = await stream.read_line_async(GLib.PRIORITY_DEFAULT, cancellable);
+-                if (length === 0)
+-                    break;
+-
+-                const response = this.decoder.decode(_response);
+-                yield contentType === 'application/json' ? JSON.parse(response) : response;
+-            }
+-        } finally {
+-            stream.close(cancellable);
+-        }
+     }
+ 
+     async request(method, path, body = null) {
+@@ -49,13 +28,16 @@
+             message.set_request_body_from_bytes('application/json', new GLib.Bytes(bytes));
+         }
+ 
+-        const responseBytes = await this.session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null);
++        const responseBytes = await this.session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, this.cancellable);
++        if (message.status_code < 200 || message.status_code >= 300)
++            throw new Error(`Tailscale request failed (HTTP ${message.status_code}). Use Set up Tailscale to authorize desktop control.`);
+         const response = this.decoder.decode(responseBytes.get_data());
+-        const contentType = message.response_headers.get_one('Content-Type');
+-        return contentType === 'application/json' ? JSON.parse(response) : response;
++        const contentType = message.response_headers.get_one('Content-Type') || '';
++        return contentType.startsWith('application/json') ? JSON.parse(response) : response;
+     }
+ 
+     destroy() {
++        this.cancellable.cancel();
+         this.session.abort();
+         this.session = null;
+         this.encoder = null;
+@@ -66,6 +48,10 @@
+ export const Tailscale = GObject.registerClass(
+     {
+         Properties: {
++            'needs-setup': GObject.ParamSpec.boolean(
++                'needs-setup', '', '', GObject.ParamFlags.READABLE, true),
++            'connection-state': GObject.ParamSpec.string(
++                'connection-state', '', '', GObject.ParamFlags.READABLE, 'Set up Tailscale'),
+             'running': GObject.ParamSpec.boolean(
+                 'running', '', '',
+                 GObject.ParamFlags.READWRITE,
+@@ -128,6 +114,10 @@
+             super._init();
+             this._client = new TailscaleApiClient();
+             this._running = false;
++            this._needsSetup = true;
++            this._connectionState = 'Set up Tailscale';
++            this._backendState = '';
++            this._destroyed = false;
+             this._dns = false;
+             this._routes = false;
+             this._allowLanAccess = false;
+@@ -147,6 +137,7 @@
+         }
+ 
+         destroy() {
++            this._destroyed = true;
+             this._cancelable.cancel();
+             this._cancelable = null;
+             this._client.destroy();
+@@ -161,7 +152,7 @@
+         }
+ 
+         _processRunning(prefs) {
+-            const running = prefs.WantRunning;
++            const running = Boolean(prefs.WantRunning) && this._backendState === 'Running';
+             if (running !== this._running) {
+                 this._running = running;
+                 this.notify('running');
+@@ -274,6 +265,21 @@
+             }
+         }
+ 
++        get needs_setup() {
++            return this._needsSetup;
++        }
++
++        get connection_state() {
++            return this._connectionState;
++        }
++
++        _setConnectionState(needsSetup, message) {
++            this._needsSetup = needsSetup;
++            this._connectionState = message;
++            this.notify('needs-setup');
++            this.notify('connection-state');
++        }
++
+         get running() {
+             return this._running;
+         }
+@@ -383,51 +389,38 @@
+                 this._timeouts.push(id);
+             });
+ 
+-            while (true) {
++            // Bounded asynchronous polling also recovers after first-run
++            // authorization, daemon restart, and a profile switch. Never block
++            // GNOME Shell on a synchronous HTTP stream waiting for a daemon.
++            while (!this._destroyed) {
+                 try {
+-                    // eslint-disable-next-line no-await-in-loop
+                     const status = await this._client.request('GET', '/localapi/v0/status');
++                    if (this._destroyed)
++                        return;
++                    this._backendState = status.BackendState;
+                     this._peers = Object.values(status.Peer || {});
+                     this._selfNode = status.Self || {};
+-                    // eslint-disable-next-line no-await-in-loop
+                     this._prefs = await this._client.request('GET', '/localapi/v0/prefs');
+-                    // eslint-disable-next-line no-await-in-loop
++                    if (this._destroyed)
++                        return;
+                     this._profiles = await this._client.request('GET', '/localapi/v0/profiles/');
++                    if (this._destroyed)
++                        return;
++                    const unauthorized = this._prefs.OperatorUser !== GLib.get_user_name();
++                    const needsLogin = !['Running', 'Stopped', 'Starting'].includes(status.BackendState);
++                    this._setConnectionState(unauthorized || needsLogin,
++                        unauthorized ? 'Set up Tailscale' : {
++                            Running: 'Connected', Stopped: 'Disconnected', Starting: 'Connecting',
++                            NeedsLogin: 'Sign in to Tailscale', NeedsMachineAuth: 'Device approval required',
++                        }[status.BackendState] || 'Set up Tailscale');
+                     this.notify('profiles');
+                     this._parseResponse();
+-
+-                    // eslint-disable-next-line no-await-in-loop
+-                    for await (const update of this._client.stream('GET', '/localapi/v0/watch-ipn-bus', this._cancelable)) {
+-                        let shouldUpdate = false;
+-                        if (update.Prefs) {
+-                            this._prefs = update.Prefs;
+-                            shouldUpdate = true;
+-                        }
+-                        if (update.NetMap) {
+-                            this._peers = update.NetMap.Peers.map(peer => ({
+-                                ID: peer.StableID,
+-                                DNSName: peer.Name,
+-                                OS: peer.Hostinfo.OS,
+-                                ExitNodeOption: peer.AllowedIPs?.includes('0.0.0.0/0'),
+-                                Online: peer.Online,
+-                                TailscaleIPs: peer.Addresses.map(address => address.split('/')[0]),
+-                                Tags: peer.Tags,
+-                                Location: peer.Hostinfo.Location,
+-                            }));
+-                            shouldUpdate = true;
+-                        }
+-                        if (shouldUpdate)
+-                            this._parseResponse();
+-                    }
+                 } catch (error) {
+-                    if (!(error instanceof GLib.Error && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))) {
+-                        console.error(error);
+-                        this._processRunning({WantRunning: false});
+-                    }
+-
+-                    break;
++                    if (this._destroyed)
++                        return;
++                    this._processRunning({WantRunning: false});
++                    this._setConnectionState(true, 'Tailscale unavailable — open setup');
+                 }
+-                // eslint-disable-next-line no-await-in-loop
+                 await delayPromise(5000);
+             }
+         }
+@@ -457,10 +450,17 @@
+             this._client.request('PATCH', '/localapi/v0/prefs', body)
+         .then(
+             prefs => {
++                if (this._destroyed)
++                    return;
+                 this._prefs = prefs;
+                 this._parseResponse();
+             },
+-            error => console.error(error)
++            error => {
++                if (this._destroyed)
++                    return;
++                this._setConnectionState(true, error.message);
++                this.notify('running');
++            }
+         );
+         }
+ 
+@@ -468,9 +468,12 @@
+             this._client.request('POST', `/localapi/v0/profiles/${value}`, {})
+         .then(
+             () => {
+-                this.notify('profiles');
++                // The next refresh reads the selected profile and its settings.
+             },
+-            error => console.error(error)
++            error => {
++                if (!this._destroyed)
++                    this._setConnectionState(true, error.message);
++            }
+         );
+         }
+     }

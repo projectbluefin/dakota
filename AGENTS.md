@@ -10,9 +10,9 @@ Copilot. Load only the skill matching the task; do not read every skill.
 
 ## Factory model invariants
 
-- **Two Outputs Rule**: Every session produces exactly **two** outputs: the work and the learning. Output 1 without Output 2 leaves the factory no smarter than before you arrived. Commit new patterns or constraints in the same PR as the code change.
+- **Scoped Documentation**: Correct durable, task-relevant guidance when the work reveals an error or missing constraint. Do not manufacture documentation changes for every session or expand a read-only task into writes. Preparing changes does not authorize committing or publishing them.
 - **Docs Are the Model**: Skills and documentation are evergreen operating procedures. Never append dated session logs (`2026-08-01: we found X`), running issue numbers, or resolved checklists. Codify learnings as timeless architectural invariants and failure modes.
-- **Context7 Freshness Protocol**: For any named tool, library, or framework (BuildStream, bootc, systemd, cosign), verify syntax using Context7 (`DETECT → FETCH → EMBED → CITE`) and record verified sources in skill frontmatter.
+- **Documentation Freshness**: Verify external syntax against current official documentation and cite the source when updating guidance. Context7 is optional when available; direct official documentation is equally valid. Do not require unavailable tools.
 
 ## Skill routing
 
@@ -21,7 +21,7 @@ Copilot. Load only the skill matching the task; do not read every skill.
 | BST elements, junctions, patches, or build graph errors | `dakota-buildstream` |
 | GitHub Actions workflows, matrix builds, CI publication | `dakota-ci` |
 | GNOME Shell extensions, ESM modules, dconf defaults | `dakota-extensions` |
-| Factory exit checklist, two-output write-back, skill audit | `dakota-factory` |
+| Task-relevant documentation corrections and skill audits | `dakota-factory` |
 | OCI layer composition, boot testing, VM checks, OTA | `dakota-image` |
 | Native Go, Rust, Zig, C, or binary packaging in BST | `dakota-packaging` |
 | Stable promotion, image signing, cosign, rollback | `dakota-release` |

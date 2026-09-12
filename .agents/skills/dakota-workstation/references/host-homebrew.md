@@ -62,6 +62,111 @@ the source; `elements/bluefin/common.bst` keeps a build-time guard that fails
 if the `/var/home/linuxbrew` spelling ever regresses upstream — fix such
 regressions in common, not with a Dakota-side rewrite.
 
+## ChairLift cask migration
+
+Dakota installs `ublue-os/tap/chairlift` (Project Bluefin's release), not
+`frostyard/tap/chairlift`. `bluefin/common.bst` replaces the inherited Brewfile,
+desktop assets and bootc policy using pinned ChairLift source. Keep common's
+existing `/usr/share/chairlift/config.yml` unchanged: fork-only configuration keys
+make the old Frostyard binary reject the entire file if migration is offline or
+blocked. `/etc/chairlift` remains authoritative and untouched. New fork-only UI
+groups inherit the fork's defaults; this migration does not integrate their
+backends. Only the existing bootc staging capability is supplied, with unchanged
+admin requirements and `/usr/libexec/bootc-update-stage` path. No additional
+privileged helpers or policies are installed.
+
+`/usr/libexec/dakota-brew-managed preinstall` attempts the one-time migration,
+then runs generic preinstall **even if ChairLift fails**, passing common's
+`--external-chairlift` option. Common excludes `chairlift.Brewfile` from generic
+bundle/hash/removal handling; the dedicated installer owns both first install
+and migration. Other images retain common's normal behavior without the option.
+Generic preinstall must not silently install an unchecked ChairLift or remove it
+during this handoff.
+The wrapper returns failure when either part fails, so failures remain visible.
+
+The handoff implementation belongs in `projectbluefin/common`, not a downstream
+patch. Dakota's BST install checks common's `--capabilities` output for
+`external-chairlift-v1` before changing image files. The pinned common source
+includes this API. Keep that capability when updating the pin; the build rejects
+older common rather than letting generic preinstall bypass the dedicated
+installer.
+
+The brew update/upgrade services and uupd's `modules.brew.path` use the wrapper
+solely for shared-prefix locking. Native `update` and `upgrade` do not run the
+migration or inherit its no-auto-update/cleanup settings. A pinned ChairLift or
+failed migration cannot gate unrelated upgrades. Administrator overrides of uupd's
+Brew path must preserve that routing. Interactive Brew and ChairLift operations
+do not take this additional lock: close them while migrating; Homebrew's own
+package locks are not a transaction lock across the whole migration.
+
+The migration checks **installed receipts**, not the current tap definition, and
+requires a matching old OS-managed cask record before replacing an existing
+install (a Bluefin-qualified record cannot authorize a Frostyard cask). It captures
+that consent with the installed receipt's SHA256 before generic preinstall drops
+ChairLift from its managed set. Missing/corrupt state, third-party sources, pinned
+casks and unknown receipts stop rather than authorize a replacement. For a known
+legacy install that the user explicitly wants adopted, run as the prefix owner,
+without sudo:
+
+```bash
+/usr/libexec/dakota-brew-managed migrate-chairlift --adopt
+```
+
+First installs and replacements must resolve to a checksummed stable Project
+Bluefin release (numeric `x.y.z`, at least `0.12.2`, with the URL tag matching the
+version). `latest`, prereleases, stale Frostyard-backed casks and invalid checksums
+are rejected before uninstall. The download is verified before removing the old
+cask. A mode-0600 atomic checkpoint at
+`/home/linuxbrew/.linuxbrew/var/dakota-chairlift-migration.json` records schema 2
+phases `authorized`, `prepared`, `replacing`, and `complete`. Preparation freezes
+the target version, URL and checksum. A changed source receipt or prepared target
+requires inspection and explicit `--adopt` reauthorization, not blind retries.
+
+A `replacing` retry accepts the original receipt, absence after uninstall, or the
+expected target receipt. If that target lacks its versioned executable links,
+normal retry uses Homebrew's checksummed `reinstall` without `--zap`. A completed
+migration does not consult the moving candidate or implement future upgrades;
+Homebrew owns those. User removal is respected. Damage or a legacy reinstall after
+completion requires explicit adoption; completion is not perpetual consent.
+
+This is **not an atomic package transaction**: failure after uninstall temporarily
+leaves ChairLift unavailable. Fix the reported error and rerun the same command;
+do not delete checkpoints or fabricate preinstall state. Concurrent interactive
+Brew remains unsupported. The preinstall declaration remains in the image, but
+ChairLift is intentionally no longer in generic preinstall's OS-diet managed set.
+
+The migration removes `frostyard/tap`, but never force-uninstalls its packages.
+Every cask directory and formula version directory must have a readable provenance
+receipt; a missing receipt blocks removal too. Other installed Frostyard packages
+are reported before ChairLift is removed and must be deliberately migrated first.
+Duplicate names installed from the Bluefin tap are retained. Homebrew's
+`untap --force` can uninstall casks, so it is not used: after receipt checks prove
+no Frostyard packages remain, developer mode
+is scoped to the **untap command only**, allowing tap-only removal even when
+Homebrew confuses duplicate cask tokens. No persistent developer setting changes.
+See the verified [Homebrew untap implementation](https://github.com/Homebrew/brew/blob/05f17bafd849202efca55544c3312aae31a8fd23/Library/Homebrew/cmd/untap.rb),
+[installed-cask receipts](https://github.com/Homebrew/brew/blob/05f17bafd849202efca55544c3312aae31a8fd23/Library/Homebrew/cask/tab.rb),
+and [uupd's configurable Brew path](https://github.com/ublue-os/uupd/blob/v1.4.0/pkg/config/config.go).
+
+Image rollback does not roll back the persistent cask or checkpoint. Older Dakota
+images also carry the Frostyard Brewfile and can re-add that tap; do not run their
+preinstall/upgrade jobs as a migration rollback. Test image rollback with the
+Bluefin cask retained, or plan an explicit package rollback before deployment.
+The bootc helper path and authorization requirements stay compatible across the
+policy ID change. Automatic cask downgrade is intentionally not implemented.
+
+Validation: `just test-chairlift-migration` exercises receipt/ownership checks,
+one-time behavior, checkpoint identity, partial-install repair, fresh-source
+validation, tap removal, native-upgrade independence and BST installation using
+isolated Bash/jq fixtures. It also invokes common's opt-in API using a test-only
+snapshot, exercises generic preinstall ownership handoff, and rejects image
+assembly against old common. Refresh the snapshot from the landed common source
+when advancing the pin; fixtures never supply production image content.
+`just validate` includes it. Before shipping, additionally build
+`bluefin/common.bst` and boot-test a fresh install and a managed Frostyard upgrade,
+including an administrator config override and image rollback. Mock tests are
+not evidence of successful live cask migration or GUI/polkit operation.
+
 ## Repairing a bricked prefix on an installed system
 
 Do **not** delete the prefix (user packages live there) and do not reach for

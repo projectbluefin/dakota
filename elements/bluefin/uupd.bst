@@ -94,7 +94,8 @@ config:
         },
         "modules": {
             "brew": {
-                "disable": false
+                "disable": false,
+                "path": "/usr/libexec/dakota-brew-managed"
             },
             "distrobox": {
                 "disable": false

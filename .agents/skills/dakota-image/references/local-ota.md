@@ -35,12 +35,8 @@ Run a local zot registry → build dakota image → push to local registry → b
 
 ### Start Local Registry
 
-```bash
-# Idempotent — safe to run multiple times
-just registry-start
-```
+Start the registry explicitly; the repository has no `registry-start` recipe.
 
-Manual fallback:
 ```bash
 sudo podman run -d --name egg-registry --replace \
   -p 5000:5000 \
@@ -177,12 +173,19 @@ sudo bootc switch --transport registry <zot-registry>/dakota@${DIGEST}
 
 ### Functional Assertions Over File Presence
 
-Checking file existence (`test -f`) is insufficient. Always execute the recipe or binary and assert output:
+File existence alone does not prove an integration works. Use a non-mutating
+behavior check on the test machine, for example:
 
 ```bash
-# Ineffective: only confirms the file exists
---assert 'installed:test -f /usr/share/ublue-os/just/default.just'
+# Checks that the installed CLI loads and returns its version.
+flatpak --version | grep -q '^Flatpak '
 
-# Effective: confirms the command runs and outputs expected text
---assert 'recipe-runs:echo n | TERM=dumb ujust report 2>&1 | grep -qiE "Collecting"'
+# Checks that the installed, merged ujust recipe set parses.
+ujust --list
 ```
+
+These checks do not prove Flatpak installation or a particular recipe's behavior.
+For a changed recipe, identify its definition in Dakota or the pinned common
+source and design a safe assertion for that behavior. Do not invoke `ujust report`
+or another data-donation command as an unattended smoke test; those commands
+require a user's review and consent.

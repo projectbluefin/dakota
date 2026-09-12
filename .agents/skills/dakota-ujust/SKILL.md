@@ -31,7 +31,7 @@ metadata:
    ISSUE={{ quote(issue_number) }}
    [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]] || exit 2
    ```
-3. **Avoid Heredocs**: Replace multi-line heredocs with `printf '%s\n'` or `jq -n` to avoid Just tokenizer bugs.
+3. **Check Recipe Parsing**: Parse the file with the Just version shipped in the target image: `just --justfile files/just-overrides/default.just --list`. Heredocs are allowed when their indentation and delimiters parse correctly. Prefer `jq -n` for constructing JSON.
 4. **Guard Interactive Steps**: Ensure commands requiring a TTY fail closed when run in non-interactive environments:
    ```bash
    if [ ! -t 0 ]; then
@@ -50,20 +50,20 @@ metadata:
 - **No Global Positional Arguments**: Never add `set positional-arguments` to `files/just-overrides/default.just`; this file merges into the global system recipe set.
 - **Fail Closed Without TTY**: Any recipe posting data publicly (e.g. creating GitHub issues or gists) must fail closed when stdin is not a terminal. Never treat a failed `gum confirm` as affirmative consent.
 - **Non-Interactive Sudo**: Use `sudo -n` for status checks so scripted recipe execution does not hang waiting for a password prompt.
-- **Avoid Heredocs in Shebang Recipes**: Just aggressively tokenizes heredocs inside shebang recipes, breaking on lines starting with `-`, `...`, or long command substitutions. Pre-compute variables and output line-by-line with `printf`.
+- **Version-Specific Parsing**: Older Just versions (including previously reported 1.47.1 cases) had heredoc parsing problems; that is not a blanket prohibition. Existing recipes parse with 1.58.0. Check the target image's version and test both Just parsing and the rendered shell syntax before changing valid heredocs.
 
 ## Common Rationalizations
 
 | Rationalization | Reality |
 |---|---|
 | "The argument is just a number, so quoting isn't strictly necessary." | Unquoted arguments allow arbitrary shell token expansion if malformed input is passed. |
-| "A heredoc is cleaner than multiple `printf` lines." | Just's parser tokenizes heredocs before the shell runs, causing cryptic syntax errors on certain characters. |
+| "A heredoc parsed on my host, so it works everywhere." | Validate with the target image's Just version and preserve literal shell/JSON quoting. |
 | "Users only run `ujust` in terminal windows." | Scripts and background services invoke `ujust`; non-TTY safety must always be guarded. |
 
 ## Red Flags
 
 - Unquoted recipe arguments: `{{ arg }}` instead of `{{ quote(arg) }}`
-- Using heredocs (`<<'EOF'`) inside shebang recipes in `default.just`
+- Heredoc delimiters or indentation that fail parsing with the target image's Just version
 - Missing non-interactive guards on destructive or public-posting commands
 - Modifying the root `Justfile` when a user-facing command was requested
 
@@ -72,7 +72,7 @@ metadata:
 - [ ] Every interpolated argument is wrapped in `{{ quote(...) }}`
 - [ ] Argument syntax validation is enforced in shell
 - [ ] Recipe exits with code != 0 when run non-interactively without required flags
-- [ ] No heredocs are present in shebang recipe blocks
+- [ ] The recipe file parses with the target image's Just version; rendered shell syntax is valid
 - [ ] `just bst build bluefin/just-overrides.bst` builds without errors
 
 ## References

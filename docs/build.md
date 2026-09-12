@@ -51,6 +51,55 @@ just bst shell --build bluefin/tailscale.bst         # sandbox shell
 just bst show --deps all oci/bluefin.bst             # full dependency graph
 ```
 
+## Desktop integrations
+
+Keep the established desktop defaults, with fuzzy application search, Tiling
+Shell, and BudsLink enabled. BudsLink's default panel stays hidden until a
+supported device is present. Syncthing Toggle, Tailscale Quick Settings, Copyous
+clipboard history, the extra audio panel/hider/renamer, and Power Status Color
+are installed but opt-in through the Extensions app. Their required backends
+remain available; enabling a control should not require installing missing
+native software.
+
+- **Sync Folder (Syncthing):** `bluefin/syncthing.bst` builds the vendored source
+  release, with CGO SQLite support and self-updates disabled. A private
+  `core/syncthing-go.bst` build dependency supplies the required Go 1.26 compiler
+  without replacing the image's toolchain. The Syncthing element installs the
+  standard `syncthing.service` user unit. Once enabled, its Quick Settings toggle starts and
+  stops that unit, waits for systemd jobs, and refreshes service state. Open its
+  Web GUI to pair devices and choose folders. Syncthing is not started for every
+  user automatically; identities are generated at runtime, never in the image.
+- **Tailscale:** the daemon is enabled in the image, but a fresh installation is
+  unauthenticated. The application launcher offers **Tailscale Setup**, as does
+  the Quick Settings menu after the user enables that extension. Setup requests administrator
+  approval to make the requesting account a
+  [Tailscale operator](https://tailscale.com/docs/reference/troubleshooting/linux/linux-operator-permission),
+  then opens browser sign-in. It will not replace another user's operator
+  assignment. No auth keys, tailnet identity, exit-node selection, or automatic
+  privilege grants are baked into the image. Closing setup does not disconnect
+  an existing connection or revoke an already-approved operator assignment.
+- **BudsLink:** the companion Flatpak is declared in the image's preinstall
+  configuration. `flatpak-preinstall.service` checks `flatpak preinstall --help`
+  before invoking installation. The extension activates the app's D-Bus service
+  when supported earbuds connect, and retries if installation finishes after
+  login. Installation needs network access; pairing remains the user's choice.
+
+Syncthing and Tailscale are independent controls. There is no automatic tailnet
+folder sharing: Syncthing devices and folders require explicit pairing/sharing.
+
+Existing users' saved extension selections are not rewritten. There is no
+login migration to force new extensions on or turn off extensions a user has
+selected. Image defaults apply when there is no user override. For host
+diagnosis use `/usr/bin/gsettings`, not a Homebrew copy that may lack the dconf
+backend and therefore report schema defaults instead of the running desktop's
+settings.
+
+Tiling Shell uses the GNOME Extensions reviewed archive that declares GNOME 50
+support. Its package build checks that metadata, rather than treating disabled
+Shell version validation as proof of compatibility. Packaging checks do not
+replace a graphical-session test, particularly when multiple audio extensions
+modify the same Quick Settings controls.
+
 ## Fastfetch ownership
 
 `bluefin/common.bst` installs the fastfetch config and wrapper from its pinned

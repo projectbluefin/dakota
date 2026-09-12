@@ -38,6 +38,20 @@ Publish records the pushed digest and passes that receipt between jobs. Signing,
 attestation, stream-tag promotion, and verification operate on the resolved SHA
 or digest rather than rediscovering mutable tag state.
 
+## Next synchronization
+
+`sync-next.yml` synthesizes `next` from `testing`, restores `NEXT_OWNED` paths,
+and three-way merges `NEXT_MERGED` files. Divergence outside those lists or a
+merge conflict stops the sync before its lease-protected push.
+
+Keep unrelated dependency additions away from next-only replacement blocks in
+`NEXT_MERGED` files (for example, the BPF dependencies in `bluefin/deps.bst`).
+Even an insertion adjacent to a replacement can conflict. Moving that insertion
+on `testing` without changing the dependency set can unblock the merge without
+changing next's SDK overlay. Check all merged files against the current branch
+tips; do not resolve these conflicts by blindly choosing either entire file or
+by expanding `NEXT_OWNED`, which would prevent testing updates flowing through.
+
 ## Stable release
 
 `execute-release.yml` is scheduled after the daily build window. It resolves the

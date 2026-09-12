@@ -5,6 +5,8 @@ sources:
   url: github:maniacx/BudsLink-Companion.git
   track: Gnome-Extension
   ref: c11b6cf5626ee5417efc0af91148736e0697c354
+- kind: patch
+  path: patches/shell-extensions/budslink-companion-startup.patch
 
 build-depends:
 - core/sandbox-tools.bst

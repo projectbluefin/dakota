@@ -1,0 +1,63 @@
+#!/usr/bin/python3 -I
+"""Grant only the invoking desktop user Tailscale operator access via pkexec."""
+
+import http.client
+import json
+import os
+import pwd
+import socket
+import subprocess
+import sys
+
+
+class LocalAPI(http.client.HTTPConnection):
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect("/run/tailscale/tailscaled.sock")
+
+
+def main():
+    if os.geteuid() != 0 or len(sys.argv) != 1:
+        raise RuntimeError(
+            "Run this helper through Tailscale Setup, without arguments."
+        )
+    uid = int(os.environ.get("PKEXEC_UID", "0"))
+    if uid <= 0:
+        raise RuntimeError("A non-root desktop user must request authorization.")
+    username = pwd.getpwuid(uid).pw_name
+    subprocess.run(
+        ["/usr/bin/systemctl", "start", "tailscaled.service"], check=True, timeout=60
+    )
+    connection = LocalAPI("local-tailscaled.sock", timeout=10)
+    try:
+        connection.request("GET", "/localapi/v0/prefs")
+        response = connection.getresponse()
+        if response.status != 200:
+            raise RuntimeError("Unable to read Tailscale operator settings.")
+        operator = json.load(response).get("OperatorUser", "")
+    finally:
+        connection.close()
+    if operator and operator != username:
+        raise RuntimeError(
+            "Another user already controls Tailscale. Ask the administrator to "
+            "review the existing operator assignment; setup will not replace it."
+        )
+    subprocess.run(
+        ["/usr/bin/tailscale", "set", f"--operator={username}"], check=True, timeout=30
+    )
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (
+        ValueError,
+        KeyError,
+        OSError,
+        RuntimeError,
+        http.client.HTTPException,
+        subprocess.SubprocessError,
+    ) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Tailscale Setup
+Comment=Authorize desktop controls and sign in to your tailnet
+Exec=/usr/libexec/dakota-tailscale-setup
+Icon=network-vpn
+Terminal=false
+Categories=GNOME;GTK;Network;
+Keywords=VPN;tailnet;Tailscale;
+StartupNotify=true

@@ -1,37 +1,34 @@
 ---
 name: dakota-factory
-description: Reinforce the Project Bluefin factory model: two-output rule, docs-as-the-model hygiene, Context7 freshness protocol, and skill auditing. Use when finishing sessions, auditing skills, or writing back learned patterns.
-metadata:
-  context7-sources:
-    - /addyosmani/agent-skills
+description: "Maintain task-relevant Dakota guidance: documentation accuracy, official-source verification, and skill auditing. Use when auditing skills or correcting durable guidance revealed by a task."
 ---
 
 # Dakota Factory Model
 
-Every session in Dakota produces exactly **two** outputs: the work and the learning. Output 1 without Output 2 leaves the factory no smarter than before you arrived.
+Keep documentation aligned with executable configuration. Correct durable guidance relevant to the task, without requiring a documentation change for every session.
 
 ## When to Use
 
 - Ending any implementation, debugging, or triage session that revealed non-obvious behavior or traps
 - Creating, auditing, or refactoring skills in `.agents/skills/`
 - Updating architectural docs in `docs/` to reflect running truth
-- Verifying library or CLI syntax against official documentation via Context7
+- Verifying library or CLI syntax against current official documentation
 
 ## When NOT to Use
 
-- Read-only queries that produced no code and surfaced no new patterns
+- Read-only queries without authorization to change documentation
 - Pure dependency version updates handled automatically by Renovate
 
 ## Core Process
 
-1. **Capture the Learning**: Identify workarounds, traps, or architectural invariants discovered during the task.
+1. **Check Relevance and Authority**: Identify durable errors or missing constraints relevant to the task. Correct existing guidance when edits are authorized; otherwise report the finding without writing files.
 2. **Docs Are the Model**:
    - Skill files are evergreen procedures, not historical logs, ledgers, or backlogs.
    - Do not record session dates (e.g. `2026-08-01: we found X`). Extract the timeless rule.
    - Do not maintain running issue tables or resolved checklists in skills. Gaps belong in GitHub issues; resolved items belong in git history.
-3. **Audit Against Canonical Skill Spec (`/addyosmani/agent-skills`)**:
+3. **Audit Skill Usability**:
    Ensure the affected skill in `.agents/skills/` contains:
-   - Frontmatter (`name`, `description` with trigger phrases, `metadata.context7-sources`)
+   - Valid YAML frontmatter with `name` and a descriptive `description`; optional metadata should identify real sources, not unavailable tool requirements
    - `## When to Use`
    - `## When NOT to Use`
    - `## Core Process`
@@ -39,20 +36,16 @@ Every session in Dakota produces exactly **two** outputs: the work and the learn
    - `## Common Rationalizations`
    - `## Red Flags`
    - `## Verification`
-4. **Context7 Documentation Freshness**:
-   For any external library, framework, or CLI tool (BuildStream, bootc, systemd, cosign, etc.):
-   ```
-   DETECT → FETCH → EMBED → CITE
-   ```
-   - **DETECT**: Identify the external tool.
-   - **FETCH**: Resolve library ID via `context7-resolve-library-id` and query via `context7-query-docs`.
-   - **EMBED**: Embed verified signatures or patterns into the skill.
-   - **CITE**: Record the Context7 library ID in `metadata.context7-sources`.
-5. **Atomic Commit**: If the session produced both code and learnings, commit both in the same PR.
+4. **Verify Official Documentation**:
+   - Identify the external tool and the version used by Dakota.
+   - Read its current official documentation directly, or use Context7 when available.
+   - Verify the specific syntax or behavior against the pinned source when needed.
+   - Cite the official URL in relevant guidance or optional `metadata.verified-sources`.
+5. **Keep Changes Scoped**: Include relevant documentation corrections with the code diff for review. Do not add unrelated writebacks, create a commit, or publish a PR without authorization.
 
 ## Invariants
 
-- **The Two-Output Invariant**: Never close a session that uncovered a new constraint without writing that constraint back to `.agents/skills/` or `docs/`.
+- **Task Boundary**: Documentation changes must be useful, relevant, and authorized. A read-only task can end with findings alone.
 - **Evergreen Truth**: Workflows, elements, the Justfile, and tests are authoritative truth. Prose that disagrees with executable configuration is stale and must be excised.
 - **Zero Writing to `ublue-os/*`**: Absolute prohibition. Ask a human to report upstream manually.
 - **Commit Trailer**: Use `Assisted-by:`, never `Co-authored-by:`.
@@ -61,9 +54,9 @@ Every session in Dakota produces exactly **two** outputs: the work and the learn
 
 | Rationalization | Reality |
 |---|---|
-| "I will update the documentation in a follow-up PR." | Follow-up PRs are rarely opened. Capture learnings in the same PR as the code change. |
+| "Every task needs a documentation diff." | Update guidance when the task changes or corrects it; do not manufacture unrelated work. |
 | "Recording the incident date gives good context." | Dated incident logs turn documentation into an unmaintained changelog. Document the timeless failure mode and prevention rule instead. |
-| "I know how this CLI tool works from memory." | Model memory drifts and hallucinates flags. Verify current syntax with Context7. |
+| "I know how this CLI tool works from memory." | Verify current syntax in official documentation. Context7 is an optional retrieval tool, not a prerequisite. |
 
 ## Red Flags
 
@@ -74,10 +67,10 @@ Every session in Dakota produces exactly **two** outputs: the work and the learn
 
 ## Verification
 
-- [ ] Every discovered pattern is codified into `.agents/skills/` or `docs/`
+- [ ] Documentation changes are task-relevant and authorized
 - [ ] No dated session logs or resolved checkmarks added to evergreen docs
-- [ ] External tool syntax verified via Context7 and cited in metadata
-- [ ] Canonical skill structure verified against `/addyosmani/agent-skills`
+- [ ] External tool syntax is verified against official sources and cited where relevant
+- [ ] Skill frontmatter parses, referenced paths exist, and commands match available tooling
 - [ ] All commits use conventional format with `Assisted-by:` trailer
 
 ## References

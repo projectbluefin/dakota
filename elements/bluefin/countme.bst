@@ -1,8 +1,6 @@
 kind: manual
 
-sources:
-- kind: local
-  path: files/countme
+sources: []
 
 build-depends:
 - core/sandbox-tools.bst
@@ -13,7 +11,14 @@ variables:
 
 config:
   install-commands:
-  - install -Dm644 bluefin-countme.{service,timer} -t "%{install-root}/usr/lib/systemd/system/"
+  # The reporter itself comes from projectbluefin/common via bluefin/common.bst,
+  # which copies system_files/shared/usr wholesale — the same unit and helper
+  # every other image gets. Nothing about counting is Dakota-specific.
+  #
+  # Only the enablement symlink lives here, because this image enables units
+  # through timers.target.wants rather than by running systemctl preset.
   - mkdir -p "%{install-root}/usr/lib/systemd/system/timers.target.wants/"
   - ln -sf ../bluefin-countme.timer "%{install-root}/usr/lib/systemd/system/timers.target.wants/bluefin-countme.timer"
-  - install -Dm755 dakota-countme "%{install-root}/usr/libexec/dakota-countme"
+
+depends:
+- bluefin/common.bst

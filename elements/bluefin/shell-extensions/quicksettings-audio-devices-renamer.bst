@@ -2,6 +2,7 @@ kind: manual
 
 sources:
 - kind: zip
+  base-dir: ""
   url: gnome_extensions:quicksettings-audio-devices-renamer@marcinjahn.com.shell-extension.zip?version_tag=69925
   ref: a4f33897983376a23c5de69d6a008d1451afcc05cd7ce3b56630bd739c095a2e
 

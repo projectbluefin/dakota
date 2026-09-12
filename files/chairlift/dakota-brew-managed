@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+# One-time ChairLift migration and shared locking for Dakota-managed Brew jobs.
+# No root operations, --force/--zap, or changes to administrator configuration.
+set -euo pipefail
+
+PREFIX=/home/linuxbrew/.linuxbrew
+BREW_BIN=${PREFIX}/bin/brew
+PREINSTALL=/usr/libexec/brew-preinstall
+STATE_FILE=${HOME}/.local/share/ublue-os/brew-preinstall-state.json
+TARGET=ublue-os/tap/chairlift
+
+log() { printf 'dakota-brew-managed: %s\n' "$*" >&2; }
+
+# Receipts, never the mutable tap definition, identify the installed source.
+installed_chairlift() {
+    local directory=${PREFIX}/Caskroom/chairlift receipt digest
+    receipt=${directory}/.metadata/INSTALL_RECEIPT.json
+    if [[ ! -e "$directory" && ! -L "$directory" ]]; then
+        printf '{"tap":"absent","version":"","receipt":""}\n'
+        return
+    fi
+    digest=$(sha256sum "$receipt") || return 1
+    jq -ce --arg digest "${digest%% *}" '
+        .source | select(type == "object") |
+        select((.tap | type) == "string" and (.version | type) == "string") |
+        select(.tap != "" and (.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))) |
+        {tap, version, receipt:$digest}
+    ' "$receipt" || { log 'Cannot identify installed ChairLift; no replacement attempted.'; return 1; }
+}
+
+healthy_chairlift() {
+    local version binary resolved
+    version=$(jq -er '.source.version' "${PREFIX}/Caskroom/chairlift/.metadata/INSTALL_RECEIPT.json") || return 1
+    for binary in chairlift chairlift-wrapper; do
+        [[ -x ${PREFIX}/bin/${binary} ]] || return 1
+        resolved=$(readlink -e "${PREFIX}/bin/${binary}") || return 1
+        [[ "$resolved" == "${PREFIX}/Caskroom/chairlift/${version}/"* ]] || return 1
+    done
+}
+
+managed_chairlift() {
+    # A record for a DIFFERENT tap must never authorize a later manual install.
+    jq -e --arg name "$1/chairlift" '(.casks | type) == "array" and
+        any(.casks[]; . == "chairlift" or . == $name)' "$STATE_FILE" >/dev/null 2>&1
+}
+
+checkpoint() {
+    local file=${PREFIX}/var/dakota-chairlift-migration.json tmp
+    tmp=$(mktemp "${file}.XXXXXX") || return 1
+    if ! printf '%s\n' "$1" > "$tmp"; then rm -f "$tmp"; return 1; fi
+    mv -f "$tmp" "$file"
+}
+
+remove_frostyard_tap() {
+    local check_only=${1:-false} taps receipt tap directory version
+    taps=$("$BREW_BIN" tap) || return 1
+    if ! grep -Fxq frostyard/tap <<< "$taps"; then return 0; fi
+    local -a receipts=()
+    shopt -s nullglob
+    for directory in "${PREFIX}"/Caskroom/*; do
+        receipt=${directory}/.metadata/INSTALL_RECEIPT.json
+        [[ -d "$directory" && -f "$receipt" ]] || {
+            log "Unidentified cask: $directory; refusing to untap."; return 1;
+        }
+        receipts+=("$receipt")
+    done
+    # Enumerate version directories, NOT only matching receipt files. An
+    # installed keg without a receipt is unknown provenance, not absence.
+    for directory in "${PREFIX}"/Cellar/*; do
+        [[ -d "$directory" ]] || { log "Unidentified formula: $directory"; return 1; }
+        for version in "$directory"/*; do
+            receipt=${version}/INSTALL_RECEIPT.json
+            [[ -d "$version" && -f "$receipt" ]] || {
+                log "Unidentified keg: $version; refusing to untap."; return 1;
+            }
+            receipts+=("$receipt")
+        done
+    done
+    for receipt in "${receipts[@]}"; do
+        tap=$(jq -er '.source.tap | select(type == "string" and length > 0)' "$receipt") || {
+            log "Cannot determine package provenance: $receipt; refusing to untap."; return 1;
+        }
+        if [[ "$tap" == frostyard/tap ]]; then
+            if [[ "$check_only" == true && "$receipt" == "${PREFIX}/Caskroom/chairlift/.metadata/INSTALL_RECEIPT.json" ]]; then
+                continue
+            fi
+            log "Still installed from Frostyard: $receipt. Migrate this package before retrying."
+            return 1
+        fi
+    done
+    if [[ "$check_only" == true ]]; then return 0; fi
+    # Ordinary untap confuses duplicate cask tokens; --force can UNINSTALL
+    # packages. Developer-mode untap removes only the tap, after our scan.
+    # Homebrew/brew cmd/untap.rb at 05f17bafd849; never persist developer mode.
+    env -u HOMEBREW_NO_ASK HOMEBREW_DEVELOPER=1 "$BREW_BIN" untap frostyard/tap </dev/null || return 1
+    taps=$("$BREW_BIN" tap) || return 1
+    if grep -Fxq frostyard/tap <<< "$taps"; then
+        log 'Frostyard tap remains installed; migration is not complete.'
+        return 1
+    fi
+}
+
+candidate_chairlift() {
+    local candidate
+    candidate=$("$BREW_BIN" info --json=v2 --cask "$TARGET") || return 1
+    # The same stable x.y.z grammar is used for receipts and candidates.
+    # Reject stale Frostyard downloads, latest/prereleases and unchecked URLs
+    # BEFORE uninstall; bind the URL's release tag to the declared version.
+    jq -ce '
+        .casks | select(length == 1) | .[0] |
+        select(.token == "chairlift" and .tap == "ublue-os/tap") |
+        select((.version | type) == "string" and (.sha256 | type) == "string" and (.url | type) == "string") |
+        select(.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) |
+        select(.sha256 | test("^[a-f0-9]{64}$")) |
+        select(.url | test("^https://github.com/projectbluefin/chairlift/releases/download/v[0-9]+\\.[0-9]+\\.[0-9]+/[^/?#]+$")) |
+        {tap, version, sha256, url}
+    ' <<< "$candidate"
+}
+
+# A subshell confines Homebrew overrides to the migration; native updater and
+# generic preinstall retain their normal environment and file permissions.
+migrate_chairlift() (
+    export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 HOMEBREW_NO_AUTOREMOVE=1 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ASK=1
+    local adopt=${1:-false} installed tap version record phase source candidate after
+    local file=${PREFIX}/var/dakota-chairlift-migration.json
+    installed=$(installed_chairlift) || return 1
+    tap=$(jq -r .tap <<< "$installed")
+    version=$(jq -r .version <<< "$installed")
+    case "$tap" in
+        absent|frostyard/tap|ublue-os/tap) ;;
+        *) log "ChairLift belongs to $tap; refusing to replace a third-party cask."; return 1 ;;
+    esac
+    record=''
+    if [[ -e "$file" ]]; then
+        record=$(jq -ce '
+            def version: type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+$");
+            def sha: type == "string" and test("^[a-f0-9]{64}$");
+            select(.schema == 2 and
+                (.phase == "authorized" or .phase == "prepared" or .phase == "replacing" or .phase == "complete")) |
+            select((.source.tap == "absent" and .source.version == "" and .source.receipt == "") or
+                ((.source.tap == "frostyard/tap" or .source.tap == "ublue-os/tap") and
+                 (.source.version | version) and (.source.receipt | sha))) |
+            select((.phase == "authorized" and .target == null) or
+                (.phase != "authorized" and .target.tap == "ublue-os/tap" and
+                 (.target.version | version) and (.target.sha256 | sha) and (.target.url | type) == "string"))
+        ' "$file") || { log 'Invalid migration checkpoint; inspect it before retrying.'; return 1; }
+        phase=$(jq -r .phase <<< "$record")
+        if [[ "$phase" == complete && "$adopt" == false ]]; then
+            # Completion is NOT consent to replace a later manual install, nor
+            # a request to resurrect a removed cask or implement future upgrades.
+            local completed_version
+            completed_version=$(jq -r '.target.version // ""' <<< "$record")
+            if [[ "$tap" != absent ]] && { [[ "$tap" != ublue-os/tap || -z "$completed_version" ||
+                $(printf '%s\n' "$completed_version" "$version" | sort -V | tail -n1) != "$version" ]] || ! healthy_chairlift; }; then
+                log 'ChairLift changed after migration; inspect it and use --adopt only if replacement is wanted.'
+                return 1
+            fi
+            remove_frostyard_tap
+            return $?
+        fi
+        if [[ "$adopt" == true ]]; then record=''; fi
+    fi
+    if [[ -z "$record" ]]; then
+        if [[ "$tap" != absent && "$adopt" == false ]] && ! managed_chairlift "$tap"; then
+            log 'ChairLift ownership is unclear; use migrate-chairlift --adopt to explicitly opt in.'
+            return 1
+        fi
+        record=$(jq -cn --argjson source "$installed" '{schema:2,phase:"authorized",source:$source,target:null}') || return 1
+        # Save consent BEFORE generic preinstall rewrites its managed set, even
+        # if the network or a pin blocks preparation. Bind it to this receipt.
+        checkpoint "$record" || return 1
+    fi
+    phase=$(jq -r .phase <<< "$record")
+    source=$(jq -c .source <<< "$record")
+    if [[ "$installed" != "$source" ]]; then
+        if [[ "$phase" != replacing ]] || ! jq -e --argjson installed "$installed" '
+            $installed.tap == "absent" or
+            ($installed.tap == .target.tap and $installed.version == .target.version)
+        ' <<< "$record" >/dev/null; then
+            log 'Installed receipt changed since authorization; inspect it before explicitly adopting again.'
+            return 1
+        fi
+    fi
+    if [[ -e ${PREFIX}/var/homebrew/pinned_casks/chairlift || -L ${PREFIX}/var/homebrew/pinned_casks/chairlift ]]; then
+        log 'ChairLift is pinned; unpin it explicitly before migrating.'; return 1
+    fi
+    "$BREW_BIN" tap ublue-os/tap || return 1
+    "$BREW_BIN" trust ublue-os/tap || return 1
+    candidate=$(candidate_chairlift) || { log 'Target cask is not a checksummed stable Project Bluefin release.'; return 1; }
+    local expected url
+    expected=$(jq -r .version <<< "$candidate")
+    url=$(jq -r .url <<< "$candidate")
+    [[ "$url" == "https://github.com/projectbluefin/chairlift/releases/download/v${expected}/"* &&
+        $(printf '%s\n' 0.12.2 "$expected" | sort -V | head -n1) == 0.12.2 ]] || {
+        log 'Target version/URL is inconsistent or predates the Bluefin release.'; return 1;
+    }
+    if [[ "$phase" != authorized && $(jq -c .target <<< "$record") != "$candidate" ]]; then
+        log 'Replacement changed since preparation; inspect the new cask and use --adopt to reauthorize.'; return 1
+    fi
+    remove_frostyard_tap true || return 1
+    # Existing healthy Bluefin installs need only tap cleanup. Never downgrade.
+    if [[ "$phase" == authorized && "$tap" == ublue-os/tap ]] && healthy_chairlift &&
+        [[ $(printf '%s\n' "$expected" "$version" | sort -V | tail -n1) == "$version" ]]; then
+        remove_frostyard_tap || return 1
+        record=$(jq -c --argjson target "$candidate" '.phase="complete" | .target=$target' <<< "$record") || return 1
+        checkpoint "$record"
+        return $?
+    fi
+    if [[ "$tap" == ublue-os/tap && "$version" != "$expected" &&
+        $(printf '%s\n' "$expected" "$version" | sort -V | tail -n1) == "$version" ]]; then
+        log 'Refusing to downgrade a partial newer Bluefin install; update the tap before repair.'; return 1
+    fi
+    "$BREW_BIN" fetch --cask "$TARGET" || return 1
+    if [[ $(candidate_chairlift) != "$candidate" ]]; then
+        log 'Target changed during download; no replacement attempted.'; return 1
+    fi
+    if [[ "$phase" == authorized ]]; then
+        record=$(jq -c --argjson target "$candidate" '.phase="prepared" | .target=$target' <<< "$record") || return 1
+        checkpoint "$record" || return 1
+    fi
+    record=$(jq -c '.phase="replacing"' <<< "$record") || return 1
+    checkpoint "$record" || return 1
+    # A receipt left by our interrupted target install is repairable. A
+    # different version/source above is NOT covered by the pending marker.
+    if [[ "$tap" == ublue-os/tap && "$version" == "$expected" ]]; then
+        if ! healthy_chairlift; then
+            "$BREW_BIN" reinstall --cask --require-sha "$TARGET" || return 1
+        fi
+    else
+        if [[ "$tap" != absent ]]; then
+            "$BREW_BIN" uninstall --cask "${tap}/chairlift" || return 1
+        fi
+        remove_frostyard_tap || return 1
+        if [[ $(candidate_chairlift) != "$candidate" ]]; then
+            log 'Target changed after uninstall; checkpoint retained, refusing a different replacement.'; return 1
+        fi
+        "$BREW_BIN" install --cask --require-sha "$TARGET" || return 1
+    fi
+    after=$(installed_chairlift) || return 1
+    if ! jq -e --arg version "$expected" '.tap == "ublue-os/tap" and .version == $version' <<< "$after" >/dev/null || ! healthy_chairlift; then
+        log 'Replacement verification failed; checkpoint retained for retry.'; return 1
+    fi
+    remove_frostyard_tap || return 1
+    record=$(jq -c '.phase="complete"' <<< "$record") || return 1
+    checkpoint "$record" || return 1
+    log 'ChairLift migrated and frostyard/tap removed. Settings and other packages were left alone.'
+)
+
+main() {
+    local command=${1:-} adopt=false migration_rc=0 preinstall_rc=0
+    case "$command" in
+        preinstall|update|upgrade) [[ $# == 1 ]] || return 2 ;;
+        migrate-chairlift)
+            if [[ $# == 2 && $2 == --adopt ]]; then adopt=true
+            elif [[ $# != 1 ]]; then return 2; fi ;;
+        *) log 'Usage: dakota-brew-managed {preinstall|update|upgrade|migrate-chairlift [--adopt]}'; return 2 ;;
+    esac
+    if [[ $EUID == 0 ]]; then log 'Run as the Homebrew owner, never root.'; return 1; fi
+    [[ -x "$BREW_BIN" ]] || { log 'Homebrew is unavailable; retry after setup.'; return 1; }
+    [[ $(stat -c %u "$PREFIX") == "$EUID" ]] || { log 'Run as the owner of the shared Homebrew prefix.'; return 1; }
+    mkdir -p "${PREFIX}/var" || return 1
+    exec 9> "${PREFIX}/var/dakota-brew-managed.lock"
+    flock -w 120 9 || { log 'Another managed Brew job is running; retry later.'; return 1; }
+    case "$command" in
+        update|upgrade) "$BREW_BIN" "$command" ;;
+        preinstall)
+            migrate_chairlift || migration_rc=$?
+            "$PREINSTALL" --external-chairlift || preinstall_rc=$?
+            if [[ $migration_rc != 0 ]]; then return "$migration_rc"; fi
+            return "$preinstall_rc" ;;
+        migrate-chairlift) migrate_chairlift "$adopt" ;;
+    esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then main "$@"; fi

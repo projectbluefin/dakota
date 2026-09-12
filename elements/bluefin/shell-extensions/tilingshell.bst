@@ -2,8 +2,10 @@ kind: manual
 
 sources:
 - kind: zip
-  url: github_files:domferr/tilingshell/releases/download/17.3/tilingshell%40ferrarodomenico.com.zip
-  ref: 63ab8230b62c1a888d5af40e47aef0676e5e99ac367e35f51a797fe3b9a79370
+  base-dir: ""
+  # Reviewed 17.3 build with GNOME 50 support, not the older GitHub ZIP.
+  url: gnome_extensions:tilingshell@ferrarodomenico.com.shell-extension.zip?version_tag=70233
+  ref: 0a9f2b26de65294f53350d74089a3dae9376642784a722e98fc8d78fcc470a35
 
 build-depends:
 - core/sandbox-tools.bst
@@ -19,6 +21,8 @@ variables:
 config:
   install-commands:
   - |
+    # Fail the package build rather than relying on disabled Shell validation.
+    jq -e '.uuid == "tilingshell@ferrarodomenico.com" and (."shell-version" | index("50") != null)' metadata.json > /dev/null
     _uuid="$(jq -r .uuid metadata.json)"
     _dest="%{install-root}%{datadir}/gnome-shell/extensions/${_uuid}"
     install -d "${_dest}"

@@ -1,0 +1,214 @@
+#!/usr/bin/python3 -I
+"""Explicit, user-initiated Tailscale authorization and browser sign-in."""
+
+import json
+import subprocess
+import tempfile
+import threading
+from urllib.parse import urlparse
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk
+
+
+class Setup(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id="org.projectbluefin.dakota.TailscaleSetup")
+        self.window = None
+        self.process = None
+        self.cancelled = threading.Event()
+
+    def do_activate(self):
+        if self.window:
+            self.window.present()
+            return
+        self.window = Adw.ApplicationWindow(
+            application=self,
+            title="Tailscale Setup",
+            default_width=460,
+            default_height=340,
+        )
+        self.window.connect("close-request", self.close_requested)
+        layout = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        layout.append(Adw.HeaderBar())
+        content = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=18,
+            margin_top=24,
+            margin_bottom=24,
+            margin_start=24,
+            margin_end=24,
+        )
+        content.append(Gtk.Image(icon_name="network-vpn-symbolic", pixel_size=48))
+        self.message = Gtk.Label(
+            wrap=True,
+            max_width_chars=48,
+            label=(
+                "Set up Tailscale desktop controls for your account, then sign in "
+                "using your browser. Administrator approval is required. "
+                "This grants control of this computer’s Tailscale connection, "
+                "but does not select an exit node or share any folders."
+            ),
+        )
+        content.append(self.message)
+        self.link = Gtk.LinkButton(
+            uri="https://tailscale.com", label="Open sign-in page", visible=False
+        )
+        content.append(self.link)
+        self.spinner = Gtk.Spinner()
+        content.append(self.spinner)
+        self.button = Gtk.Button(label="Set up Tailscale")
+        self.button.add_css_class("suggested-action")
+        self.button.connect("clicked", self.start)
+        content.append(self.button)
+        layout.append(content)
+        self.window.set_content(layout)
+        self.window.present()
+
+    def close_requested(self, *_args):
+        self.cancelled.set()
+        if self.process and self.process.poll() is None:
+            self.process.terminate()
+        # Closing never logs out, disconnects, or revokes an approved operator.
+        return False
+
+    def update(self, text, finished=False):
+        if self.cancelled.is_set():
+            return GLib.SOURCE_REMOVE
+        self.message.set_label(text)
+        if finished:
+            self.spinner.stop()
+            self.button.set_sensitive(True)
+            self.button.set_label("Retry setup")
+        return GLib.SOURCE_REMOVE
+
+    def show_login(self, uri):
+        if self.cancelled.is_set():
+            return GLib.SOURCE_REMOVE
+        if urlparse(uri).scheme != "https":
+            self.update(
+                "The sign-in URL is not HTTPS. Ask your tailnet administrator to check the login server."
+            )
+            return GLib.SOURCE_REMOVE
+        self.link.set_uri(uri)
+        self.link.set_visible(True)
+        self.update(
+            "Finish signing in in your browser. Your tailnet may also require device approval."
+        )
+        Gio.AppInfo.launch_default_for_uri_async(uri, None, None, self.browser_opened)
+        return GLib.SOURCE_REMOVE
+
+    def browser_opened(self, _source, result):
+        try:
+            Gio.AppInfo.launch_default_for_uri_finish(result)
+        except GLib.Error:
+            self.update("Could not open the browser. Use the sign-in link above.")
+
+    def start(self, _button):
+        self.button.set_sensitive(False)
+        self.link.set_visible(False)
+        self.spinner.start()
+        self.update("Waiting for administrator approval…")
+        threading.Thread(target=self.configure, daemon=True).start()
+
+    def launch(self, argv, **kwargs):
+        if self.cancelled.is_set():
+            raise RuntimeError("Setup cancelled.")
+        self.process = subprocess.Popen(argv, **kwargs)
+        if self.cancelled.is_set():
+            self.process.terminate()
+        return self.process
+
+    def configure(self):
+        try:
+            process = self.launch(
+                [
+                    "/usr/bin/pkexec",
+                    "--disable-internal-agent",
+                    "/usr/libexec/dakota-tailscale-authorize",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            _output, error = process.communicate()
+            if process.returncode:
+                raise RuntimeError(
+                    error.strip() or "Administrator approval was cancelled."
+                )
+            GLib.idle_add(self.update, "Connecting to Tailscale…")
+            decoder = json.JSONDecoder()
+            pending = ""
+            state = None
+            failure = None
+            # Keep stderr separate from the CLI's multi-line JSON objects.
+            with tempfile.TemporaryFile(mode="w+") as errors:
+                process = self.launch(
+                    ["/usr/bin/tailscale", "up", "--json", "--timeout=5m"],
+                    stdout=subprocess.PIPE,
+                    stderr=errors,
+                    text=True,
+                )
+                for line in process.stdout:
+                    pending += line
+                    while pending.strip():
+                        pending = pending.lstrip()
+                        try:
+                            event, end = decoder.raw_decode(pending)
+                        except json.JSONDecodeError:
+                            break
+                        pending = pending[end:]
+                        if event.get("AuthURL"):
+                            GLib.idle_add(self.show_login, event["AuthURL"])
+                        state = event.get("BackendState", state)
+                        failure = event.get("Error", failure)
+                        if state == "NeedsMachineAuth":
+                            GLib.idle_add(
+                                self.update,
+                                "Signed in. Waiting for your tailnet administrator to approve this device.",
+                            )
+                process.wait()
+                errors.seek(0)
+                if process.returncode:
+                    raise RuntimeError(
+                        failure
+                        or errors.read().strip()
+                        or "Tailscale did not connect. You can retry setup."
+                    )
+            # A successful no-op `up` need not emit JSON. Read the actual state.
+            process = self.launch(
+                ["/usr/bin/tailscale", "status", "--json"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            output, error = process.communicate(timeout=15)
+            if process.returncode:
+                raise RuntimeError(error.strip() or "Unable to read Tailscale status.")
+            state = json.loads(output).get("BackendState")
+            if state != "Running":
+                raise RuntimeError(
+                    f"Tailscale is not connected ({state}). Your tailnet may require device approval."
+                )
+            GLib.idle_add(self.complete)
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            if self.process and self.process.poll() is None:
+                self.process.terminate()
+            GLib.idle_add(self.update, str(error), True)
+
+    def complete(self):
+        if not self.cancelled.is_set():
+            self.message.set_label(
+                "Tailscale is connected. You can now use its Quick Settings controls."
+            )
+            self.spinner.stop()
+            self.link.set_visible(False)
+            self.button.set_visible(False)
+        return GLib.SOURCE_REMOVE
+
+
+if __name__ == "__main__":
+    Setup().run()

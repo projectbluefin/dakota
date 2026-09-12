@@ -7,7 +7,7 @@
 - [ ] Image-affecting changes include lint/boot evidence from local testing or CI
 - [ ] Commit trailer: `Assisted-by:` or `Signed-off-by:` — **not** `Co-authored-by:`
 - [ ] `Closes #NNN` is present when the PR resolves an issue
-- [ ] Factory Model (Two Outputs): any newly discovered invariants or failure modes are written back to `.agents/skills/` or `docs/` in this same PR
+- [ ] Existing guidance affected by the change is corrected; no unrelated documentation writeback is required
 - [ ] I am using an agent and I take responsibility for this PR
 
 ## Junction bumps (`gnome-build-meta.bst` or `freedesktop-sdk.bst`)

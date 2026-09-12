@@ -2,6 +2,7 @@ kind: manual
 
 sources:
 - kind: zip
+  base-dir: ""
   url: github_files:Rayzeq/quick-settings-audio-panel/releases/download/v103/quick-settings-audio-panel%40rayzeq.github.io.shell-extension.zip
   ref: 3a6da80e9b391251149bcf87a9cb5dbbccee827887d1aef43be4ee090b04a29f
 

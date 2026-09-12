@@ -1,0 +1,143 @@
+Subject: Handle delayed Bluetooth initialization and companion installation
+Upstream-Status: Pending
+
+--- a/lib/budsLinkCompanion.js
++++ b/lib/budsLinkCompanion.js
+@@ -26,14 +26,12 @@
+         this._appSystem = null;
+         this._widgetMap = new Map();
+ 
+-        this._idleTimerId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
+-            if (!Main.panel.statusArea.quickSettings._bluetooth &&
+-                Main.panel.statusArea.quickSettings._bluetooth.quickSettingsItems[0]
+-                    ._box.get_first_child().get_stage())
++        this._idleTimerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
++            const toggle = Main.panel.statusArea.quickSettings._bluetooth?.quickSettingsItems?.[0];
++            if (!toggle?.get_stage())
+                 return GLib.SOURCE_CONTINUE;
+ 
+-            this._bluetoothToggle = Main.panel.statusArea.quickSettings
+-                ._bluetooth.quickSettingsItems[0];
++            this._bluetoothToggle = toggle;
+             this._initBudsLink();
+             this._idleTimerId = null;
+             return GLib.SOURCE_REMOVE;
+@@ -59,13 +57,17 @@
+         this._serviceVanishedId = this._dbusClient.connect('service-vanished', () => {
+             for (const {widget} of this._widgetMap.values())
+                 widget.destroy();
+-        });
+-        this._startTracker();
++            this._widgetMap.clear();
++        });
++        this._startTracker().catch(error => console.error(error));
+     }
+ 
+     async _startTracker() {
+-        this._tracker = new CompatibleDeviceTracker();
+-        await this._tracker.initClient();
++        const tracker = new CompatibleDeviceTracker();
++        this._tracker = tracker;
++        await tracker.initClient();
++        if (this._tracker !== tracker)
++            return;
+ 
+         this._tracker.connectObject('notify::device-connected', () => {
+             if (this._tracker.deviceConnected)
+--- a/lib/dbusClient.js
++++ b/lib/dbusClient.js
+@@ -111,6 +111,7 @@
+     _init() {
+         super._init();
+         this._managerProxy = null;
++        this._destroyed = false;
+         this._watchId = 0;
+         this._watchId = Gio.bus_watch_name(
+             Gio.BusType.SESSION,
+@@ -122,6 +123,18 @@
+     }
+ 
+     async holdService() {
++        if (this._destroyed)
++            return;
++        // Installation may finish after login. Keep trying D-Bus activation
++        // while compatible earbuds are connected, even if the app is missing
++        // on the first attempt. No manual app launch or reconnect is needed.
++        if (!this._heartbeatId) {
++            this._heartbeatId = GLib.timeout_add_seconds(
++                GLib.PRIORITY_DEFAULT, HEARTBEAT_INTERVAL, () => {
++                    this.holdService();
++                    return GLib.SOURCE_CONTINUE;
++                });
++        }
+         try {
+             await Gio.DBus.session.call(
+                 BUS_NAME,
+@@ -134,22 +147,19 @@
+                 -1,
+                 null
+             );
+-            if (!this._heartbeatId) {
+-                this._heartbeatId = GLib.timeout_add_seconds(
+-                    GLib.PRIORITY_DEFAULT,
+-                    HEARTBEAT_INTERVAL,
+-                    () => {
+-                        this.holdService();
+-                        return GLib.SOURCE_CONTINUE;
+-                    }
+-                );
+-            }
+         } catch (e) {
+             console.log(e);
+         }
+     }
+ 
+     async releaseService() {
++        if (this._heartbeatId) {
++            GLib.source_remove(this._heartbeatId);
++            this._heartbeatId = 0;
++        }
++        // Do not start an absent application just to release a hold.
++        if (!this._managerProxy)
++            return;
+         try {
+             await Gio.DBus.session.call(
+                 BUS_NAME,
+@@ -162,17 +172,13 @@
+                 -1,
+                 null
+             );
+-            if (this._heartbeatId) {
+-                GLib.source_remove(this._heartbeatId);
+-                this._heartbeatId = 0;
+-            }
+         } catch (e) {
+             console.log(e);
+         }
+     }
+ 
+     async _onServiceAppeared() {
+-        if (this._managerProxy)
++        if (this._destroyed || this._managerProxy)
+             return;
+ 
+         try {
+@@ -252,6 +258,7 @@
+     }
+ 
+     destroy() {
++        this._destroyed = true;
+         if (this._heartbeatId) {
+             GLib.source_remove(this._heartbeatId);
+             this._heartbeatId = 0;
+--- a/lib/widgets/labelIndicators.js
++++ b/lib/widgets/labelIndicators.js
+@@ -1,5 +1,7 @@
+ 'use strict';
+-const {GObject, St, Clutter} = imports.gi;
++import GObject from 'gi://GObject';
++import St from 'gi://St';
++import Clutter from 'gi://Clutter';
+ import {colorToRgba, invertColor} from './colorHelpers.js';
+ 
+ export const LabelIndicators = GObject.registerClass({

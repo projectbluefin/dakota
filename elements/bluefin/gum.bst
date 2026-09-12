@@ -4,11 +4,11 @@ sources:
 - kind: tar
   (?):
   - arch == "x86_64":
-      url: github_files:charmbracelet/gum/releases/download/v2.0.0/gum_2.0.0_Linux_x86_64.tar.gz
-      ref: c99b0005bb5b514770eea404b24c7987e08eba35bb0b2d7bc6545bb676c36861
+      url: github_files:charmbracelet/gum/releases/download/v2.0.1/gum_2.0.1_Linux_x86_64.tar.gz
+      ref: 4dfe4547f960813864c803b3617aa64427fa32ca566707fde949e08975297c48
   - arch == "aarch64":
-      url: github_files:charmbracelet/gum/releases/download/v2.0.0/gum_2.0.0_Linux_arm64.tar.gz
-      ref: ed51e91457a48f5681f67dd925bd40eb1794d41d1f48cf1d7e19e2517b7fac76
+      url: github_files:charmbracelet/gum/releases/download/v2.0.1/gum_2.0.1_Linux_arm64.tar.gz
+      ref: 6998202a8fea27bb2007f69e44ec5dcb4cff5268c62d995de857eee0e2cd52cb
 
 build-depends:
 - core/sandbox-tools.bst
