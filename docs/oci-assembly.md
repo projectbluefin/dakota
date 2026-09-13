@@ -92,7 +92,12 @@ without rewriting the production Justfile. The runner receives the arguments
 to `just bst` unchanged and supplies its own BuildStream flags/environment.
 
 - `just test-ownership-buildstream` exercises the companion plugin with real,
-  isolated BuildStream artifacts.
+  isolated BuildStream artifacts. Run it when changing the plugin: it covers
+  local composition and a parent build inheriting a remotely cached companion
+  with `cache.storage-service` enabled. The latter proves that absent metadata
+  blobs are fetched without downloading rootfs payloads. It uses a disposable
+  local CAS server, not shared caches or remote execution workers. Graph-only
+  validation and cold export of already-built images do not cover this path.
 - `just test-ownership-export` exercises the real export recipe with Podman and
   sudo inside a disposable container, substituting only BST checkout. It needs
   locally cached bst2 and Fedora 42 images and never changes host sudo policy.

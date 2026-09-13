@@ -9,10 +9,12 @@ snapshots the actual integrated root later.
 
 import json
 import os
+import tarfile
+import tempfile
 from pathlib import PurePosixPath
 
 from buildstream import Element, ElementError
-from buildstream.storage.directory import FileType
+from buildstream.storage.directory import DirectoryError, FileType
 
 
 _INTERVAL_HINTS = (
@@ -157,9 +159,21 @@ class ChunkahOwnershipElement(Element):
         for index, dep in enumerate(self._metadata):
             metadata_dir = basedir.open_directory("ownership-inputs/{}".format(index), create=False)
             try:
-                with metadata_dir.open_file(self.metadata_path, mode="r") as source:
-                    document = json.load(source)
-            except (OSError, ValueError, json.JSONDecodeError) as error:
+                # Remote-backed CAS pulls may contain directory entries without
+                # local file blobs. In BST 2.8 open_file() does not fetch them;
+                # the public export API does. Export only this tiny companion,
+                # never the composed root, and read without extracting paths.
+                with tempfile.TemporaryFile() as buffer:
+                    with tarfile.open(fileobj=buffer, mode="w") as archive:
+                        metadata_dir.export_to_tar(archive, "")
+                    buffer.seek(0)
+                    with tarfile.open(fileobj=buffer, mode="r:") as archive:
+                        member = archive.getmember(self.metadata_path)
+                        if not member.isfile():
+                            raise ValueError("ownership metadata is not a regular file")
+                        with archive.extractfile(member) as source:
+                            document = json.load(source)
+            except (OSError, ValueError, KeyError, tarfile.TarError, DirectoryError) as error:
                 raise ElementError("cannot read ownership companion {}: {}".format(dep.name, error))
             if document.get("schema") != 3 or not isinstance(document.get("entries"), list):
                 raise ElementError("invalid ownership companion {}".format(dep.name))

@@ -9,6 +9,7 @@ on:
     branches: [testing, next]
     paths:
       - "elements/**"
+      - "plugins/**"
       - "patches/**"
       - "Justfile"
       - "project.conf"
