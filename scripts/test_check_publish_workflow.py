@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import ast
 import shutil
 import subprocess
 import sys
@@ -12,6 +13,11 @@ CHECKER = REPOSITORY / "scripts" / "check_publish_workflow.py"
 
 
 class CheckPublishWorkflowTests(unittest.TestCase):
+    def test_checker_has_no_shadowed_functions(self) -> None:
+        functions = [node.name for node in ast.parse(CHECKER.read_text()).body
+                     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        self.assertEqual(len(functions), len(set(functions)))
+
     def run_checker(self, workspace: Path) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [sys.executable, CHECKER],

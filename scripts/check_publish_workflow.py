@@ -198,21 +198,6 @@ def check_publish_workflow(publish: str, errors: list[str]) -> None:
         errors.append("publish export and SBOM jobs must keep remote caches read-only")
 
 
-def check_publish_workflow(publish: str, errors: list[str]) -> None:
-    sbom_match = re.search(r"publish-sbom:\n(?P<body>.*?)(?:\n\S|\Z)", publish, re.S)
-    if not sbom_match:
-        errors.append("could not find publish-sbom job in .github/workflows/publish.yml")
-    else:
-        sbom_body = sbom_match.group("body")
-        if "continue-on-error: ${{ matrix.continue }}" not in sbom_body:
-            errors.append("publish-sbom job must wire continue-on-error to the matrix")
-
-    if publish.count("enable-remote-execution: 'false'") < 2:
-        errors.append("publish export and SBOM jobs must remain local/fetch-only")
-    if publish.count("enable-push: 'false'") < 2:
-        errors.append("publish export and SBOM jobs must keep remote caches read-only")
-
-
 def main() -> int:
     errors: list[str] = []
     publish = PUBLISH.read_text()
