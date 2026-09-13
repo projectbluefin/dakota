@@ -46,6 +46,7 @@ Never translate RPM, DNF, COPR, or Containerfile workflows into this repository.
   ```bash
   python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock
   ```
+- **Out-of-Tree Kernel Modules**: Build against `/usr/lib/modules/$KVER/build` provided by `freedesktop-sdk.bst:components/linux.bst`. Defer `depmod` from the driver element's `install-commands` to the composed layer stack's `integration-commands` (`depmod -a "$KVER"`).
 
 ## Common Rationalizations
 
