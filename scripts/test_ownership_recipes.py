@@ -71,7 +71,9 @@ name, args = pathlib.Path(sys.argv[0]).name, sys.argv[1:]
 with (root / "calls").open("a") as out:
     out.write(json.dumps([name, *args]) + "\\n")
 if name == "id":
-    print("0")
+    print(os.environ.get("FAKE_UID", "0"))
+elif name == "sudo":
+    os.execvp(args[0], args)
 elif name == "podman":
     if args[:2] == ["image", "inspect"]:
         print("a" * 64)
@@ -79,6 +81,21 @@ elif name == "podman":
         print("[]")
     elif args[:2] == ["image", "mount"]:
         print(root / "lower")
+    elif args[0] == "run":
+        if os.environ.get("FAIL_CHUNKAH") == "1":
+            sys.exit(23)
+        assert args[args.index("--output") + 1] == "oci:/chunkah-output/image"
+        output = next(value.split(":")[0] for value in args if value.endswith(":/chunkah-output:rw"))
+        (pathlib.Path(output) / "image").mkdir()
+    elif args[:2] == ["pull", "--quiet"]:
+        if os.environ.get("FAIL_IMPORT") == "1":
+            sys.exit(24)
+        assert args[2].startswith("oci:") and pathlib.Path(args[2][4:]).is_dir()
+        print("invalid" if os.environ.get("BAD_IMAGE_ID") == "1" else "sha256:" + "b" * 64)
+    elif args[0] == "save":
+        print("fixture archive")
+    elif args[0] == "load":
+        assert sys.stdin.read() == "fixture archive\\n"
 elif name == "mktemp":
     countfile = root / "count"
     count = int(countfile.read_text()) + 1 if countfile.exists() else 1
@@ -94,10 +111,10 @@ elif name == "umount":
     sys.exit(5)
 ''')
         stub.chmod(0o755)
-        for name in ("id", "podman", "mktemp", "mount", "mountpoint", "umount", "bst-runner"):
+        for name in ("id", "sudo", "podman", "mktemp", "mount", "mountpoint", "umount", "bst-runner"):
             (self.bin / name).symlink_to(stub)
         self.env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", FIXTURE_ROOT=str(self.root))
-        for name in ("BST_RUNNER", "BUILD_SKIP_CHUNKIFY"):
+        for name in ("BST_RUNNER", "BUILD_SKIP_CHUNKIFY", "BUILD_CHUNKIFY_COPY_TO_USER"):
             self.env.pop(name, None)
         folder = self.root / ".build-ownership" / IMAGE_ID
         folder.mkdir(parents=True)
@@ -130,7 +147,7 @@ elif name == "umount":
                                         "--directory", "/src/.build-out"]])
 
     def test_partial_allocation_failure_cleans_every_acquired_resource(self):
-        for failure in range(1, 5):
+        for failure in range(1, 6):
             with self.subTest(allocation=failure):
                 for name in ("count", "calls"):
                     (self.root / name).unlink(missing_ok=True)
@@ -153,6 +170,48 @@ elif name == "umount":
         self.assertIn("TSV does not match", result.stderr)
         self.assertFalse(any(call[:3] == ["podman", "image", "mount"] for call in self.calls()))
         self.assertFalse(list(self.root.glob("allocated-*")))
+
+    def test_directory_output_uses_one_store_by_default(self):
+        (self.root / "files/fakecap/fakecap-restore").write_text("#!/bin/sh\nexit 0\n")
+        result = self.run_recipe("chunkify", "localhost/fixture:latest", FAKE_UID="1000")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        build = next(call for call in calls if call[:2] == ["podman", "run"])
+        self.assertEqual(build[build.index("--output") + 1], "oci:/chunkah-output/image")
+        self.assertNotIn("--compressed", build)
+        self.assertEqual(build[build.index("--max-layers") + 1], "120")
+        self.assertTrue(any("v0.6.0@sha256:" in value for value in build))
+        self.assertIn(["sudo", "podman", "tag", "b" * 64, "localhost/fixture:latest"], calls)
+        self.assertFalse(any(call[:2] in (["podman", "save"], ["podman", "load"]) for call in calls))
+        allocations = [call for call in calls if call[0] == "mktemp"]
+        self.assertIn("-p", allocations[-1])  # large OCI output never uses default /tmp
+        self.assertFalse(list(self.root.glob("allocated-*")))
+
+    def test_rootless_copy_is_explicit_and_uses_the_imported_id(self):
+        (self.root / "files/fakecap/fakecap-restore").write_text("#!/bin/sh\nexit 0\n")
+        result = self.run_recipe("chunkify", "localhost/fixture:latest", FAKE_UID="1000",
+                                 BUILD_CHUNKIFY_COPY_TO_USER="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        self.assertIn(["sudo", "podman", "save", "b" * 64], calls)
+        self.assertIn(["podman", "load"], calls)
+        self.assertEqual(calls.count(["podman", "tag", "b" * 64, "localhost/fixture:latest"]), 2)
+        self.assertFalse(list(self.root.glob("allocated-*")))
+
+    def test_failed_output_or_import_never_retags_and_cleans_scratch(self):
+        (self.root / "files/fakecap/fakecap-restore").write_text("#!/bin/sh\nexit 0\n")
+        for setting in ("FAIL_CHUNKAH", "FAIL_IMPORT", "BAD_IMAGE_ID"):
+            with self.subTest(setting=setting):
+                for name in ("count", "calls"):
+                    (self.root / name).unlink(missing_ok=True)
+                result = self.run_recipe("chunkify", "localhost/fixture:latest", **{setting: "1"})
+                self.assertNotEqual(result.returncode, 0)
+                if setting == "BAD_IMAGE_ID":
+                    self.assertIn("invalid imported Chunkah image ID", result.stderr)
+                calls = self.calls()
+                self.assertFalse(any(call[:2] == ["podman", "tag"] for call in calls))
+                self.assertIn(["podman", "image", "umount", IMAGE_ID], calls)
+                self.assertFalse(list(self.root.glob("allocated-*")))
 
     def test_busy_overlay_is_preserved_without_masking_original_failure(self):
         result = self.run_recipe("chunkify", "localhost/fixture:latest", BUSY_OVERLAY="1")

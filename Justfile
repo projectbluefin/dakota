@@ -847,7 +847,7 @@ chunkify image_ref:
     fi
 
     # Install cleanup before allocating anything, including partial mktemp failures.
-    LOWER=""; UPPER=""; WORK=""; MERGED=""; MANIFEST_DIR=""
+    LOWER=""; UPPER=""; WORK=""; MERGED=""; MANIFEST_DIR=""; OUTPUT_DIR=""
     cleanup() {
         status=$?
         trap - EXIT
@@ -870,7 +870,7 @@ chunkify image_ref:
                 $SUDO_CMD podman image umount "$IMAGE_ID" >/dev/null || { [ "$status" -ne 0 ] || status=1; }
             fi
         fi
-        for directory in "$MANIFEST_DIR"; do
+        for directory in "$MANIFEST_DIR" "$OUTPUT_DIR"; do
             if [ -n "$directory" ]; then
                 $SUDO_CMD rm -rf -- "$directory" || { [ "$status" -ne 0 ] || status=1; }
             fi
@@ -890,11 +890,10 @@ chunkify image_ref:
     # Chunkah's raw xattr syscalls require a physical writable overlay.
     LOWER=$($SUDO_CMD podman image mount "$IMAGE_ID")
 
-    # Pick the tmpdir with the most free space for the overlay work dirs.
-    # fakecap-restore triggers overlayfs copy-up for every file it touches
-    # (700K+ entries); copy-ups can exhaust /var/tmp on machines where root
-    # has little free space (e.g. CI runners with a BTRFS loopback for
-    # /var/lib/containers).  Mirror the same logic used in chunka@v1.
+    # Pick disk-backed scratch with room for both overlay copy-ups and the
+    # uncompressed OCI directory (roughly another image-sized allocation).
+    # Do not put the layer output in /tmp: runner tmpfs can be smaller than
+    # one image. Keep the existing largest-free-filesystem selection.
     _OVERLAY_TMPDIR="/var/tmp"
     for _candidate in /var/lib/containers /var/tmp; do
         if [ -d "$_candidate" ]; then
@@ -905,6 +904,7 @@ chunkify image_ref:
     done
     echo "==> overlay tmpdir: ${_OVERLAY_TMPDIR} ($(df -h --output=avail "${_OVERLAY_TMPDIR}" | tail -1 | tr -d ' ') free)"
     UPPER=$(mktemp -d -p "$_OVERLAY_TMPDIR"); WORK=$(mktemp -d -p "$_OVERLAY_TMPDIR"); MERGED=$(mktemp -d -p "$_OVERLAY_TMPDIR")
+    OUTPUT_DIR=$(mktemp -d -p "$_OVERLAY_TMPDIR")
     $SUDO_CMD chmod 755 "$UPPER" "$WORK" "$MERGED"
     $SUDO_CMD mount -t overlay overlay \
         -o "lowerdir=${LOWER},upperdir=${UPPER},workdir=${WORK}" \
@@ -926,36 +926,33 @@ chunkify image_ref:
         echo "==> chunkah pull attempt $attempt failed, retrying in 10s..."
         [ "$attempt" -lt 3 ] && sleep 10
     done
-    LOADED=$($SUDO_CMD podman run --rm \
+    # Write the existing layer blobs directly, rather than wrapping them in
+    # an archive and streaming it through podman load (coreos/chunkah#137).
+    $SUDO_CMD podman run --rm \
         --pull never \
         --security-opt label=type:unconfined_t \
         -v "${MERGED}:/chunkah:ro" \
+        -v "${OUTPUT_DIR}:/chunkah-output:rw" \
         -e "CHUNKAH_ROOTFS=/chunkah" \
         -e "CHUNKAH_CONFIG_STR=$CONFIG" \
         "$CHUNKAH_REF" build --max-layers 120 --prune /sysroot/ \
         --label ostree.commit- --label ostree.final-diffid- \
-        | $SUDO_CMD podman load)
+        --output oci:/chunkah-output/image
 
-    echo "$LOADED"
-
-    # Parse the loaded image reference. Handles all podman output formats:
-    #   "Loaded image: <ref>"     — podman ≥4 with tagged OCI archive
-    #   "Loaded image(s): <ref>"  — older podman
-    #   bare 64-char hex sha256   — Ubuntu 24.04 podman for untagged archives
-    NEW_REF=$(echo "$LOADED" | sed -n 's/^Loaded image(s): //p; s/^Loaded image: //p' | head -1)
-    if [ -z "$NEW_REF" ]; then
-        NEW_REF=$(echo "$LOADED" | grep -oP '^[0-9a-f]{64}$' | head -1 || true)
+    NEW_ID=$($SUDO_CMD podman pull --quiet "oci:${OUTPUT_DIR}/image")
+    NEW_ID=${NEW_ID#sha256:}
+    if [[ ! "$NEW_ID" =~ ^[0-9a-f]{64}$ ]]; then
+        echo "ERROR: invalid imported Chunkah image ID: $NEW_ID" >&2
+        exit 1
     fi
+    echo "==> Retagging chunked image to {{image_ref}}..."
+    $SUDO_CMD podman tag "$NEW_ID" "{{image_ref}}"
 
-    if [ -n "$NEW_REF" ] && [ "$NEW_REF" != "{{image_ref}}" ]; then
-        echo "==> Retagging chunked image to {{image_ref}}..."
-        $SUDO_CMD podman tag "$NEW_REF" "{{image_ref}}"
-    fi
-
-    # Publish steps run as the unprivileged runner user after rootful chunkah.
-    # Copy the result into that user's podman store before returning.
-    if [ -n "$SUDO_CMD" ]; then
-        $SUDO_CMD podman save "{{image_ref}}" | podman load
+    # Lint, audits and publication already use the rootful store. Local users
+    # can explicitly request a second copy for rootless tools that need it.
+    if [ "${BUILD_CHUNKIFY_COPY_TO_USER:-0}" = "1" ] && [ -n "$SUDO_CMD" ]; then
+        $SUDO_CMD podman save "$NEW_ID" | podman load
+        podman tag "$NEW_ID" "{{image_ref}}"
     fi
 
 # ── bcvk (fast VM testing) ───────────────────────────────────────────

@@ -36,6 +36,32 @@ restoration. The sidecar is outside the OCI root and is never shipped to image
 consumers. The validator uses the same privilege as Podman so root-only files
 are checked; generated metadata is returned to the invoking user's ownership.
 
+### Chunkah output and local image storage
+
+`just chunkify` writes an uncompressed OCI directory using Chunkah v0.6.0's
+`--output oci:PATH`, then imports it into the same Podman store used for export.
+This avoids wrapping the layer blobs in an outer archive and piping that
+archive through `podman load`, an [upstream-documented I/O bottleneck](https://github.com/coreos/chunkah/issues/137).
+The 120-layer limit, ownership mapping and final registry zstd compression are
+unchanged.
+
+Output shares the overlay scratch-filesystem selection (`/var/tmp` or
+`/var/lib/containers`), not the default `/tmp`. Allow space for another full
+uncompressed image alongside overlay copy-ups and the imported result. Both
+the output directory and overlay scratch are cleaned up on success or failure;
+busy overlay mounts are preserved and reported rather than deleted.
+
+Export, lint, audits and publication already use the rootful Podman store, so
+chunkify no longer makes an unconditional copy into the invoking user's
+rootless store. Local callers needing that second copy can opt in explicitly:
+
+```sh
+BUILD_CHUNKIFY_COPY_TO_USER=1 just chunkify localhost/dakota:latest
+```
+
+The opt-in only applies when the recipe invokes sudo; a root caller already
+uses one store. Image signing, provenance and stream promotion are unchanged.
+
 ### Upstream manifest interface
 
 Chunkah v0.6.0 supports RPM and ALPM package databases, plus xattr-based
