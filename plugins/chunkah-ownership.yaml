@@ -1,0 +1,9 @@
+# Chunkah ownership companion defaults. The artifact is never a rootfs layer.
+config:
+  metadata-path: ownership/basis.json
+  # The exact normal compose/filter artifact whose surviving paths are owned.
+  layer-dependency: ''
+  # Roots whose runtime closures supplied files to that layer.
+  provenance-dependencies: []
+  metadata-dependencies: []
+  inherit-from-components: []

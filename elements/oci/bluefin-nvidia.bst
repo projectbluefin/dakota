@@ -13,6 +13,12 @@ build-depends:
   - filename: oci/layers/bluefin-nvidia.bst
     config:
       location: /layer
+  - filename: oci/chunkah/bluefin-nvidia.bst
+    config:
+      location: /ownership
+  - filename: oci/chunkah-metadata-tool.bst
+    config:
+      location: /ownership-tool
 
 environment:
   LD_PRELOAD: /usr/libexec/fakecap/fakecap.so
@@ -25,13 +31,19 @@ variables:
   # Baked into org.opencontainers.image.ref.name: the `bootc upgrade`
   # origin. Gaming gets its own repo since tags are release channels.
   image-repo: dakota-nvidia
+  ownership-variant: nvidia
   (?):
   - gaming == true:
       image-repo: dakota-nvidia-gaming
+      ownership-variant: nvidia-gaming
 
 config:
   commands:
     - mkdir /fakecap
+    - |
+      python3 /ownership-tool/ownership-tool/ownership_metadata.py verify-basis \
+        --root /layer --basis /ownership/ownership/basis.json
+
     - |
       prepare-image.sh \
          --sysroot /layer \
@@ -96,3 +108,15 @@ config:
         index-annotations:
           'org.opencontainers.image.ref.name': 'ghcr.io/projectbluefin/%{image-repo}:latest'
       EOF
+
+    # The NVIDIA compose layer is a full-root superset. Snapshot the completed
+    # parent+child OCI archive directly so parent overlays and whiteouts cannot
+    # drift from the sidecar.
+    - |
+      python3 /ownership-tool/ownership-tool/ownership_metadata.py finalize-oci \
+        --layout "%{install-root}" --root /layer \
+        --basis /ownership/ownership/basis.json \
+        --arch "%{go-arch}" --variant "%{ownership-variant}" \
+        --output /ownership/final.json
+      mkdir -p "%{install-root}/.dakota"
+      cp /ownership/final.json "%{install-root}/.dakota/ownership-final.json"

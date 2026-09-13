@@ -10,6 +10,12 @@ build-depends:
   - filename: oci/layers/bluefin.bst
     config:
       location: /layer
+  - filename: oci/chunkah/bluefin.bst
+    config:
+      location: /ownership
+  - filename: oci/chunkah-metadata-tool.bst
+    config:
+      location: /ownership-tool
 
 environment:
   LD_PRELOAD: /usr/libexec/fakecap/fakecap.so
@@ -20,13 +26,19 @@ variables:
   # Baked into org.opencontainers.image.ref.name: the `bootc upgrade`
   # origin. Gaming gets its own repo since tags are release channels.
   image-repo: dakota
+  ownership-variant: default
   (?):
   - gaming == true:
       image-repo: dakota-gaming
+      ownership-variant: gaming
 
 config:
   commands:
     - mkdir /fakecap
+    - |
+      python3 /ownership-tool/ownership-tool/ownership_metadata.py verify-basis \
+        --root /layer --basis /ownership/ownership/basis.json
+
     - |
       prepare-image.sh \
          --sysroot /layer \
@@ -90,3 +102,14 @@ config:
         index-annotations:
           'org.opencontainers.image.ref.name': 'ghcr.io/projectbluefin/%{image-repo}:latest'
       EOF
+
+    # build-oci normalizes generated metadata. Bind ownership to the completed
+    # archive, not its pre-packaging source tree.
+    - |
+      python3 /ownership-tool/ownership-tool/ownership_metadata.py finalize-oci \
+        --layout "%{install-root}" --root /layer \
+        --basis /ownership/ownership/basis.json \
+        --arch "%{go-arch}" --variant "%{ownership-variant}" \
+        --output /ownership/final.json
+      mkdir -p "%{install-root}/.dakota"
+      cp /ownership/final.json "%{install-root}/.dakota/ownership-final.json"
