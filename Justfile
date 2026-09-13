@@ -34,6 +34,8 @@ export OCI_IMAGE_VERSION := env("OCI_IMAGE_VERSION", "latest")
 # and reuse artifacts published by gnome-build-meta and freedesktop-sdk.
 # Set BST_FLAGS to append flags (e.g. --config ...).
 # Set BST_FLAGS_OVERRIDE to replace all default/appended flags.
+# BST_RUNNER may name an executable alternate runner (also used by isolated tests).
+# It receives the recipe arguments unchanged and handles its own flags/environment.
 # Usage: just bst build oci/bluefin.bst
 #        just bst show oci/bluefin.bst
 #        BST_FLAGS="--config /src/buildstream-ci.conf" just bst build oci/bluefin.bst
@@ -41,6 +43,9 @@ export OCI_IMAGE_VERSION := env("OCI_IMAGE_VERSION", "latest")
 bst *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
+    if [ -n "${BST_RUNNER:-}" ]; then
+        exec "$BST_RUNNER" {{ARGS}}
+    fi
     mkdir -p "${HOME}/.cache/buildstream"
     DEFAULT_BST_FLAGS="-o x86_64_v3 false --no-interactive"
     if [ -n "${BST_FLAGS_OVERRIDE:-}" ]; then
@@ -81,7 +86,7 @@ bst *ARGS:
 check-publish-workflow:
     python3 scripts/check_publish_workflow.py
     python3 -m unittest scripts.test_check_publish_workflow
-    python3 -m unittest scripts.test_gen_filemap
+    python3 -m unittest scripts.test_ownership_metadata scripts.test_ownership_oci scripts.test_compare_oci_layers scripts.test_ownership_recipes scripts.test_sync_next
     python3 -m unittest scripts.test_image_variants
     python3 -m unittest scripts.test_desktop_defaults
     just test-chairlift-migration
@@ -287,8 +292,15 @@ export variant="default":
     fi
 
     echo "==> Exporting OCI image ($ELEMENT → ${FINAL_NAME}:${FINAL_TAG})..."
-    rm -rf .build-out
+    rm -rf .build-out .build-ownership-source
     just bst artifact checkout "$ELEMENT" --directory /src/.build-out
+    SIDECAR=.build-out/.dakota/ownership-final.json
+    if [ ! -f "$SIDECAR" ] || [ -L "$SIDECAR" ]; then
+        echo "ERROR: $ELEMENT did not produce a regular ownership sidecar" >&2
+        exit 1
+    fi
+    mkdir -p .build-ownership-source
+    cp --no-dereference "$SIDECAR" .build-ownership-source/ownership-final.json
 
     # Load the multi-layer OCI image and squash into a single layer.
     # BuildStream produces separate layers (platform + gnomeos + bluefin);
@@ -296,7 +308,13 @@ export variant="default":
     # Using podman (not skopeo) ensures the squashed view is preserved on push.
     echo "==> Loading and squashing OCI image..."
     IMAGE_ID=$($SUDO_CMD podman pull -q oci:.build-out)
-    rm -rf .build-out
+    IMAGE_ID=${IMAGE_ID#sha256:}
+    if [[ ! "$IMAGE_ID" =~ ^[0-9a-f]{64}$ ]]; then
+        echo "ERROR: Podman returned an invalid loaded image ID: $IMAGE_ID" >&2
+        exit 1
+    fi
+    mv .build-ownership-source/ownership-final.json ".build-ownership-source/${IMAGE_ID}.json"
+    rm -rf .build-out .build-ownership-source/ownership-final.json
 
     # Build label arguments for dynamic OCI metadata
     LABEL_ARGS=""
@@ -323,8 +341,48 @@ export variant="default":
     # carries /usr/lib metadata even when its component files are unchanged.
     # shellcheck disable=SC2016,SC2086
     printf 'FROM %s\nRUN OS_RELEASE_MTIME="$(stat -c %%y /usr/lib/os-release)" \\\n    && USR_LIB_MTIME="$(stat -c %%y /usr/lib)" \\\n    && sed -i "s/^VERSION_ID=.*/VERSION_ID=\\"%s\\"/" /usr/lib/os-release \\\n    && sed -i "s/^IMAGE_VERSION=.*/IMAGE_VERSION=\\"%s\\"/" /usr/lib/os-release \\\n    && touch -d "$OS_RELEASE_MTIME" /usr/lib/os-release \\\n    && touch -d "$USR_LIB_MTIME" /usr/lib\n' "$IMAGE_ID" "$DATE_TAG" "$DATE_TAG" \
-        | $SUDO_CMD podman build --pull=never --security-opt label=type:unconfined_t --squash-all ${LABEL_ARGS} -t "${FINAL_NAME}:${FINAL_TAG}" -f - .
+        | $SUDO_CMD podman build --pull=never --security-opt label=type:unconfined_t --squash-all ${LABEL_ARGS} --iidfile .build-ownership-source/final-image-id -t "${FINAL_NAME}:${FINAL_TAG}" -f - .
     $SUDO_CMD podman rmi "$IMAGE_ID" || true
+
+    # Validate the actual squashed root once and bind its generated TSV to the
+    # immutable final image ID. Chunkify refuses any tag-only/stale manifest.
+    FINAL_IMAGE_ID=$(cat .build-ownership-source/final-image-id)
+    FINAL_IMAGE_ID=${FINAL_IMAGE_ID#sha256:}
+    if [[ ! "$FINAL_IMAGE_ID" =~ ^[0-9a-f]{64}$ ]]; then
+        echo "ERROR: Podman returned an invalid final image ID: $FINAL_IMAGE_ID" >&2
+        exit 1
+    fi
+    OWNERSHIP_DIR=".build-ownership/${FINAL_IMAGE_ID}"
+    rm -rf "$OWNERSHIP_DIR"
+    mkdir -p "$OWNERSHIP_DIR"
+    cp ".build-ownership-source/${IMAGE_ID}.json" "$OWNERSHIP_DIR/ownership-source.json"
+    MOUNT=$($SUDO_CMD podman image mount "$FINAL_IMAGE_ID")
+    cleanup_ownership() { $SUDO_CMD podman image umount "$FINAL_IMAGE_ID" >/dev/null 2>&1 || true; }
+    trap cleanup_ownership EXIT
+    OWNERSHIP_VARIANT="{{variant}}"
+    if [ "{{gaming}}" = "true" ]; then
+        case "{{variant}}" in
+            default) OWNERSHIP_VARIANT="gaming" ;;
+            nvidia) OWNERSHIP_VARIANT="nvidia-gaming" ;;
+        esac
+    fi
+    OWNERSHIP_ARCH=$($SUDO_CMD podman image inspect --format '{{"{{"}}.Architecture{{"}}"}}' "$FINAL_IMAGE_ID")
+    # The mounted root belongs to the same privileged store as Podman. Hashing
+    # root-only files must use that privilege too, not the invoking user's UID.
+    $SUDO_CMD python3 scripts/ownership_metadata.py rebind-exported \
+        --root "$MOUNT" --sidecar "$OWNERSHIP_DIR/ownership-source.json" \
+        --image-id "$FINAL_IMAGE_ID" --arch "$OWNERSHIP_ARCH" \
+        --variant "$OWNERSHIP_VARIANT" \
+        --output "$OWNERSHIP_DIR/ownership-final.json" \
+        --manifest "$OWNERSHIP_DIR/fakecap-manifest.tsv"
+    if [ -n "$SUDO_CMD" ]; then
+        $SUDO_CMD chown --reference="$OWNERSHIP_DIR" \
+            "$OWNERSHIP_DIR/ownership-final.json" "$OWNERSHIP_DIR/fakecap-manifest.tsv"
+    fi
+    printf '%s\n' "$FINAL_IMAGE_ID" > "$OWNERSHIP_DIR/image-id"
+    cleanup_ownership
+    trap - EXIT
+    rm -rf .build-ownership-source
 
     echo "==> Export complete. Image loaded as ${FINAL_NAME}:${FINAL_TAG}"
     $SUDO_CMD podman images | grep -E "{{image_name}}|REPOSITORY" || true
@@ -708,6 +766,41 @@ show-me-the-future:
         echo "==> All steps complete. Total: $(format_time $((SECONDS - OVERALL_START)))"
     fi
 
+# ── Chunkah component ownership metadata ─────────────────────────────
+# Offline tests never pull images. The real BuildStream fixture is opt-in and
+# intentionally has its own recipe so CI's unit gate has no Podman/network need.
+[group('test')]
+test-ownership-buildstream:
+    DAKOTA_OWNERSHIP_REAL_BST=1 python3 -m unittest scripts.test_ownership_buildstream -v
+
+# Real non-root/sudo export in a disposable container; never changes host sudo.
+[group('test')]
+test-ownership-export:
+    DAKOTA_OWNERSHIP_EXPORT_TEST=1 python3 -m unittest scripts.test_ownership_export -v
+
+# Isolated local CAS transfer and publisher test; shared BST cache is read-only.
+[group('test')]
+test-ownership-cold-cache default_ref nvidia_ref output:
+    python3 scripts/test_ownership_cold_cache.py "{{default_ref}}" "{{nvidia_ref}}" "{{output}}"
+
+[group('test')]
+ownership-validate root sidecar arch="" variant="" manifest="/tmp/dakota-ownership-manifest.tsv":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(validate-exported --root "{{root}}" --sidecar "{{sidecar}}" --manifest "{{manifest}}")
+    [ -z "{{arch}}" ] || args+=(--arch "{{arch}}")
+    [ -z "{{variant}}" ] || args+=(--variant "{{variant}}")
+    python3 scripts/ownership_metadata.py "${args[@]}"
+
+[group('test')]
+ownership-compare legacy manifest output:
+    python3 scripts/ownership_metadata.py compare --legacy "{{legacy}}" --manifest "{{manifest}}" --output "{{output}}"
+
+# Compare equally compressed local OCI layouts, without registry publication.
+[group('test')]
+ownership-layer-compare old new output:
+    python3 -m scripts.compare_oci_layers "{{old}}" "{{new}}" "{{output}}"
+
 # ── Chunkah ──────────────────────────────────────────────────────────
 # Use the pre-built chunkah image from quay.io (v0.6.0).
 # coreos/chunkah#113 is closed — the resolution is this physical overlay+xattr
@@ -732,8 +825,19 @@ chunkify image_ref:
 
     echo "==> Chunkifying {{image_ref}}..."
 
-    # Get config from existing image
-    CONFIG=$($SUDO_CMD podman inspect "{{image_ref}}")
+    # Resolve the mutable tag only once; config, metadata and mount use that ID.
+    IMAGE_ID=$($SUDO_CMD podman image inspect --format '{{"{{"}}.Id{{"}}"}}' "{{image_ref}}")
+    IMAGE_ID=${IMAGE_ID#sha256:}
+    if [[ ! "$IMAGE_ID" =~ ^[0-9a-f]{64}$ ]]; then
+        echo "ERROR: invalid image ID: $IMAGE_ID" >&2
+        exit 1
+    fi
+    CONFIG=$($SUDO_CMD podman inspect "$IMAGE_ID")
+    EXPORT_MANIFEST=".build-ownership/${IMAGE_ID}/fakecap-manifest.tsv"
+    if [ ! -f "$EXPORT_MANIFEST" ] || [ -L "$EXPORT_MANIFEST" ] || [ "$(cat ".build-ownership/${IMAGE_ID}/image-id" 2>/dev/null || true)" != "$IMAGE_ID" ]; then
+        echo "ERROR: no validated ownership manifest bound to immutable image ID $IMAGE_ID" >&2
+        exit 1
+    fi
 
     # Compile fakecap-restore from source if not already built.
     FAKECAP_RESTORE="{{justfile_directory()}}/files/fakecap/fakecap-restore"
@@ -742,20 +846,49 @@ chunkify image_ref:
         gcc -O2 -o "$FAKECAP_RESTORE" "{{justfile_directory()}}/files/fakecap/fakecap-restore.c"
     fi
 
-
-
-    # Mount the image as a writable overlay so we can physically set
-    # user.component xattrs.  chunkah uses rustix raw syscalls for xattr
-    # reads (bypassing libc/LD_PRELOAD), so real xattrs must be present.
-    # See coreos/chunkah#113.
-    LOWER=$($SUDO_CMD podman image mount "{{image_ref}}")
-
+    # Install cleanup before allocating anything, including partial mktemp failures.
+    LOWER=""; UPPER=""; WORK=""; MERGED=""; MANIFEST_DIR=""
     cleanup() {
-        $SUDO_CMD umount "$MERGED" 2>/dev/null || true
-        $SUDO_CMD rm -rf "$UPPER" "$WORK" "$MERGED"
-        $SUDO_CMD podman image umount "{{image_ref}}" >/dev/null 2>&1 || true
+        status=$?
+        trap - EXIT
+        set +e
+        mounted=false
+        if [ -n "$MERGED" ] && $SUDO_CMD mountpoint -q "$MERGED"; then
+            if ! $SUDO_CMD umount "$MERGED"; then
+                echo "ERROR: overlay still mounted at $MERGED; preserving overlay and lower mount" >&2
+                mounted=true
+                [ "$status" -ne 0 ] || status=1
+            fi
+        fi
+        if [ "$mounted" = false ]; then
+            for directory in "$UPPER" "$WORK" "$MERGED"; do
+                if [ -n "$directory" ]; then
+                    $SUDO_CMD rm -rf -- "$directory" || { [ "$status" -ne 0 ] || status=1; }
+                fi
+            done
+            if [ -n "$LOWER" ]; then
+                $SUDO_CMD podman image umount "$IMAGE_ID" >/dev/null || { [ "$status" -ne 0 ] || status=1; }
+            fi
+        fi
+        for directory in "$MANIFEST_DIR"; do
+            if [ -n "$directory" ]; then
+                $SUDO_CMD rm -rf -- "$directory" || { [ "$status" -ne 0 ] || status=1; }
+            fi
+        done
+        exit "$status"
     }
     trap cleanup EXIT
+
+    # Check exact TSV bytes against the final-image sidecar, then consume a
+    # private copy so a concurrent export cannot change them after validation.
+    MANIFEST_DIR=$(mktemp -d)
+    MANIFEST="$MANIFEST_DIR/manifest.tsv"
+    $SUDO_CMD python3 scripts/ownership_metadata.py prepare-chunkify \
+        --sidecar ".build-ownership/${IMAGE_ID}/ownership-final.json" \
+        --image-id "$IMAGE_ID" --manifest "$EXPORT_MANIFEST" --output "$MANIFEST"
+
+    # Chunkah's raw xattr syscalls require a physical writable overlay.
+    LOWER=$($SUDO_CMD podman image mount "$IMAGE_ID")
 
     # Pick the tmpdir with the most free space for the overlay work dirs.
     # fakecap-restore triggers overlayfs copy-up for every file it touches
@@ -778,7 +911,7 @@ chunkify image_ref:
         "$MERGED"
 
     echo "==> Applying user.component xattrs via fakecap-restore..."
-    $SUDO_CMD "$FAKECAP_RESTORE" files/fakecap-manifest.tsv "$MERGED"
+    $SUDO_CMD "$FAKECAP_RESTORE" "$MANIFEST" "$MERGED"
 
     # Run chunkah against the overlay (bind-mounted read-only).
     # --max-layers 120 balances layer granularity with registry storage space.

@@ -14,6 +14,8 @@ debug-session/
 *.tar
 .ovmf-vars.fd
 .build-out
+.build-ownership/
+.build-ownership-source/
 
 # Local AI agent state (opencode sessions, drafts)
 # Skills are committed; everything else is ignored
@@ -22,8 +24,6 @@ debug-session/
 
 # Git worktrees
 .worktrees/
-files/filemap.json
-files/fakecap-manifest.tsv
 files/xattr-db/
 files/fakecap/fakecap-restore
 files/fakecap/fakecap.so

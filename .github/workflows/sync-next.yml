@@ -2,14 +2,14 @@ name: Sync next
 
 # Synthesizes next = testing + the next-stream overlay. Two tiers:
 #   NEXT_OWNED  - wholly stream-specific content (junctions, patch queues,
-#                 kernels, generated manifests): restored verbatim from next.
+#                 and kernels): restored verbatim from next.
 #   NEXT_MERGED - testing files carrying a small next-only tweak: 3-way
 #                 merged so edits landing on testing flow through and only
 #                 next's tweak is reapplied. A conflict fails the job; push
 #                 the resolved file to next and the next sync carries it.
-# Anything on next outside both lists fails the drop guard instead of being
-# deleted. The lists should shrink back toward junctions + manifests once
-# testing reaches fdsdk 26.08.
+# Retired generated maps may be dropped only once testing has deleted them.
+# Anything else on next outside both lists fails the drop guard instead of being
+# deleted. The lists should shrink back toward junctions once testing reaches fdsdk 26.08.
 
 on:
   push:
@@ -36,8 +36,6 @@ env:
     patches/linux
     patches/linux-ogc
     files/linux-ogc
-    files/filemap.json
-    files/fakecap-manifest.tsv
   NEXT_MERGED: >-
     elements/bluefin/deps.bst
     elements/bluefin-nvidia/nvidia-drivers.bst
@@ -82,9 +80,19 @@ jobs:
           read -ra owned <<< "$NEXT_OWNED"
           read -ra merged <<< "$NEXT_MERGED"
 
-          # Refuse to drop divergence outside NEXT_OWNED + NEXT_MERGED.
+          # These obsolete generated maps are replaced by artifact sidecars.
+          # Permit only their removal, never discard a live testing file.
+          retired=(files/filemap.json files/fakecap-manifest.tsv)
+          for p in "${retired[@]}"; do
+            if git cat-file -e "origin/testing:$p" 2>/dev/null; then
+              echo "ERROR: retired ownership map still exists on testing: $p"
+              exit 1
+            fi
+          done
+
+          # Refuse all other divergence outside NEXT_OWNED + NEXT_MERGED.
           base=$(git merge-base HEAD origin/testing)
-          mapfile -t excludes < <(for p in "${owned[@]}" "${merged[@]}"; do echo ":(exclude)$p"; done)
+          mapfile -t excludes < <(for p in "${owned[@]}" "${merged[@]}" "${retired[@]}"; do echo ":(exclude)$p"; done)
           unsanctioned=$(git diff --name-only "$base" HEAD -- . "${excludes[@]}")
           if [ -n "$unsanctioned" ]; then
             echo "ERROR: next diverges from testing outside NEXT_OWNED/NEXT_MERGED — refusing to drop:"
