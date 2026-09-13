@@ -11,13 +11,23 @@ disagrees with this page.
 | `build.yml` | Relevant pushes to `testing`/`next`, daily 13:00 UTC, manual | Build four x86 variants through remote execution |
 | `publish.yml` | Successful build workflow on `testing`/`next`, manual recovery | Export CAS artifacts, publish immutable and stream tags, sign, attest, and attach SBOMs |
 | `e2e.yml` | Manual only | Run testsuite suites against an explicitly published image |
-| `build-aarch64.yml` | Architecture-specific push/workflow triggers and manual | Build the decoupled aarch64 image |
-| `boot-test-aarch64.yml` | aarch64 pipeline trigger | Boot validation for the ARM image |
+| `build-aarch64.yml` | Manual only; automatic ARM CI paused | Build the decoupled aarch64 image on explicit request |
+| `boot-test-aarch64.yml` | Manual only; automatic ARM CI paused | Experimental ARM boot validation; requires KVM |
 | `execute-release.yml` | Mon/Wed/Fri 18:00 UTC and manual recovery | Verify and promote the tested x86 variants to `stable` |
 
 PRs do not publish their image, so `e2e.yml` does not run on pull requests: it
 would test a stale public tag rather than the PR. Run it manually only after the
 intended image is available.
+
+ARM build and boot-test workflows no longer follow publish/build completion.
+There is no usable ARM boot-test environment: the configured hosted runner lacks
+KVM, which the boot test requires. Keep both workflows manual-only until ARM
+boot validation is available. Manual builds still publish/sign ARM images, but
+must be followed by a separate explicit boot-test dispatch; a skipped KVM test
+is not boot-verification evidence. ARM elements and x86 CI are unchanged.
+
+GitHub's [manual workflow documentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
+describes `workflow_dispatch`; the workflow must exist on the default branch.
 
 ## Build and publish contract
 

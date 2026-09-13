@@ -14,15 +14,10 @@ name: Boot Test dakota (aarch64)
 # Note this exercises kernel/initramfs/systemd bring-up, NOT the bootc
 # install-to-disk bootloader path; a disk-install test is a follow-up.
 
+# Automatic ARM CI is paused: the configured runner cannot exercise the
+# KVM-only boot test. Keep manual dispatch for explicit experiments; restore
+# automatic testing only when a usable ARM boot-test environment is available.
 on:
-  # Fires after an aarch64 build completes (which itself runs after x86 publish
-  # on testing). Conclusion is checked in the job: build-aarch64's job-level
-  # continue-on-error means the workflow_run conclusion reads success even when
-  # the build failed, so we verify the image tag exists instead.
-  workflow_run:
-    workflows: ["Build Bluefin dakota (aarch64)"]
-    types: [completed]
-    branches: [testing]
   workflow_dispatch:
     inputs:
       image:
@@ -58,7 +53,7 @@ jobs:
             echo "ref=ghcr.io/${GITHUB_REPOSITORY_OWNER}/dakota:aarch64" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Verify image exists (build-aarch64 conclusions are unreliable)
+      - name: Verify requested image exists
         env:
           GH_ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -86,7 +81,7 @@ jobs:
           if [ -e /dev/kvm ]; then
             echo "KVM available: $(ls -l /dev/kvm)"
           else
-            echo "WARNING: /dev/kvm absent — qemu will fall back to TCG (slow)"
+            echo "WARNING: /dev/kvm absent; bcvk requires KVM, so boot verification will be skipped."
           fi
 
       - name: Restore cached bcvk

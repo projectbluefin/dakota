@@ -9,22 +9,15 @@ name: Build Bluefin dakota (aarch64)
 #   - No remote execution (no RE service for ARM); enable-push: true so artifacts
 #     land in the remote CAS for subsequent builds and warm-cache runs.
 #
-# Triggers:
-#   - workflow_run: fires after x86_64 publish completes on testing — ARM builds
-#     after x86 CAS writes are done, avoiding CAS write contention
-#   - workflow_dispatch: manual recovery / on-demand
+# Automatic ARM CI is paused: we have no usable ARM boot-test environment.
+# Keep manual dispatch for explicit experiments; do not restore automatic
+# builds until ARM boot validation is available.
 #
-# Published tags (when qualifying event on testing/main):
-#   :aarch64          — latest successful aarch64 build from testing
+# Published tags (manual dispatch):
+#   :aarch64          — latest successful manually dispatched aarch64 build
 #   :aarch64-<sha>    — immutable per-commit tag
 
 on:
-  # Triggered after x86_64 publish completes — ARM builds after x86 CAS writes
-  # are done, avoiding CAS write contention.
-  workflow_run:
-    workflows: ["Publish Bluefin dakota"]
-    types: [completed]
-    branches: [testing]
   workflow_dispatch:
 
 permissions: read-all
@@ -48,10 +41,6 @@ jobs:
   build-aarch64:
     name: Build OCI image (aarch64)
     runs-on: ubuntu-24.04-arm
-    # Skip if triggered by workflow_run but the upstream publish failed.
-    if: >
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
     # ARM failures are non-blocking and never affect x86_64 publication.
     continue-on-error: true
     timeout-minutes: 420
@@ -138,10 +127,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Login to GHCR
-        if: >-
-          github.event_name == 'push' ||
-          github.event_name == 'workflow_run' ||
-          github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch'
         env:
           GH_ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -153,10 +139,7 @@ jobs:
 
       - name: Push to GHCR
         id: push
-        if: >-
-          github.event_name == 'push' ||
-          github.event_name == 'workflow_run' ||
-          github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch'
         env:
           BUILD_SHA: ${{ github.sha }}
         run: |
