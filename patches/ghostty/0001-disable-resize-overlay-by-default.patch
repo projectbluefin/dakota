@@ -1,0 +1,19 @@
+Upstream-Status: Inappropriate [configuration]
+
+Disable the Ghostty resize overlay by default. On GNOME/Wayland, the resize
+overlay triggers an infinite resize feedback loop with Mutter/compositor
+configure events, causing continuous flickering and freezing window input.
+GNOME applications do not show resize overlays by convention. Users can still
+explicitly enable it via `resize-overlay = after-first` or `always` in their
+config file.
+
+--- a/src/config/Config.zig
++++ b/src/config/Config.zig
+@@ -2277,5 +2277,5 @@ pub const Config = struct {
+ ///                     subsequently resized.
+ ///
+-/// The default is `after-first`.
+-@"resize-overlay": ResizeOverlay = .@"after-first",
++/// The default is `never`.
++@"resize-overlay": ResizeOverlay = .never,
+ 
