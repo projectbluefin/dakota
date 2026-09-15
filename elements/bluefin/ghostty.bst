@@ -23,6 +23,10 @@ sources:
     url: ghostty_releases:1.3.1/ghostty-1.3.1.tar.gz
     ref: 3349d25600ffbda281197a18314f7d18791969cffe9474f0ff16a45a9ebfccdb
 
+  # Bluefin GNOME profile: disable resize overlay by default to prevent Wayland resize loop
+  - kind: patch
+    path: patches/ghostty/0001-disable-resize-overlay-by-default.patch
+
   # Top-level Zig dependencies
   - kind: remote
     url: ghostty_deps:libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e.tar.gz

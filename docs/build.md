@@ -122,13 +122,17 @@ The common source import also does not supply `fastfetch-user-count` or
 `bazaar-install-count`; those weekly-statistics inputs remain a separate parity
 gap, not a reason to fork the config or invent counts.
 
-## Ghostty theme ownership
+## Ghostty theme and configuration defaults
 
 `bluefin/common.bst` imports Ghostty's GNOME profile from `projectbluefin/common`.
-Because Dakota uses Ghostty as its primary terminal emulator,
-`patches/common/0002-ghostty-dual-theme.patch` configures `theme = light:Catppuccin Latte,dark:Catppuccin Mocha`
-so that Ghostty follows the GNOME Dark/Light style toggle button out of the box.
-Drop this patch once common carries dual-theme by default.
+Because Dakota uses Ghostty as its primary terminal emulator:
+- `patches/common/0002-ghostty-dual-theme.patch` configures `theme = light:Catppuccin Latte,dark:Catppuccin Mocha`
+  so that Ghostty follows the GNOME Dark/Light style toggle button out of the box.
+  Drop this patch once common carries dual-theme by default.
+- `patches/ghostty/0001-disable-resize-overlay-by-default.patch` sets the compiled-in
+  default for `resize-overlay` to `never` in `elements/bluefin/ghostty.bst`. This ensures
+  both existing and new user sessions avoid the Wayland resize feedback loop with
+  GNOME Shell/Mutter without relying solely on `/etc/skel` propagation.
 
 ## What NOT to do
 
