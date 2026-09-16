@@ -7,7 +7,8 @@
     "0004-openssh-Include-ssh-_config.d-.conf.patch": "f9a53430cc821809e7fd737455043d56fe9df91f1f66d57be99e6b37991a801e",
     "0005-lvm2-Disable-event-activation-by-default.patch": "87236589d2f0350244597439a36c7670314fb649c6c8850de865d65547fe80aa",
     "0006-Add-cross-compilers-binutils-x86-64.bst.patch": "ce121de8de3cf0e2f273c3511f5db2add821842aae7028859e0bb25cf718098c",
-    "0007-Update-Pipewire-to-1.6.8.patch": "07e9528cad31e477c09ea42e8a3288f3abb9c92f05b94cba357f43f53b8409de"
+    "0007-Update-Pipewire-to-1.6.8.patch": "07e9528cad31e477c09ea42e8a3288f3abb9c92f05b94cba357f43f53b8409de",
+    "0008-e2fsprogs-enable-fuse2fs.patch": "21bc72d9e306e89e5c135e0e1545538a313ffbf56d5580f8aca88aa3e7d85b79"
   },
   "gnome-build-meta-sha": "d78f4981a3321e07ae4c62d4a7761de46ac8172b"
 }

@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Josh York <josh@example.invalid>
+Date: Wed, 16 Sep 2026 00:00:00 -0400
+Subject: [PATCH] e2fsprogs: enable fuse2fs for Bluefin Review
+
+Bluefin Review uses fuse2fs for userspace filesystem inspection. Keep the
+tool in Dakota's composed runtime while retaining freedesktop-sdk ownership
+of the e2fsprogs element.
+
+Upstream-Status: Inappropriate [Dakota image integration]
+---
+ elements/components/e2fsprogs.bst | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/elements/components/e2fsprogs.bst b/elements/components/e2fsprogs.bst
+index 1234567..89abcde 100644
+--- a/elements/components/e2fsprogs.bst
++++ b/elements/components/e2fsprogs.bst
+@@ -11,7 +11,7 @@ variables:
+   license-files-extra: NOTICE
+   conf-local: >-
+     --enable-elf-shlibs
+-    --disable-fuse2fs
++    --enable-fuse2fs
+     --disable-libblkid
+     --disable-libuuid
+     --disable-fsck
+--
+2.45.2
