@@ -13,10 +13,10 @@ Upstream-Status: Inappropriate [Dakota image integration]
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/elements/components/e2fsprogs.bst b/elements/components/e2fsprogs.bst
-index 2839804..2f9a200 100644
+index 1234567..89abcde 100644
 --- a/elements/components/e2fsprogs.bst
 +++ b/elements/components/e2fsprogs.bst
-@@ -10,7 +10,7 @@ variables:
+@@ -11,7 +11,7 @@ variables:
    license-files-extra: NOTICE
    conf-local: >-
      --enable-elf-shlibs
