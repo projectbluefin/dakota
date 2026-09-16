@@ -1,0 +1,33 @@
+From: Ahmed Adan <ahmed.adan@gmail.com>
+Subject: [PATCH] platform/x86: ayn-ec: drop local DEVICE_ATTR_*_NAMED macros
+
+Linux 7.2-rc added DEVICE_ATTR_RW_NAMED and DEVICE_ATTR_RO_NAMED to
+include/linux/device.h with identical semantics (same modes, same
+show/store wiring), so the driver's local definitions now trigger
+macro-redefinition errors under -Werror. Use the kernel's macros.
+
+Carried by Dakota against v7.2-ogc4; drop this patch once
+OpenGamingCollective fixes the collision in their tree.
+---
+--- a/drivers/platform/x86/ayn-ec.c
++++ b/drivers/platform/x86/ayn-ec.c
+@@ -117,19 +117,6 @@ static struct thermal_sensor thermal_sensors[] = {
+ 	{}
+ };
+ 
+-#define DEVICE_ATTR_RW_NAMED(_name, _attrname)               \
+-	struct device_attribute dev_attr_##_name = {         \
+-		.attr = { .name = _attrname, .mode = 0644 }, \
+-		.show = _name##_show,                        \
+-		.store = _name##_store,                      \
+-	}
+-
+-#define DEVICE_ATTR_RO_NAMED(_name, _attrname)               \
+-	struct device_attribute dev_attr_##_name = {         \
+-		.attr = { .name = _attrname, .mode = 0444 }, \
+-		.show = _name##_show,                        \
+-	}
+-
+ /* Handle ACPI lock mechanism */
+ #define ACPI_LOCK_DELAY_MS 500
+ 
