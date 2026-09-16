@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:bootc-dev/bootc.git
   track: v*
-  ref: v1.16.12-0-g3cd5ee81daec5081643970c8e354bdf01dfc09e6
+  ref: v1.16.13-0-gfa0d3f9cb9a0ce3b4d1dc2607a0bf5e31b822f60
 - kind: cargo2
   ref:
   - kind: registry
@@ -208,16 +208,16 @@ sources:
     sha: 157a8ba7b480713b56f4c09fd13fc3e0a22a5dfab8097ba61cbc5feef950788a
   - kind: registry
     name: clap
-    version: 4.6.5
-    sha: 301b56658598e48f3648647ac6fc887be7e7108eddfa4e9b63fcf3ec58c0cadf
+    version: 4.6.6
+    sha: 473c7e07f409a8d772161724aa8db6a765a2532a70f9667eeb7b49d3d02fbdca
   - kind: registry
     name: clap_builder
-    version: 4.6.5
-    sha: 94a65403d1a1bd28f7dc68eb8506e8874808ee5eecb59298de588e2e1407a078
+    version: 4.6.6
+    sha: 7b48fea5a88e9ae728a2dcbedbfc0e730f7d60da42e1cb049a83c9fb8b789889
   - kind: registry
     name: clap_complete
-    version: 4.6.8
-    sha: b1f84a88507dbd05c695f2cb5e8558e747179134005e9893882dec964190ed89
+    version: 4.6.9
+    sha: 3be2ad0423bdbbb0e25bc89add796f3559706d4a95e1bc98e4d9662a957b6a19
   - kind: registry
     name: clap_derive
     version: 4.6.4
@@ -228,8 +228,8 @@ sources:
     sha: c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9
   - kind: registry
     name: clap_mangen
-    version: 0.3.0
-    sha: d82842b45bf9f6a3be090dd860095ac30728042c08e0d6261ca7259b5d850f07
+    version: 0.3.3
+    sha: 211d617eaa4b735c96c9e0228fcbdb5120ef623f2b8cb67ffb84c3e02dbc28a4
   - kind: registry
     name: color-eyre
     version: 0.6.5
@@ -242,10 +242,6 @@ sources:
     name: colorchoice
     version: 1.0.5
     sha: 1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570
-  - kind: registry
-    name: comfy-table
-    version: 7.2.2
-    sha: 958c5d6ecf1f214b4c2bbbbf6ab9523a864bd136dcf71a7e8904799acfe1ad47
   - kind: registry
     name: comfy-table
     version: 8.0.0
@@ -544,8 +540,8 @@ sources:
     sha: 07bbe89c50d7a535e539b8c17bc0b49bdb77747034daa8087407d655f3f7cc1d
   - kind: registry
     name: futures-core
-    version: 0.3.33
-    sha: 2cd50c473c80f6d7c3670a752354b8e569b1a7cbfdc0419ec88e5edad85e0dc7
+    version: 0.3.34
+    sha: 92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e
   - kind: registry
     name: futures-executor
     version: 0.3.32
@@ -560,20 +556,20 @@ sources:
     sha: f78e10609fe0e0b3f4157ffab1876319b5b0db102a2c60dc4626306dc46b44ad
   - kind: registry
     name: futures-macro
-    version: 0.3.33
-    sha: 2d6d3cde68c518367be28956066ddfef33813991b77a55005a69dae04bf3b10b
+    version: 0.3.34
+    sha: 9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44
   - kind: registry
     name: futures-sink
     version: 0.3.32
     sha: c39754e157331b013978ec91992bde1ac089843443c49cbc7f46150b0fad0893
   - kind: registry
     name: futures-task
-    version: 0.3.33
-    sha: b231ed28831efb4a61a08580c4bc233ec56bc009f4cd8f52da2c3cb97df0c109
+    version: 0.3.34
+    sha: cd417de3d1d015fc3bfd2b1ea46dfc7bab72ef86f1cc7cc9c78e728b34a6d1fd
   - kind: registry
     name: futures-util
-    version: 0.3.33
-    sha: a77a90a256fce34da66415271e30f94ee91c57b04b8a2c042d9cf3220179deaa
+    version: 0.3.34
+    sha: 0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc
   - kind: registry
     name: generic-array
     version: 0.14.7
@@ -668,8 +664,8 @@ sources:
     sha: 1efedce1fb8e6913f23e0c92de8e62cd5b772a67e7b3946df930a62566c93184
   - kind: registry
     name: http-body-util
-    version: 0.1.4
-    sha: e9f41fd6a08e4d4ec69df65976da761afd5ad5e58a9d4acb46bd1c953a9e3ff2
+    version: 0.1.5
+    sha: 23169fe34a5fbcdd3f3862e78fb9b6fccd5f02a6dc6f732547005d45631ce71c
   - kind: registry
     name: httparse
     version: 1.10.1
@@ -1332,16 +1328,16 @@ sources:
     sha: b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52
   - kind: registry
     name: thiserror
-    version: 2.0.19
-    sha: 09a43598840e33d5b0331f38c5e30d13bb11c11210a4b58f0d9b18a5a5eefcd9
+    version: 2.0.20
+    sha: ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f
   - kind: registry
     name: thiserror-impl
     version: 1.0.69
     sha: 4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1
   - kind: registry
     name: thiserror-impl
-    version: 2.0.19
-    sha: 43cbfe0cf76104d42a574802844187e84a305e531ed54455f11fbde0f10541cd
+    version: 2.0.20
+    sha: bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af
   - kind: registry
     name: thread_local
     version: 1.1.9
@@ -1460,8 +1456,8 @@ sources:
     sha: 06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821
   - kind: registry
     name: uuid
-    version: 1.24.0
-    sha: bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239
+    version: 1.24.1
+    sha: 2cefc03fd367c0c6d4305de1b312cf00248c4114f4a0418ce6a6af769e3b0bd9
   - kind: registry
     name: uzers
     version: 0.12.2
