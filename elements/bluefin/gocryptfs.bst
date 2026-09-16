@@ -10,6 +10,7 @@ sources:
 
 build-depends:
 - freedesktop-sdk.bst:components/go.bst
+- freedesktop-sdk.bst:components/git-minimal.bst
 - freedesktop-sdk.bst:components/openssl.bst
 - freedesktop-sdk.bst:components/fuse3.bst
 
