@@ -40,5 +40,9 @@ config:
     # Override bluefin-common's ptyxis keybindings with xdg-terminal-exec (Ghostty in dakota)
     install -Dm644 06-dakota-keybindings \
       "%{install-root}%{sysconfdir}/dconf/db/distro.d/06-dakota-keybindings"
+    # Extension defaults that must go through the dconf db (bundled schemas
+    # ignore gschema overrides); see the keyfile header.
+    install -Dm644 08-dakota-extension-defaults \
+      "%{install-root}%{sysconfdir}/dconf/db/distro.d/08-dakota-extension-defaults"
   - |
     %{install-extra}

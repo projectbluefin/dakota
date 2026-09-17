@@ -21,15 +21,6 @@ config:
       [org.gnome.shell]
       disable-extension-version-validation=true
       enabled-extensions=['caffeine@patapon.info', 'appindicatorsupport@rgcjonas.gmail.com', 'bazaar-integration@kolunmi.github.io', 'blur-my-shell@aunetx', 'dash-to-dock@micxgx.gmail.com', 'fuzzy-application-search@mkhl.codeberg.page', 'gradia-integration@alexandervanhee.github.io', 'gsconnect@andyholmes.github.io', 'custom-command-list@storageb.github.com', 'BudsLink-Companion@maniacx.github.com', 'tilingshell@ferrarodomenico.com']
-
-      [org.gnome.shell.extensions.BudsLink-Companion]
-      level-indicator-color=0
-
-      [org.gnome.shell.extensions.syncthing-toggle]
-      start-stop-only=true
-
-      [org.gnome.shell.extensions.tilingshell]
-      show-indicator=false
       EOF
 
     - "%{install-extra}"

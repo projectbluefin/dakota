@@ -1,0 +1,16 @@
+# Default settings for shell extensions that bundle their own compiled schemas.
+#
+# GNOME Shell's Extension.getSettings() builds the schema source from the
+# extension's own schemas/ directory first, so a gschema override dropped into
+# /usr/share/glib-2.0/schemas never reaches these extensions. The dconf distro
+# database applies regardless of which schema source is used, so extension
+# defaults belong here, not in zz3-bluefin-unsupported-stuff.gschema.override.
+
+[org/gnome/shell/extensions/tilingshell]
+show-indicator=false
+
+[org/gnome/shell/extensions/BudsLink-Companion]
+level-indicator-color=0
+
+[org/gnome/shell/extensions/syncthing-toggle]
+start-stop-only=true
