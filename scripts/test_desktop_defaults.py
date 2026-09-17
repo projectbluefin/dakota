@@ -90,7 +90,6 @@ class DesktopDefaultsTests(unittest.TestCase):
             "syncthing-toggle@rehhouari.github.com",
             "syncthing-toggle@projectbluefin.io",
             "tailscale-gnome-qs@tailscale-qs.github.io",
-            "copyous@boerdereinar.dev",
             "quick-settings-audio-panel@rayzeq.github.io",
             "quicksettings-audio-devices-hider@marcinjahn.com",
             "quicksettings-audio-devices-renamer@marcinjahn.com",
@@ -148,14 +147,14 @@ class TilingCompatibilityTests(unittest.TestCase):
             )
         return result.returncode
 
-    def test_shell_50_package_is_accepted(self) -> None:
-        self.assertEqual(self.check_metadata(["45", "46", "47", "48", "49", "50"]), 0)
+    def test_shell_51_package_is_accepted(self) -> None:
+        self.assertEqual(self.check_metadata(["45", "46", "47", "48", "49", "50", "51"]), 0)
 
-    def test_old_shell_49_package_is_rejected(self) -> None:
-        self.assertNotEqual(self.check_metadata(["45", "46", "47", "48", "49"]), 0)
+    def test_old_shell_50_package_is_rejected(self) -> None:
+        self.assertNotEqual(self.check_metadata(["45", "46", "47", "48", "49", "50"]), 0)
 
     def test_wrong_extension_is_rejected(self) -> None:
-        self.assertNotEqual(self.check_metadata(["50"], uuid="wrong@example.com"), 0)
+        self.assertNotEqual(self.check_metadata(["51"], uuid="wrong@example.com"), 0)
 
 
 if __name__ == "__main__":
