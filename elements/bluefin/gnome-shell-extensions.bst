@@ -10,7 +10,6 @@ depends:
   - bluefin/shell-extensions/blur-my-shell.bst
   - bluefin/shell-extensions/budslink-companion.bst
   - bluefin/shell-extensions/caffeine.bst
-  - bluefin/shell-extensions/copyous.bst
   - bluefin/shell-extensions/custom-command-menu.bst
   - bluefin/shell-extensions/dash-to-dock.bst
   - bluefin/shell-extensions/fuzzy-application-search.bst
