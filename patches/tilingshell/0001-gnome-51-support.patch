@@ -1,0 +1,48 @@
+From: Tristan Tarrant (ported from domferr/tilingshell#605, issue #604)
+Subject: GNOME 51 support: fractional scaling detection without the removed org.gnome.mutter experimental-features key
+
+Ported onto the compiled extensions.gnome.org 17.3 (v76) build. Drop once
+Tiling Shell ships a release that lists GNOME 51.
+
+--- a/extension.js	2026-04-25 05:20:23.000000000 -0400
++++ b/extension.js	2026-09-16 21:54:30.320029644 -0400
+@@ -195,7 +195,7 @@
+         if (this._windowBorderManager)
+           this._windowBorderManager.destroy();
+         this._windowBorderManager = new WindowBorderManager(
+-          this._fractionalScalingEnabled
++          !this._fractionalScalingEnabled
+         );
+         this._windowBorderManager.enable();
+       }
+@@ -558,6 +558,18 @@
+   }
+ 
+   _isFractionalScalingEnabled(_mutterSettings) {
++    // Since GNOME 49, fractional scaling (the logical monitor layout mode) is
++    // enabled by default on Wayland and is no longer an experimental feature
++    const GNOME_VERSION_MAJOR = Number(Config.PACKAGE_VERSION.split(".")[0]);
++    // Meta.is_wayland_compositor() was removed in newer GNOME versions
++    const isWayland = Meta.is_wayland_compositor ? Meta.is_wayland_compositor() : GLib.getenv("XDG_SESSION_TYPE") === "wayland";
++    if (isWayland && GNOME_VERSION_MAJOR >= 49) return true;
++    // The experimental-features key was removed from the org.gnome.mutter
++    // schema in mutter 51, so only read it when the schema still has it
++    const source = Gio.SettingsSchemaSource.get_default();
++    const schema = source?.lookup("org.gnome.mutter", true);
++    if (!schema || !schema.list_keys().includes("experimental-features"))
++      return false;
+     return _mutterSettings.get_strv("experimental-features").find(
+       (feat) => feat === "scale-monitor-framebuffer" || feat === "x11-randr-fractional-scaling"
+     ) !== void 0;
+--- a/metadata.json	2026-04-25 09:22:14.000000000 -0400
++++ b/metadata.json	2026-09-16 21:54:30.320091624 -0400
+@@ -14,7 +14,8 @@
+     "47",
+     "48",
+     "49",
+-    "50"
++    "50",
++    "51"
+   ],
+   "url": "https://github.com/domferr/tilingshell",
+   "uuid": "tilingshell@ferrarodomenico.com",

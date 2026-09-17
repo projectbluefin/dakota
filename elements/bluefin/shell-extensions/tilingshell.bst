@@ -3,9 +3,14 @@ kind: manual
 sources:
 - kind: zip
   base-dir: ""
-  # Reviewed 17.3 build with GNOME 50 support, not the older GitHub ZIP.
+  # Reviewed 17.3 build (GNOME 50 support upstream, 51 via the patch below), not the older GitHub ZIP.
   url: gnome_extensions:tilingshell@ferrarodomenico.com.shell-extension.zip?version_tag=70233
   ref: 0a9f2b26de65294f53350d74089a3dae9376642784a722e98fc8d78fcc470a35
+# GNOME 51: mutter dropped org.gnome.mutter experimental-features. Port of
+# upstream PR domferr/tilingshell#605 onto the compiled build; drop once a
+# release lists "51" in metadata.json.
+- kind: patch
+  path: patches/tilingshell/0001-gnome-51-support.patch
 
 build-depends:
 - core/sandbox-tools.bst
@@ -22,7 +27,7 @@ config:
   install-commands:
   - |
     # Fail the package build rather than relying on disabled Shell validation.
-    jq -e '.uuid == "tilingshell@ferrarodomenico.com" and (."shell-version" | index("50") != null)' metadata.json > /dev/null
+    jq -e '.uuid == "tilingshell@ferrarodomenico.com" and (."shell-version" | index("51") != null)' metadata.json > /dev/null
     _uuid="$(jq -r .uuid metadata.json)"
     _dest="%{install-root}%{datadir}/gnome-shell/extensions/${_uuid}"
     install -d "${_dest}"
