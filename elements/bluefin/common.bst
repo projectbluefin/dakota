@@ -14,6 +14,10 @@ sources:
 # Drop this patch once common ships dual-theme by default.
 - kind: patch
   path: patches/common/0002-ghostty-dual-theme.patch
+# Avoid activating the desktop portal from GDM's non-interactive login shell.
+# Drop once common ships an interactive-shell guard.
+- kind: patch
+  path: patches/common/0003-uwelcome-interactive-only.patch
 - kind: git_module
   url: github:projectbluefin/branding/
   path: bluefin-branding
