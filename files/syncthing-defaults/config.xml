@@ -1,0 +1,38 @@
+<configuration version="52">
+    <folder id="documents" label="Documents" path="~/Documents" type="sendreceive" rescanIntervalS="3600" fsWatcherEnabled="true" fsWatcherDelayS="10" ignorePerms="false" autoNormalize="true">
+        <filesystemType>basic</filesystemType>
+        <minDiskFree unit="%">1</minDiskFree>
+        <maxConflicts>10</maxConflicts>
+        <paused>false</paused>
+        <markerName>.stfolder</markerName>
+    </folder>
+    <folder id="pictures" label="Pictures" path="~/Pictures" type="sendreceive" rescanIntervalS="3600" fsWatcherEnabled="true" fsWatcherDelayS="10" ignorePerms="false" autoNormalize="true">
+        <filesystemType>basic</filesystemType>
+        <minDiskFree unit="%">1</minDiskFree>
+        <maxConflicts>10</maxConflicts>
+        <paused>false</paused>
+        <markerName>.stfolder</markerName>
+    </folder>
+    <folder id="music" label="Music" path="~/Music" type="sendreceive" rescanIntervalS="3600" fsWatcherEnabled="true" fsWatcherDelayS="10" ignorePerms="false" autoNormalize="true">
+        <filesystemType>basic</filesystemType>
+        <minDiskFree unit="%">1</minDiskFree>
+        <maxConflicts>10</maxConflicts>
+        <paused>false</paused>
+        <markerName>.stfolder</markerName>
+    </folder>
+    <folder id="videos" label="Videos" path="~/Videos" type="sendreceive" rescanIntervalS="3600" fsWatcherEnabled="true" fsWatcherDelayS="10" ignorePerms="false" autoNormalize="true">
+        <filesystemType>basic</filesystemType>
+        <minDiskFree unit="%">1</minDiskFree>
+        <maxConflicts>10</maxConflicts>
+        <paused>false</paused>
+        <markerName>.stfolder</markerName>
+    </folder>
+    <gui enabled="true" tls="false" sendBasicAuthPrompt="false">
+        <address>127.0.0.1:8384</address>
+        <theme>default</theme>
+    </gui>
+    <options>
+        <urAccepted>-1</urAccepted>
+        <crashReportingEnabled>false</crashReportingEnabled>
+    </options>
+</configuration>

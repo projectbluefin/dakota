@@ -42,6 +42,8 @@ Never translate RPM, DNF, COPR, or Containerfile workflows into this repository.
 - **Source Pinning**: Pin git sources to commit SHAs or release tags. Never track mutable branches in production elements.
 - **Reproducibility**: No network calls, `$(date)`, `$(hostname)`, `whoami`, or random seeds in build commands.
 - **Directory Creation**: Run `mkdir -p` before creating links or writing files into target directories.
+- **CAS Carries Only An Executable Bit**: Artifacts are stored in CAS, which records no directory mode and no permission bits beyond `+x`. `install -Dm600` reaches the image as `0644`, and directories arrive `0777`. Never rely on `install -m` for a security-relevant mode. Apply such modes with `chmod` in `elements/oci/bluefin.bst` (and `bluefin-nvidia.bst`) against `/layer`, immediately before `build-oci` — the last filesystem stage before packing and the first that preserves full modes. This is why `prepare-image.sh` applies setuid bits there.
+- **Integration Commands Do Not Cross CAS**: `public.bst.integration-commands` on a leaf element or on `oci/layers/bluefin-stack.bst` run before the compose artifact is serialized, so mode-only fixes made there are discarded. Use them for content, not permissions.
 - **Generated Cargo Sources**: Generate crate manifests via:
   ```bash
   python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock
@@ -55,6 +57,8 @@ Never translate RPM, DNF, COPR, or Containerfile workflows into this repository.
 | "A `kind: stack` element will put its files into the image layer." | Stack elements produce empty artifacts. Layers require `kind: compose`. |
 | "I'll fetch dependencies during `install-commands`." | Sandboxes lack network access during build. All sources must be declared in `sources:`. |
 | "I'll patch the staged junction file directly in `.bst/`." | Staged junction edits are wiped on cache cleans. Use `patches/` with `patch_queue`. |
+| "`install -Dm600` ships a private file." | CAS records only an executable bit. It arrives `0644`; directories arrive `0777`. Chmod at OCI assembly. |
+| "Integration commands on my element will fix the modes." | They run before the compose artifact is serialized to CAS, which drops them. Verify on a built image, never by reasoning. |
 
 ## Red Flags
 
@@ -63,6 +67,7 @@ Never translate RPM, DNF, COPR, or Containerfile workflows into this repository.
 - `ref:` pointing to a branch name instead of a git commit or tag
 - Using `$(date)` or `$(hostname)` in install commands
 - Adding patches without an `Upstream-Status:` header and exit condition
+- Relying on `install -m` or integration commands for a security-relevant permission
 
 ## Verification
 

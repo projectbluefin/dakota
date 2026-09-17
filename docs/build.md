@@ -65,10 +65,32 @@ native software.
   release, with CGO SQLite support and self-updates disabled. A private
   `core/syncthing-go.bst` build dependency supplies the required Go 1.26 compiler
   without replacing the image's toolchain. The Syncthing element installs the
-  standard `syncthing.service` user unit. Once enabled, its Quick Settings toggle starts and
-  stops that unit, waits for systemd jobs, and refreshes service state. Open its
-  Web GUI to pair devices and choose folders. Syncthing is not started for every
-  user automatically; identities are generated at runtime, never in the image.
+  standard `syncthing.service` user unit. Syncthing 2 removed the automatic
+  default folder, so `bluefin/syncthing-defaults.bst` supplies one: Documents,
+  Pictures, Music, and Videos ship active, with the stable ids `documents`,
+  `pictures`, `music`, and `videos`. Sharing a folder with a peer is still an
+  explicit action; the stable ids mean an offered folder maps onto the matching
+  local folder instead of arriving as a duplicate, and a folder's `path` is
+  local-only and never sent to peers. The baked config carries no device
+  identity; keys and the device ID are generated at runtime, never in the image.
+  The config ships through `/etc/skel`, so it reaches new accounts only,
+  matching the scope of the four directories beside it. Its mode is applied by
+  a `user-tmpfiles.d` `z` rule that sets 0600 on the config and 0700 on the
+  state directory. The mode cannot come from the element: BuildStream stores
+  artifacts in CAS, which records only an executable bit, so `install -m600`
+  reaches the image as 0644. Syncthing keeps whatever mode a config already has
+  when it rewrites it — measured against v2.1.5, `syncthing serve` leaves this
+  config byte-identical and adds no apikey, while a settings change (pairing a
+  device, `syncthing generate`) rewrites it in place and preserved 0600. `z`
+  adjusts an existing path and
+  never creates one, so the rule cannot seed a config into an existing account,
+  which on a localized profile would hard-code English folder names beside the
+  user's real XDG directories.
+  `/etc/skel` ships the four directories alongside `user-dirs.dirs`, because
+  `xdg-user-dirs-update` reassigns a configured directory to `$HOME` when it is
+  missing, which would otherwise point Syncthing at the entire home directory.
+  The unit is not enabled for every user; its Quick Settings toggle starts and
+  stops it on demand, waits for systemd jobs, and refreshes service state.
 - **Tailscale:** the daemon is enabled in the image, but a fresh installation is
   unauthenticated. The application launcher offers **Tailscale Setup**, as does
   the Quick Settings menu after the user enables that extension. Setup requests administrator

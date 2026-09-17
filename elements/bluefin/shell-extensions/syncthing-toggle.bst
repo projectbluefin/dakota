@@ -3,8 +3,8 @@ kind: manual
 sources:
 - kind: git_repo
   url: github:projectbluefin/bluefin-bling.git
-  track: main
-  ref: 67e89b215e390eb136a0fdf97bad2c0eba8b5b15
+  track: syncthing-toggle-metered
+  ref: da486b05fbe17955da4da3d86043cd7cb1ae6262
 
 build-depends:
 - core/sandbox-tools.bst
@@ -12,6 +12,7 @@ build-depends:
 
 depends:
 - bluefin/syncthing.bst
+- bluefin/syncthing-defaults.bst
 - gnome-build-meta.bst:sdk/glib.bst
 - gnome-build-meta.bst:core/gnome-shell.bst
 

@@ -80,6 +80,23 @@ config:
       ldconfig -r /layer -f /layer/etc/ld.so.conf
 
     - |
+      # BuildStream artifacts live in CAS, which carries no directory mode, so
+      # the directories bluefin/syncthing-defaults.bst contributes to /etc/skel
+      # arrive 0777 and its config.xml 0644. useradd copies those into every
+      # new account, letting a second local user write into another user's
+      # synced folders and read which devices that account shares them with.
+      #
+      # This is the last filesystem stage before build-oci packs the image and
+      # the first point that reliably preserves full modes: element- and
+      # stack-level integration commands run before a CAS boundary that drops
+      # them. prepare-image.sh applies setuid bits here for the same reason.
+      chmod 0755 /layer/etc/skel/.config /layer/etc/skel/.local /layer/etc/skel/.local/state
+      chmod 0755 /layer/etc/skel/Documents /layer/etc/skel/Music /layer/etc/skel/Pictures /layer/etc/skel/Videos
+      chmod 0700 /layer/etc/skel/.local/state/syncthing
+      chmod 0600 /layer/etc/skel/.local/state/syncthing/config.xml
+      chmod 0644 /layer/etc/skel/.config/user-dirs.dirs
+
+    - |
       cd "%{install-root}"
       build-oci <<EOF
       mode: oci

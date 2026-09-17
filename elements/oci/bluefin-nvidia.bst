@@ -84,6 +84,17 @@ config:
       done
 
     - |
+      # Same CAS mode loss as the default variant: directories contributed to
+      # /etc/skel arrive 0777 and config.xml 0644, and useradd copies that into
+      # every new account. Fix immediately before build-oci, the last stage
+      # that preserves full modes.
+      chmod 0755 /layer/etc/skel/.config /layer/etc/skel/.local /layer/etc/skel/.local/state
+      chmod 0755 /layer/etc/skel/Documents /layer/etc/skel/Music /layer/etc/skel/Pictures /layer/etc/skel/Videos
+      chmod 0700 /layer/etc/skel/.local/state/syncthing
+      chmod 0600 /layer/etc/skel/.local/state/syncthing/config.xml
+      chmod 0644 /layer/etc/skel/.config/user-dirs.dirs
+
+    - |
       cd "%{install-root}"
       build-oci <<EOF
       mode: oci
