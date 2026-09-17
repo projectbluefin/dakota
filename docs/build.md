@@ -16,7 +16,7 @@
 | Path | Purpose |
 |---|---|
 | `elements/freedesktop-sdk.bst` | fdsdk junction — pinned to a release tag |
-| `elements/gnome-build-meta.bst` | GBM junction — tracks `gnome-50` branch |
+| `elements/gnome-build-meta.bst` | GBM junction — tracks `gnome-51` branch |
 | `elements/bluefin/` | Bluefin-specific elements (~40 elements) |
 | `elements/oci/` | OCI image assembly — layers + final image |
 | `patches/linux/` | Kernel patches (via fdsdk linux element) |
