@@ -763,22 +763,46 @@ jobs:
       - name: Pull BuildStream container image
         run: podman pull "$BST2_IMAGE"
 
-      - name: Track both core junctions
+      - name: Track gnome-build-meta, derive freedesktop-sdk from its pin
         run: |
           just bst --no-interactive source track gnome-build-meta.bst
-          just bst --no-interactive source track freedesktop-sdk.bst
+
+          # freedesktop-sdk must match gnome-build-meta's own pin (the junction
+          # overrides and patch queue are only valid against it), so derive the
+          # ref from GBM instead of tracking the fdsdk glob independently.
+          gbm_ref=$(awk '/^[[:space:]]*ref: / { print $2; exit }' elements/gnome-build-meta.bst)
+          if [[ ! "$gbm_ref" =~ -g([0-9a-f]{40})$ ]]; then
+            echo "ERROR: could not extract GBM sha from ref: ${gbm_ref}" >&2
+            exit 1
+          fi
+          gbm_sha="${BASH_REMATCH[1]}"
+
+          files_api="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/files"
+          fdsdk_ref=$(curl -fsSL "${files_api}/elements%2Ffreedesktop-sdk.bst/raw?ref=${gbm_sha}" \
+            | awk '/url: gitlab:freedesktop-sdk/ { found=1 } found && /^[[:space:]]*ref: / { print $2; exit }')
+          if [ -z "$fdsdk_ref" ]; then
+            echo "ERROR: could not read the freedesktop-sdk pin from gnome-build-meta @ ${gbm_sha}" >&2
+            exit 1
+          fi
+          sed -i "0,/^\s*ref:/{s|^\(\s*\)ref:.*|\1ref: ${fdsdk_ref}|}" elements/freedesktop-sdk.bst
+
+          # Mirror gnome-build-meta's fdsdk patch queue and write the offline
+          # drift manifest, then assert it. Failing here means the sync broke
+          # and the PR should not be opened.
+          just patch-sync
+          just patch-drift-check
 
       - name: Create or update PR
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          git diff --quiet && { echo "No junction updates"; exit 0; }
-
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git checkout -B auto/track-core-junctions origin/testing
-          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst
+          # patch-sync adds and removes files, so stage first and test the index.
+          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst patches/freedesktop-sdk patches/freedesktop-sdk.manifest.json
+          git diff --cached --quiet && { echo "No junction updates"; exit 0; }
           git commit -m "chore(deps): update core junctions (gnome-build-meta + freedesktop-sdk)"
           git push --force-with-lease origin auto/track-core-junctions
 
@@ -791,6 +815,6 @@ jobs:
               --base testing \
               --head auto/track-core-junctions \
               --title "chore(deps): update core junctions (gnome-build-meta + freedesktop-sdk)" \
-              --body "Updates \`gnome-build-meta.bst\` and \`freedesktop-sdk.bst\` atomically. Manual review required — junction bumps can break downstream elements.")
+              --body "Updates \`gnome-build-meta.bst\`, derives the \`freedesktop-sdk.bst\` pin from it, and re-syncs \`patches/freedesktop-sdk\`. Manual review required — junction bumps can break downstream elements.")
             echo "PR: $PR_URL"
           fi
