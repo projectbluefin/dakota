@@ -5,6 +5,13 @@ sources:
   url: github:bootc-dev/bootc.git
   track: v*
   ref: v1.16.12-0-g3cd5ee81daec5081643970c8e354bdf01dfc09e6
+# `make install` generates shell completions by running the binary it just
+# built, and bootc aborts when /proc is absent. BuildBarn's chroot input root
+# has no procfs, so the element cannot build under remote execution without
+# this. Upstream already means to skip that step in restricted build
+# environments; it only checks for a masked /proc, not a missing one.
+- kind: patch
+  path: patches/bootc/0001-tolerate-missing-proc-in-sandbox.patch
 - kind: cargo2
   ref:
   - kind: registry
@@ -1753,5 +1760,11 @@ depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 
 variables:
+  # bootc's Makefile derives CARGO_FEATURES from the *builder's*
+  # /usr/lib/os-release (it enables `rhsm` on RHEL-likes). The sandbox has no
+  # os-release, so the probe prints an error and yields an empty feature set by
+  # accident. State the feature set instead of letting the build host pick it.
+  make-args: >-
+    CARGO_FEATURES=""
   make-install-args: >-
-    PREFIX="%{prefix}" LIBDIR="%{lib}" DESTDIR="%{install-root}" install-all
+    CARGO_FEATURES="" PREFIX="%{prefix}" LIBDIR="%{lib}" DESTDIR="%{install-root}" install-all

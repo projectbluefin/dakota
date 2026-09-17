@@ -1,0 +1,40 @@
+From: Project Bluefin <no-reply@projectbluefin.io>
+Subject: [PATCH] cli: tolerate a missing /proc when joining the host IPC namespace
+
+join_host_ipc_namespace() already intends to be a no-op in restricted build
+environments -- its own comment says it is "skipped when /proc/1/ns/ipc is not
+accessible, which can happen in restricted build environments (e.g.
+Tekton/Buildah containers) where /proc is masked even for processes with
+CAP_SYS_ADMIN".
+
+That skip only covers PermissionDenied. A sandbox that mounts no procfs at all
+(BuildBarn's bb_runner with chrootIntoInputRoot builds an input root without
+/proc) reports NotFound instead, so the call fails hard:
+
+    error: reading /proc/1/ns/ipc: No such file or directory (os error 2)
+
+`make install` runs the freshly built binary five times to generate shell
+completions, so the whole build fails. Treat an absent /proc like a masked one:
+either way there is no pid1 IPC namespace to join, which is exactly the
+condition the existing skip describes.
+
+diff --git a/crates/lib/src/cli.rs b/crates/lib/src/cli.rs
+index 97b9a9e..d9dc48b 100644
+--- a/crates/lib/src/cli.rs
++++ b/crates/lib/src/cli.rs
+@@ -1795,7 +1795,14 @@ fn join_host_ipc_namespace() -> Result<()> {
+     }
+     let ns_pid1 = match std::fs::read_link("/proc/1/ns/ipc") {
+         Ok(v) => v,
+-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
++        // A masked /proc reports PermissionDenied; a sandbox with no procfs
++        // at all reports NotFound. Neither has a pid1 IPC namespace to join.
++        Err(e)
++            if matches!(
++                e.kind(),
++                std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
++            ) =>
++        {
+             return Ok(());
+         }
+         Err(e) => return Err(e).context("reading /proc/1/ns/ipc"),
