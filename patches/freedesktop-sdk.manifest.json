@@ -1,7 +1,9 @@
 {
   "comment": "Written by `just patch-sync`; verified offline by `just patch-drift-check`.",
   "files": {
-    "0001-project.conf-Add-GNOME-CAS-servers.patch": "2a79bad1e6159c0b31a9cd5b914a7eb34f0431c406b27974fe12dbe5990d49e7"
+    "0001-project.conf-Add-GNOME-CAS-servers.patch": "b04760316adda4a3611f929c8295c90dd98069bc1bcb0f60bb7dee6387216ccf",
+    "printing.patch": "9d8ef1b4b49425f03bb23aafed43cfdfcb729b37c2b22a382fe7f0d1963e22a5",
+    "zswap.patch": "177c16ba00b0dd2369484b331f2fed9cd9b4b4aef417d7ad43ea21b14510cb2e"
   },
-  "gnome-build-meta-sha": "66496574a8103a5106d79e2759287ac3835a1757"
+  "gnome-build-meta-sha": "9435cfbb10cbb1b471c9366c2ada29374ddc6c14"
 }
