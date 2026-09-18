@@ -14,6 +14,9 @@ config:
         x86_64_v3: true
 
   overrides:
+    # Needs a procfs for prepare-image.sh (systemd-firstboot) and for
+    # generate-initramfs's process substitution; BuildBarn's chroot has none.
+    oci/initramfs.bst: oci/initramfs.bst
     # This along with the patches is required and has to match what gnome-build-meta is using
     freedesktop-sdk.bst: freedesktop-sdk.bst
 
