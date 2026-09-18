@@ -14,6 +14,9 @@ config:
         x86_64_v3: true
 
   overrides:
+    # Deletes the SDK's shipped hwdb.bin before regenerating it; replacing an
+    # existing file is the one path that needs a procfs. See the element.
+    core-deps/systemd-hwdb.bst: bluefin/systemd-hwdb.bst
     # Needs a procfs for prepare-image.sh (systemd-firstboot) and for
     # generate-initramfs's process substitution; BuildBarn's chroot has none.
     oci/initramfs.bst: oci/initramfs.bst
