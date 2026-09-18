@@ -2,7 +2,7 @@ name: Track next branch junctions
 
 # Runs at 20:00 UTC daily — offset from the main tracker (06:00 UTC) to avoid
 # saturating runners when stable-branch builds are active. gnome-build-meta's
-# gnome-51 CI publishes artifacts well before this, so bump PRs land with the
+# GBM master CI publishes artifacts well before this, so bump PRs land with the
 # upstream CAS already warm.
 on:
   schedule:
@@ -21,7 +21,7 @@ env:
 
 jobs:
   # ── Track core junctions for next (btw stream) ─────────────────
-  # Tracks gnome-build-meta.bst along its branch (track: gnome-51 in the
+  # Tracks gnome-build-meta.bst along its branch (track: master in the
   # element), then derives freedesktop-sdk.bst and patches/freedesktop-sdk
   # from the tracked commit: our fdsdk pin and patch queue must match what
   # gnome-build-meta itself uses, or the patch queue stops applying and
@@ -120,7 +120,7 @@ jobs:
               --base next \
               --head auto/track-next-junction \
               --title "chore(deps): update core junctions (next branch)" \
-              --body "Tracks \`gnome-build-meta.bst\` along gnome-51 and pins \`freedesktop-sdk.bst\` plus \`patches/freedesktop-sdk\` to exactly what the tracked commit uses. Auto-merges once validation passes.")
+              --body "Tracks \`gnome-build-meta.bst\` along master and pins \`freedesktop-sdk.bst\` plus \`patches/freedesktop-sdk\` to exactly what the tracked commit uses. Auto-merges once validation passes.")
             echo "Created PR: $PR_URL"
           fi
 

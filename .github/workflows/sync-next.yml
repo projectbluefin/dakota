@@ -7,9 +7,11 @@ name: Sync next
 #                 merged so edits landing on testing flow through and only
 #                 next's tweak is reapplied. A conflict fails the job; push
 #                 the resolved file to next and the next sync carries it.
+#                 Empty since testing reached fdsdk 26.08 (#1579); add a
+#                 path here only while next carries a tweak testing lacks.
 # Retired generated maps may be dropped only once testing has deleted them.
 # Anything else on next outside both lists fails the drop guard instead of being
-# deleted. The lists should shrink back toward junctions once testing reaches fdsdk 26.08.
+# deleted.
 
 on:
   push:
@@ -36,11 +38,7 @@ env:
     patches/linux
     patches/linux-ogc
     files/linux-ogc
-  NEXT_MERGED: >-
-    elements/bluefin/deps.bst
-    elements/bluefin-nvidia/nvidia-drivers.bst
-    elements/gaming/host-platform.bst
-    elements/oci/layers/bluefin-stack.bst
+  NEXT_MERGED: ""
 
 jobs:
   sync-next:

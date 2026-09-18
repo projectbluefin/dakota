@@ -22,9 +22,10 @@ class SyncNextTests(unittest.TestCase):
                        GIT_AUTHOR_NAME="Fixture", GIT_AUTHOR_EMAIL="fixture@example.invalid",
                        GIT_COMMITTER_NAME="Fixture", GIT_COMMITTER_EMAIL="fixture@example.invalid")
             for name in ("NEXT_OWNED", "NEXT_MERGED"):
-                match = re.search(rf"^  {name}: >-\n((?:    [^\n]+\n)+)", WORKFLOW, re.M)
+                # Either a folded list of paths or an explicitly empty string.
+                match = re.search(rf'^  {name}: (?:>-\n((?:    [^\n]+\n)+)|""\n)', WORKFLOW, re.M)
                 self.assertIsNotNone(match)
-                env[name] = " ".join(match[1].split())
+                env[name] = " ".join((match[1] or "").split())
 
             def git(*args):
                 return subprocess.run(["git", *args], cwd=root, env=env, check=True,
