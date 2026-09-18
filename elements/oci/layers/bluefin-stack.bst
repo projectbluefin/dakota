@@ -25,6 +25,24 @@ depends:
 public:
   bst:
     integration-commands:
+      # Delete the hwdb cache the SDK ships so systemd-hwdb, which integrates
+      # last, writes a new file instead of replacing an existing one.
+      #
+      # Replacing is the only path that needs /proc: systemd links its
+      # O_TMPFILE into place, gets EEXIST, and reopens the fd through
+      # /proc/self/fd to compare inodes. BuildBarn's bb_runner chroots into the
+      # action's input root without a procfs, and systemd reports a missing
+      # /proc as ENOSYS (proc_fd_enoent_errno(), src/basic/fd-util.c), so the
+      # image build died on the fully generic:
+      #   Failed to write database /usr/lib/udev/hwdb.bin: Function not implemented
+      # Creating the file fresh takes linkat(AT_EMPTY_PATH), which needs no
+      # /proc. The command below regenerates it either way, so the image keeps
+      # the same hwdb.bin it always had.
+      #
+      # Remove this once bb_runner gives actions a procfs
+      # (bb-remote-execution#115).
+      - rm -f /usr/lib/udev/hwdb.bin
+
       # Overwrite the zram-generator config from gnomeos-deps/zram-generator.bst.
       # An element-level override loses the staging-order overlap (see
       # .agents/skills/dakota-buildstream/SKILL.md); integration commands run after all staging,
