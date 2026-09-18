@@ -3,7 +3,10 @@ kind: make
 sources:
 - kind: git_repo
   url: github:micheleg/dash-to-dock.git
-  track: extensions.gnome.org-v*
+  # GNOME 51 fixes (PointerWatcher and St.vertical removals) are on master
+  # but unreleased; restore `track: extensions.gnome.org-v*` once a tag
+  # lists "51" in metadata.json, so the tracker stops rolling back to v106.
+  track: master
   ref: extensions.gnome.org-v106-8-g7b1567924917fe67b51f6203657a3d30daf1f0c8
 
 build-depends:
