@@ -87,3 +87,10 @@ config:
     esac
     initrds+=(/initramfs.img)
     cat "${initrds[@]}" >"%{install-root}/usr/lib/modules/${version}/initramfs.img"
+
+  - |
+    # Leave no mount behind: bb_runner tears down this input root after the
+    # action, and a procfs still mounted inside it stalls that teardown.
+    if mountpoint -q /proc 2>/dev/null; then
+      umount /proc || umount -l /proc || true
+    fi
