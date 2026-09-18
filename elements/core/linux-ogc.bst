@@ -14,8 +14,8 @@
 #   3. Modules stripped (INSTALL_MOD_STRIP=1) and vmlinux to the devel
 #      split: OGC forces DEBUG_INFO=y for BTF.
 #
-# Bumps: `just bst source track core/linux-ogc.bst` follows stable v7.2.*-ogc*
-# tags on testing (next tracks v*-ogc*); update ogc-localversion to match. On a
+# Bumps: `just bst source track core/linux-ogc.bst` follows stable v*-ogc*
+# tags (release candidates included on next); update ogc-localversion to match. On a
 # stable-series jump, nvidia-drivers.bst must compile against the new
 # tree before shipping.
 kind: make
@@ -45,7 +45,7 @@ variables:
   # OGC patchset revision of the pinned tag; keep in sync with the
   # `ref:` under sources (v<kver>-ogcN-...). Not derivable at build
   # time: the tree ships no EXTRAVERSION or localversion files.
-  ogc-localversion: '-ogc3'
+  ogc-localversion: '-ogc4'
   indep-libdir: '%{prefix}/lib'
   # Modules are stripped by kbuild (INSTALL_MOD_STRIP=1) *before* the
   # module signature is appended; a post-build strip pass would tear
@@ -256,8 +256,8 @@ sources:
 - kind: git_repo
   url: github:OpenGamingCollective/linux.git
   # rc-based OGC tags are fair game on the next stream.
-  track: v7.2.*-ogc*
-  ref: v7.2.4-ogc3-0-g86a9082d0ab73d902aeb899b2912fae8b24bb181
+  track: v*-ogc*
+  ref: v7.2.1-ogc4-0-g14c028f83498b2900fecd0940a058a3ac0622afe
 # Dakota fixups for the OGC patchset itself; review at every tag bump and
 # drop each patch once the fix lands upstream.
 - kind: patch_queue
