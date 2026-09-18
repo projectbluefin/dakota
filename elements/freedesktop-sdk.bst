@@ -20,6 +20,9 @@ config:
         bootstrap_build_arch: 'aarch64'
 
   overrides:
+    # Runs inside BuildBarn's chroot, which has no procfs; the replacement
+    # mounts a private one so systemd-firstboot does not exit 1.
+    vm/prepare-image.bst: bluefin/vm-prepare-image.bst
     components/at-spi2-core.bst: gnome-build-meta.bst:sdk/at-spi2-core.bst
     components/cairo.bst: gnome-build-meta.bst:sdk/cairo.bst
     components/fcitx5-gtk.bst: gnome-build-meta.bst:sdk/fcitx5-gtk.bst
