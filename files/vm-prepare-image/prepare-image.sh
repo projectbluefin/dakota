@@ -3,16 +3,21 @@
 set -eu
 
 # BuildBarn's bb_runner chroots into the action's input root, which carries no
-# procfs. systemd tools reached from here (systemd-firstboot, systemd-sysusers,
-# systemctl preset-all) then fail with a bare exit 1 after only warning about
-# an unreadable kernel command line, because their path handling goes through
-# /proc/self/fd. Mount a private procfs for the duration when one is missing:
-# it exposes this action's own processes, never the host's, so the build stays
-# hermetic. A sandbox that already has /proc is left untouched.
+# procfs. The systemd tools this script drives (systemd-firstboot first, later
+# systemctl preset-all) fail with a bare exit 1 after only warning about an
+# unreadable kernel command line, because their path handling goes through
+# /proc/self/fd. Mount a procfs for the duration when one is missing, and
+# unmount it again on the way out.
+#
+# This is a workaround for bb_runner's chroot-only sandbox, not isolation: the
+# action shares the runner container's PID namespace, so this procfs shows that
+# container's process table. Nothing here reads /proc except for its own fds.
+# Remove this once bb_runner gives each action its own mount and PID namespace
+# (bb-remote-execution#115). A sandbox that already has /proc is left alone.
 if [ ! -r /proc/self/status ]; then
-    if mount -t proc proc /proc 2>/dev/null; then
-        trap 'umount /proc 2>/dev/null || true' EXIT
-    fi
+  if mount -t proc proc /proc 2>/dev/null; then
+    trap 'umount /proc 2>/dev/null || umount -l /proc 2>/dev/null || true' EXIT
+  fi
 fi
 
 sysroot=

@@ -10,13 +10,23 @@
 #     needs /dev/fd -> /proc/self/fd:
 #       module.sh: line 65: /dev/fd/63: No such file or directory
 #
-# Mount a private procfs for the element when the sandbox has none. It shows
-# this action's own processes only, so the build stays hermetic; binding the
-# host's /proc would not. A sandbox that already has /proc (a local `just bst
-# build`) is untouched, so this changes nothing outside remote execution.
+# Mount a procfs for the element when the sandbox has none, and unmount it
+# again in the same shell.
 #
-# Drop this override once bb_runner mounts /proc itself
-# (bb-remote-execution#115); upstream's element then works unchanged.
+# This is a workaround, not isolation. bb_runner only chroots; it does not
+# unshare a mount or PID namespace, and the worker runs 12 actions per node
+# concurrently. The procfs mounted here therefore shows the runner container's
+# whole process table, not just this action's, and nothing stops a concurrent
+# action from seeing it. Nothing in this element reads /proc for anything but
+# its own fds, so that is tolerable here; do not copy this pattern to an
+# element whose output could depend on what it finds there.
+#
+# A sandbox that already has /proc (a local `just bst build`) is untouched, so
+# this changes nothing outside remote execution.
+#
+# Delete this override once bb_runner gives each action its own mount and PID
+# namespace with a procfs (bb-remote-execution#115); upstream's element then
+# works unchanged, and the real isolation lives where it belongs.
 kind: script
 
 build-depends:
@@ -41,29 +51,44 @@ environment-nocache:
 - ZSTDFLAGS
 
 config:
+  # One shell for the whole element. BuildStream runs each `commands:` entry
+  # as its own `sh -e -c`, so a trap cannot span them and a separate unmount
+  # step never runs when an earlier step fails - the mount then leaks into the
+  # input root and stalls bb_runner's teardown of it (observed: an action that
+  # sat in "Waiting for the remote build to complete" for 1h58m). Mounting and
+  # unmounting in a single shell makes the teardown unconditional.
   commands:
   - |
+    set -e
+
+    mounted_proc=
     if [ ! -r /proc/self/status ]; then
       mount -t proc proc /proc
+      mounted_proc=1
     fi
+    cleanup() {
+      rc=$?
+      [ -n "$mounted_proc" ] && { umount /proc || umount -l /proc || :; }
+      return $rc
+    }
+    trap cleanup EXIT
+
     [ -e /dev/fd ] || ln -sfn /proc/self/fd /dev/fd
-  - mkdir -p /fakecap
-  - |
+
+    mkdir -p /fakecap
+
     prepare-image.sh \
        --seed "%{sysroot-seed}" \
        --noroot --noboot >/dev/null
 
-  - |
     version="$(ls -1 /lib/modules | head -n1)"
     generate-initramfs /initramfs-root "${version}" "%{libdir}" "%{libdir}/systemd"
 
-  - |
     (
       cd /initramfs-root
       find . -print0 | sort -z | cpio --reproducible --null -H newc -o --quiet | zstd ${ZSTDFLAGS} >/initramfs.img
     )
 
-  - |
     case '%{arch}' in
       x86_64)
         mkdir -p /microcode/kernel/x86/microcode
@@ -76,8 +101,6 @@ config:
       ;;
     esac
 
-  - |
-    version="$(ls -1 /lib/modules | head -n1)"
     mkdir -p "%{install-root}/usr/lib/modules/${version}"
     initrds=()
     case '%{arch}' in
@@ -87,10 +110,3 @@ config:
     esac
     initrds+=(/initramfs.img)
     cat "${initrds[@]}" >"%{install-root}/usr/lib/modules/${version}/initramfs.img"
-
-  - |
-    # Leave no mount behind: bb_runner tears down this input root after the
-    # action, and a procfs still mounted inside it stalls that teardown.
-    if mountpoint -q /proc 2>/dev/null; then
-      umount /proc || umount -l /proc || true
-    fi
