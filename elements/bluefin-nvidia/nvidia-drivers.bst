@@ -40,12 +40,12 @@ depends:
 
 sources:
 - kind: remote
-  url: nvidia:XFree86/Linux-x86_64/610.57.04/NVIDIA-Linux-x86_64-610.57.04.run
-  ref: b2e935c66b83bb00c0c857bc8e0ee0fd52de9286b40c9cc1eec29a7ce7eb116d
-  filename: NVIDIA-Linux-x86_64-610.57.04.run
+  url: nvidia:XFree86/Linux-x86_64/615.71.09/NVIDIA-Linux-x86_64-615.71.09.run
+  ref: cdceed22bbeb61248d1a6deabc2596673e3a6501698ee71ac8d2fdc28f3b70fe
+  filename: NVIDIA-Linux-x86_64-615.71.09.run
 
 variables:
-  nvidia-version: '610.57.04'
+  nvidia-version: '615.71.09'
   strip-binaries: ''
 
 config:
