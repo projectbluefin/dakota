@@ -9,6 +9,8 @@ name: Sync next
 #                 the resolved file to next and the next sync carries it.
 #                 Empty since testing reached fdsdk 26.08 (#1579); add a
 #                 path here only while next carries a tweak testing lacks.
+# Shared kernel capabilities in files/linux/dakota-config.sh flow from testing.
+# Own only the vendored kernel helpers, not their entire parent directory.
 # Retired generated maps may be dropped only once testing has deleted them.
 # Anything else on next outside both lists fails the drop guard instead of being
 # deleted.
@@ -32,7 +34,8 @@ env:
     elements/freedesktop-sdk.bst
     elements/core/linux-fdsdk.bst
     elements/core/linux-ogc.bst
-    files/linux
+    files/linux/config-utils.sh
+    files/linux/fdsdk-config.sh
     patches/freedesktop-sdk
     patches/freedesktop-sdk.manifest.json
     patches/linux

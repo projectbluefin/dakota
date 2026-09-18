@@ -1,9 +1,41 @@
-# Dakota hardware-enablement config deltas, applied after fdsdk-config.sh.
-# Source: the 2026-09-01 Fedora config audit (kernel-core 7.1.8-200.fc44),
-# per-row reviewed. Buckets: VM-guest storage/net (fixes dakota#1463),
-# homelab HBAs, laptop camera/audio/input completion.
+# Shared Dakota kernel capabilities, applied after fdsdk-config.sh (and the
+# OGC fragments on gaming builds). Keep this file shared with next: kernel
+# versions and vendored upstream configuration remain stream-specific.
 # Uses config-utils.sh enable/module so every option lands in
 # expected-configs and the post-olddefconfig gate verifies it survived.
+
+# Libvirt's nftables backend uses HTB + u32 + csum for DHCP checksum repair,
+# even without configured bandwidth limits. The remaining options support
+# libvirt's inbound/outbound bandwidth controls. No queue defaults change.
+# https://github.com/libvirt/libvirt/blob/v12.7.0/src/network/network_nftables.c
+# https://github.com/libvirt/libvirt/blob/v12.7.0/src/util/virnetdevbandwidth.c
+# Request the parent menus explicitly rather than relying on arch defconfig.
+enable NET_SCHED
+enable NET_CLS_ACT
+module NET_SCH_HTB
+module NET_CLS_U32
+module NET_ACT_CSUM
+module NET_SCH_SFQ
+module NET_CLS_FW
+module NET_SCH_INGRESS
+module NET_ACT_POLICE
+
+# Make existing libvirt/Podman direct-LAN modes available; do not create
+# interfaces or change the default networking mode.
+module MACVLAN
+module MACVTAP
+
+# UAS-capable USB disks can use queued I/O instead of bulk-only transport.
+module USB_UAS
+
+# Allow cgroup disk-rate limits without imposing any limits by default.
+enable BLK_DEV_THROTTLING
+
+# The OGC fragment requests the timer trigger, but olddefconfig drops it
+# unless IIO_SW_TRIGGER is enabled. Register both as expected capabilities
+# on both kernels; these modules do not create or activate a sensor trigger.
+module IIO_SW_TRIGGER
+module IIO_HRTIMER_TRIGGER
 
 # IPU7 lives in drivers/staging/media; these open the menu (they build
 # nothing by themselves, staging drivers still need explicit enables).

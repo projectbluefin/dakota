@@ -54,6 +54,11 @@ or digest rather than rediscovering mutable tag state.
 and three-way merges `NEXT_MERGED` files. Divergence outside those lists or a
 merge conflict stops the sync before its lease-protected push.
 
+Kernel recipes, patches, OGC fragments and vendored FDSDK configuration helpers
+remain next-owned. `files/linux/dakota-config.sh` is shared: capability fixes
+flow from testing without replacing next's kernel versions. Do not mark all of
+`files/linux` next-owned, which would silently retain stale capability settings.
+
 Keep unrelated dependency additions away from next-only replacement blocks in
 `NEXT_MERGED` files (for example, the BPF dependencies in `bluefin/deps.bst`).
 Even an insertion adjacent to a replacement can conflict. Moving that insertion
