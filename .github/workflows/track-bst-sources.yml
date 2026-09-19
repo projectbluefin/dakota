@@ -35,7 +35,7 @@ env:
 
 jobs:
   track:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       pull-requests: write
@@ -308,7 +308,7 @@ jobs:
           fi
 
   track-tarballs:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       pull-requests: write
@@ -733,7 +733,7 @@ jobs:
   # freedesktop-sdk.bst overrides reference gnome-build-meta.bst elements directly.
   # Both must land in one commit. No auto-merge — requires human review.
   track-core-junctions:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       pull-requests: write
