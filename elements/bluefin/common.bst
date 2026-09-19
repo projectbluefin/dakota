@@ -5,7 +5,7 @@ sources:
   url: github:projectbluefin/common.git
   track: main
   # Includes the external-chairlift-v1 handoff API; install.sh checks it.
-  ref: v2026.08-107-gfbbb193b221efdca793933f1869adc54697aff7a
+  ref: v2026.08-112-g8df20e808636122f80d7fd583ccd1561f89b8eb8
 # Consume common's fastfetch layout directly; only adapt the install-date input.
 # Drop this patch once common provides a shared install-date helper.
 - kind: patch
