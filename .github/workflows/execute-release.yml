@@ -325,12 +325,7 @@ jobs:
 
       - name: Install cosign
         if: steps.check-aarch64.outputs.present == 'true'
-        run: |
-          set -euo pipefail
-          curl -fsSL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 \
-            -o "$RUNNER_TEMP/cosign"
-          sudo install -m 0755 "$RUNNER_TEMP/cosign" /usr/local/bin/cosign
-          cosign version
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Resolve SHA-pinned aarch64 digest
         if: steps.check-aarch64.outputs.present == 'true'
