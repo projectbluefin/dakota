@@ -285,9 +285,7 @@ jobs:
 
   # ── Generate and attach SBOM ──────────────────────────────────────────────
   # Runs outside the critical path to :testing. Failures here must not block
-  # publish/promotion; stable release notes already regenerate SBOM inline in
-  # execute-release.yml. A fresh runner fetches BST metadata from remote CAS
-  # (no full artifact download needed; bst show reads element graph only).
+  # publish/promotion. Stable release notes consume the sbom-dakota artifact.
   # P3: pip wheel cache keyed to the pinned buildstream-sbom commit SHA so
   # repeated runs skip the GitLab git fetch entirely.
   publish-sbom:
@@ -326,7 +324,7 @@ jobs:
           storage-backend: btrfs
           update-podman: true
           native-overlay: true
-          install-tools: '["just"]'
+          install-tools: '["just", "cosign"]'
 
       # BST config for remote CAS — buildstream-sbom calls bst show --deps all
       # internally which needs element graph resolution via the remote CAS.

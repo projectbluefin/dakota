@@ -1,0 +1,37 @@
+name: PR cleanup
+
+# Delete the :pr-N image tags build.yml pushed once the PR closes.
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  packages: write
+
+jobs:
+  delete-pr-tags:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Delete :pr-N tags from GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          PR_TAG: pr-${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          for PACKAGE in dakota dakota-nvidia dakota-gaming dakota-nvidia-gaming; do
+            # Only versions tagged solely :pr-N; never a version that also
+            # carries a stream or SHA tag.
+            IDS=$(gh api "/orgs/${OWNER}/packages/container/${PACKAGE}/versions" --paginate \
+              --jq ".[] | select(.metadata.container.tags == [\"${PR_TAG}\"]) | .id")
+            if [ -z "$IDS" ]; then
+              echo "${PACKAGE}:${PR_TAG} not found; nothing to delete"
+              continue
+            fi
+            for ID in $IDS; do
+              echo "Deleting ${PACKAGE} version ${ID} (${PR_TAG})"
+              gh api --method DELETE "/orgs/${OWNER}/packages/container/${PACKAGE}/versions/${ID}"
+            done
+          done

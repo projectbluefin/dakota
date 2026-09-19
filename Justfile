@@ -1252,6 +1252,8 @@ sbom variant="default":
     # cache is warm before buildstream-sbom runs.
     echo "==> Priming BST generated source cache (${ELEMENT})..."
     podman run --rm \
+        --privileged \
+        --device /dev/fuse \
         --network=host \
         --runtime runc \
         -v "{{justfile_directory()}}:/src:rw" \
@@ -1271,6 +1273,8 @@ sbom variant="default":
     # names in SPDX output (issue #9 fix). Switch to a versioned PyPI release
     # once the project publishes one.
     podman run --rm \
+        --privileged \
+        --device /dev/fuse \
         --network=host \
         --runtime runc \
         -v "{{justfile_directory()}}:/src:rw" \

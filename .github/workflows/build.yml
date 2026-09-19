@@ -21,6 +21,10 @@ on:
   schedule:
     - cron: "0 13 * * *"
   workflow_dispatch:
+  # Label a same-repo PR `build` to build it; adding the label starts a run.
+  pull_request:
+    branches: [testing, next]
+    types: [opened, synchronize, reopened, labeled]
 
 permissions: read-all
 
@@ -59,7 +63,7 @@ jobs:
   # time it starts: a newer push run for the same branch is already queued
   # and will build a superset of this state. Skip the expensive build then.
   stale-check:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build') && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
     permissions:
       actions: read
@@ -70,6 +74,7 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           newer=0
           # Concurrency-held runs surface as "queued" or "pending" depending
@@ -78,8 +83,8 @@ jobs:
             n=$(gh run list \
               --repo "${{ github.repository }}" \
               --workflow build.yml \
-              --branch "${{ github.ref_name }}" \
-              --event push \
+              --branch "$BRANCH" \
+              --event "${{ github.event_name }}" \
               --status "$status" \
               --json databaseId \
               --jq "[.[] | select(.databaseId > ${{ github.run_id }})] | length")
@@ -87,14 +92,14 @@ jobs:
           done
           if [ "$newer" -gt 0 ]; then
             echo "stale=true" >> "$GITHUB_OUTPUT"
-            echo "${newer} newer queued run(s) for ${{ github.ref_name }} — skipping stale build"
+            echo "${newer} newer queued run(s) for ${BRANCH} — skipping stale build"
           else
             echo "stale=false" >> "$GITHUB_OUTPUT"
           fi
 
   build:
     needs: [verify-default-branch, stale-check]
-    if: (!cancelled()) && needs.stale-check.outputs.stale != 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
+    if: (!cancelled()) && needs.stale-check.outputs.stale != 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build') && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     # The BuildBox backend has four action slots. Start every image variant
@@ -207,3 +212,98 @@ jobs:
           path: logs/
           retention-days: 7
           if-no-files-found: ignore
+
+  # PR images: export from the shared cache and push :pr-N. Never signed or
+  # promoted; publish.yml ignores pull_request runs.
+  pr-image:
+    needs: build
+    if: (!cancelled()) && needs.build.result == 'success' && (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build') && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: default
+            image_suffix: ""
+          - variant: nvidia
+            image_suffix: "-nvidia"
+          - variant: gaming
+            export_variant: default
+            image_suffix: "-gaming"
+            gaming: "true"
+          - variant: nvidia-gaming
+            export_variant: nvidia
+            image_suffix: "-nvidia-gaming"
+            gaming: "true"
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PR_TAG: pr-${{ github.event.pull_request.number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Capture build timestamp
+        id: timestamp
+        run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup runner
+        uses: projectbluefin/actions/bootc-build/setup-runner@v1
+        with:
+          storage-backend: btrfs
+          update-podman: true
+          native-overlay: true
+          install-tools: '["just"]'
+
+      - name: Generate BST fetch config
+        env:
+          CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
+          CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
+        uses: ./.github/actions/generate-bst-ci-config
+        with:
+          enable-remote-execution: 'false'
+          enable-push: 'false'
+
+      - name: Export OCI image from BuildStream
+        env:
+          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
+          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          BUILD_GAMING: ${{ matrix.gaming || 'false' }}
+          OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}
+          OCI_IMAGE_REVISION: ${{ github.event.pull_request.head.sha }}
+          OCI_IMAGE_VERSION: ${{ env.PR_TAG }}
+        run: just export ${{ matrix.export_variant || matrix.variant }}
+
+      - name: Chunkify image layers
+        env:
+          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
+        run: just chunkify "localhost/${BUILD_IMAGE_NAME}:latest"
+
+      - name: Validate with bootc container lint
+        env:
+          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
+        run: just lint
+
+      - name: Login to GHCR
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | sudo podman login ghcr.io --username "$GH_ACTOR" --password-stdin
+
+      - name: Push :${{ env.PR_TAG }} to GHCR
+        run: |
+          set -euo pipefail
+          LOCAL_IMAGE="${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
+          IMAGE="${{ env.IMAGE_REGISTRY }}/${LOCAL_IMAGE}"
+          sudo podman tag "localhost/${LOCAL_IMAGE}:latest" "${IMAGE}:${PR_TAG}"
+          for attempt in 1 2 3; do
+            sudo podman push --compression-format=zstd \
+              --digestfile /tmp/digest.txt "${IMAGE}:${PR_TAG}" && break
+            [ "$attempt" -lt 3 ] || { echo "ERROR: push failed for ${IMAGE}:${PR_TAG}"; exit 1; }
+            sleep 5
+          done
+          DIGEST=$(cat /tmp/digest.txt)
+          echo "${IMAGE}:${PR_TAG} @ ${DIGEST}"
+          echo "- \`${IMAGE}:${PR_TAG}\` \`${DIGEST}\`" >> "$GITHUB_STEP_SUMMARY"

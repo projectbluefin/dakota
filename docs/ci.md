@@ -48,6 +48,19 @@ Publish records the pushed digest and passes that receipt between jobs. Signing,
 attestation, stream-tag promotion, and verification operate on the resolved SHA
 or digest rather than rediscovering mutable tag state.
 
+## PR builds
+
+Adding the `build` label to a same-repo PR queues a full four-variant build in
+the shared BuildStream queue, behind any running stream build. Each new push to
+a labelled PR queues again; the stale check skips runs a newer push has
+superseded. Fork PRs cannot build: they have no cache credentials and a
+runner-local build does not finish.
+
+A successful PR build exports each variant and pushes
+`ghcr.io/projectbluefin/dakota<suffix>:pr-N`. PR images are unsigned and never
+promoted; `bootc switch` to one to try it. `pr-cleanup.yml` deletes the tags
+when the PR closes.
+
 ## Next synchronization
 
 `sync-next.yml` synthesizes `next` from `testing`, restores `NEXT_OWNED` paths,
