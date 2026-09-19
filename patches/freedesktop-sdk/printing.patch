@@ -1,0 +1,38 @@
+diff --git a/elements/components/libcupsfilters.bst b/elements/components/libcupsfilters.bst
+index 26b6ef5..57952fc 100644
+--- a/elements/components/libcupsfilters.bst
++++ b/elements/components/libcupsfilters.bst
+@@ -34,3 +34,5 @@ sources:
+   exclude:
+   - '*rc*'
+   ref: 2.2.1-0-g2a00cf6aa4234e2e0ac91b9844ab8990d04c7089
++- kind: patch
++  path: patches/libcupsfilters/missing-root-object.patch
+diff --git a/patches/libcupsfilters/missing-root-object.patch b/patches/libcupsfilters/missing-root-object.patch
+new file mode 100644
+index 0000000..0a1d513
+--- /dev/null
++++ b/patches/libcupsfilters/missing-root-object.patch
+@@ -0,0 +1,22 @@
++commit e14bad406189a66bdeb40131112944bfb58ee0cc
++Author: szlt5 <117269245+szlt5@users.noreply.github.com>
++Date:   Tue Aug 18 16:04:19 2026 +0800
++
++    Fix printing error:  pdfio output "Missing Root object." (#167)
++
++diff --git a/cupsfilters/pdf.c b/cupsfilters/pdf.c
++index 1f714b20..3e438609 100644
++--- a/cupsfilters/pdf.c
+++++ b/cupsfilters/pdf.c
++@@ -165,6 +165,11 @@ cfPDFPagesFP(FILE *file) 	// I - File pointer of PDF
++     fwrite(buffer, 1, bytes_read, temp_fp);
++   }
++ 
+++  // call fflush(temp_fp) to flush the stdio buffer; 
+++  // otherwise pdfioFileOpen() may not see the complete contents of temp_filename because 
+++  // some data may still be buffered and not yet written to the file.
+++  fflush(temp_fp);  
+++
++   // Open the temp file with pdfio
++   pdfio_file_t *pdf = pdfioFileOpen(temp_filename, NULL, NULL, NULL, NULL);
++ 
