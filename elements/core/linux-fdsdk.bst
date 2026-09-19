@@ -195,7 +195,7 @@ sources:
   url: kernel:linux/kernel/git/stable/linux.git
   # rc kernels are fair game on the next stream.
   track: v*
-  ref: v7.3-rc1-0-gcee9395acd8043be0644b25c34bfa86623f2b935
+  ref: v7.3-rc3-0-gfd73f4a6659897191fa0d40695fe370925dd3780
 - kind: patch_queue
   path: patches/linux
 - kind: local

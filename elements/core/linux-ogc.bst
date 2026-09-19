@@ -45,7 +45,7 @@ variables:
   # OGC patchset revision of the pinned tag; keep in sync with the
   # `ref:` under sources (v<kver>-ogcN-...). Not derivable at build
   # time: the tree ships no EXTRAVERSION or localversion files.
-  ogc-localversion: '-ogc4'
+  ogc-localversion: '-ogc1'
   indep-libdir: '%{prefix}/lib'
   # Modules are stripped by kbuild (INSTALL_MOD_STRIP=1) *before* the
   # module signature is appended; a post-build strip pass would tear
@@ -144,10 +144,8 @@ config:
     # The zswap.compressor=zstd karg needs the compressor built in, not =m.
     enable CRYPTO_ZSTD
 
-    # The OGC tree is not WERROR-clean (their own packaging and Fedora both
-    # build without it); keep -Werror off this kernel so benign warnings in
-    # the gaming patchset don't fail the build.
-    remove WERROR
+    # Warnings are errors; OGC out-of-tree fixups live in patches/linux-ogc.
+    enable WERROR
 
     # Hardware-enablement deltas from the Fedora config audit (VM guests,
     # homelab HBAs, laptop camera/audio/input completion); shared with the
@@ -257,7 +255,7 @@ sources:
   url: github:OpenGamingCollective/linux.git
   # rc-based OGC tags are fair game on the next stream.
   track: v*-ogc*
-  ref: v7.2.1-ogc4-0-g14c028f83498b2900fecd0940a058a3ac0622afe
+  ref: v7.2.6-ogc1-0-gd71739861de0d6c7ce433fe43d711b8069f9f2d7
 # Dakota fixups for the OGC patchset itself; review at every tag bump and
 # drop each patch once the fix lands upstream.
 - kind: patch_queue
