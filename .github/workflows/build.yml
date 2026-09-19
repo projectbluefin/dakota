@@ -307,3 +307,22 @@ jobs:
           DIGEST=$(cat /tmp/digest.txt)
           echo "${IMAGE}:${PR_TAG} @ ${DIGEST}"
           echo "- \`${IMAGE}:${PR_TAG}\` \`${DIGEST}\`" >> "$GITHUB_STEP_SUMMARY"
+
+  # Required check: pending until a `build`-labeled PR has built.
+  build-gate:
+    needs: [stale-check, build]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require a green build when the PR is labeled build
+        env:
+          LABELED: ${{ contains(github.event.pull_request.labels.*.name, 'build') }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          STALE: ${{ needs.stale-check.outputs.stale }}
+          BUILD: ${{ needs.build.result }}
+        run: |
+          [ "$LABELED" = "true" ] || exit 0
+          [ "$SAME_REPO" = "true" ] || { echo "::error::build label needs a same-repo branch"; exit 1; }
+          [ "$STALE" != "true" ] || exit 0
+          [ "$BUILD" = "success" ] || { echo "::error::build result: $BUILD"; exit 1; }
