@@ -32,7 +32,7 @@ jobs:
   # Opens a PR against next with auto-merge enabled — next is a fully
   # automated rolling stream, no human gate required.
   track-core-junctions-next:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       pull-requests: write
