@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: gnome:nautilus-python.git
   track: "master"
-  ref: 4.1.0-0-g52fe5a0339065aa5461075c53002b1534b590188
+  ref: 4.1.0-4-gd777cdb431d56f09e4a1c1a747ab8b87673e3a92
 
 variables:
   conf-flags: >-
