@@ -15,9 +15,10 @@ from unittest import mock
 
 REPO = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
-    "dakota_devmode", REPO / "files" / "just-overrides" / "devmode.py"
+    "dakota_devmode_flatpak", REPO / "files" / "just-overrides" / "devmode.py"
 )
 devmode = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = devmode
 SPEC.loader.exec_module(devmode)
 
 
@@ -59,7 +60,7 @@ class FlatpakInstallTests(unittest.TestCase):
     def setUp(self):
         self.work = tempfile.TemporaryDirectory()
         self.addCleanup(self.work.cleanup)
-        self.addCleanup(mock.patch.dict(os.environ, {}, clear=False).stop)
+        self.enterContext(mock.patch.dict(os.environ))
         os.environ.pop("XDG_SESSION_ID", None)
 
     def brewfile(self, name: str, content: str) -> str:

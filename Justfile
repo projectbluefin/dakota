@@ -89,6 +89,7 @@ check-publish-workflow:
     python3 -m unittest scripts.test_ownership_metadata scripts.test_ownership_oci scripts.test_compare_oci_layers scripts.test_ownership_recipes scripts.test_sync_next
     python3 -m unittest scripts.test_image_variants
     python3 -m unittest scripts.test_desktop_defaults
+    just test-devmode
     just test-chairlift-migration
 
 # Local convenience wrapper. CI does NOT run this recipe; it runs
@@ -106,10 +107,10 @@ validate:
 test-chairlift-migration:
     bash scripts/test_chairlift_migration.sh
 
-# Offline tests for the dakota-devmode Flatpak install path with a mocked flatpak.
+# Offline developer-tool tests; never changes host services, firewall, or apps.
 [group('test')]
 test-devmode:
-    python3 -m unittest scripts.test_devmode -v
+    python3 -m unittest discover -s scripts -p 'test_devmode*.py' -v
 
 # Unit tests for .github/scripts/render_card.py.
 [group('dev')]
