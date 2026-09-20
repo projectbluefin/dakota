@@ -44,6 +44,7 @@ depends:
   - bluefin/uutils-coreutils.bst
   - bluefin/sudo-rs.bst
   - bluefin/fprintd-system-auth.bst
+  - bluefin/fprintd-fingerprint-auth.bst
   - bluefin/efibootmgr.bst
   - bluefin/xdg-terminal-exec.bst
   - bluefin/nautilus-python.bst
