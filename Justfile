@@ -107,10 +107,10 @@ validate:
 test-chairlift-migration:
     bash scripts/test_chairlift_migration.sh
 
-# Offline virtualization setup regression tests; never changes the host firewall.
+# Offline developer-tool tests; never changes host services, firewall, or apps.
 [group('test')]
 test-devmode:
-    python3 -m unittest scripts.test_devmode
+    python3 -m unittest discover -s scripts -p 'test_devmode*.py' -v
 
 # Unit tests for .github/scripts/render_card.py.
 [group('dev')]

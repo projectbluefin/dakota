@@ -42,6 +42,7 @@ class FakeHost:
         self.ignore_writes = False
         self.write_failures = {False: 0, True: 0}
         self.vmm_installed = True
+        self.vmm_scope = "system"
         self.guests = ""
         self.remove_failures = {False: 0, True: 0}
         self.ignore_removals = False
@@ -107,7 +108,10 @@ class FakeHost:
             if args[3] not in ("enable", "start", "disable", "stop"):
                 raise AssertionError(args)
         elif args[:2] == ("flatpak", "list"):
-            output = devmode.VMM_APP_ID if self.vmm_installed else ""
+            if self.vmm_installed and args[2] == f"--{self.vmm_scope}":
+                output = devmode.VMM_APP_ID
+        elif args[:2] == ("loginctl", "show-session"):
+            output = "yes\n"
         elif args[:2] != ("flatpak", "install"):
             raise AssertionError(args)
         return subprocess.CompletedProcess(args, status, output)
@@ -128,6 +132,8 @@ class VirtualizationFirewallTests(unittest.TestCase):
         self.network_sysfs = self.directory / "net"
         self.enterContext(patch.object(devmode, "NETWORK_SYSFS", self.network_sysfs))
         self.host = FakeHost()
+        self.enterContext(patch.dict(os.environ))
+        os.environ.pop("XDG_SESSION_ID", None)
         self.output = io.StringIO()
         self.enterContext(patch.object(devmode, "run", side_effect=self.host.run))
         self.enterContext(patch.object(
@@ -734,9 +740,103 @@ class VirtualizationFirewallTests(unittest.TestCase):
             return original_run(*args, **kwargs)
         with patch.object(devmode, "run", side_effect=interleave):
             self.setup_with_confirmation()
-        self.assertEqual(len(attempts), 5)  # enable, start, two inventories, install
+        # Both setup's checked inventory and the shared installer's inventory
+        # must stay under the lock, as must the actual install transaction.
+        self.assertEqual(len(attempts), 7)  # enable, start, four inventories, install
         self.assertEqual(self.removals(), [])
         self.assertEqual(self.host.bindings, {False: "libvirt", True: "libvirt"})
+
+    def test_remote_setup_keeps_authentication_and_install_inside_lock(self):
+        self.host.vmm_installed = False
+        original_run = self.host.run
+        protected = []
+
+        def inspect(*args, **kwargs):
+            if args[0] == "loginctl" or args[:2] == ("flatpak", "install"):
+                protected.append(args)
+                self.assertEqual(self.host.bindings, {False: "libvirt", True: "libvirt"})
+                with self.assertRaisesRegex(devmode.SetupError, "Another virtualization"):
+                    with devmode.firewall_receipt_lock("operation.lock"):
+                        self.fail("authentication or install ran outside lock")
+            return original_run(*args, **kwargs)
+
+        with patch.dict(os.environ, {"XDG_SESSION_ID": "remote-test"}), patch.object(
+            sys.stdin, "isatty", return_value=True
+        ), patch.object(self.output, "isatty", return_value=True), patch.object(
+            devmode, "run", side_effect=inspect
+        ):
+            self.setup_with_confirmation()
+        self.assertEqual(protected, [
+            ("loginctl", "show-session", "remote-test", "-p", "Remote", "--value"),
+            ("flatpak", "install", "--system", "flathub", devmode.VMM_APP_ID),
+        ])
+        self.assertIn("Flatpak will ask for your password", self.output.getvalue())
+        self.assertIn("No reboot is required", self.output.getvalue())
+
+    def test_flatpak_failure_releases_lock_and_keeps_firewall_retryable(self):
+        self.host.vmm_installed = False
+        for status in (1, 126, 130):
+            with self.subTest(status=status):
+                self.output.seek(0)
+                self.output.truncate()
+                self.host.failure = ("install", status)
+                with patch.object(sys.stdin, "isatty", return_value=True), patch.object(
+                    self.output, "isatty", return_value=True
+                ), self.assertRaisesRegex(devmode.SetupError, "Virtualization setup incomplete"):
+                    self.setup_with_confirmation()
+                self.assertNotIn("No reboot is required", self.output.getvalue())
+                self.assertEqual(self.host.bindings, {False: "libvirt", True: "libvirt"})
+                self.assertEqual(devmode.load_firewall_receipt()["permanent"], "owned")
+                with devmode.firewall_receipt_lock("operation.lock"):
+                    pass
+                self.host.failure = None
+                self.host.calls.clear()
+                self.setup_with_confirmation()
+                self.assertEqual(self.host.writes, [])
+                self.assertIn("No reboot is required", self.output.getvalue())
+
+    def test_interrupted_flatpak_prompt_releases_lock_without_claiming_success(self):
+        self.host.vmm_installed = False
+        original_run = self.host.run
+
+        def interrupt(*args, **kwargs):
+            if args[:2] == ("flatpak", "install"):
+                raise KeyboardInterrupt
+            return original_run(*args, **kwargs)
+
+        with patch.object(devmode, "run", side_effect=interrupt), patch.object(
+            devmode, "confirm", return_value=True
+        ), patch.object(devmode, "virtualization_preflight"), patch.object(
+            devmode, "unit_states", return_value=self.unit_states()
+        ):
+            status, errors = self.setup_main()
+        self.assertEqual(status, 130)
+        self.assertIn("Interrupted", errors)
+        self.assertNotIn("No reboot is required", self.output.getvalue())
+        self.assertTrue(self.receipt.exists())
+        with devmode.firewall_receipt_lock("operation.lock"):
+            pass
+
+    def test_user_installed_vmm_is_preserved_while_firewall_is_repaired(self):
+        self.host.vmm_scope = "user"
+        self.setup_with_confirmation()
+        self.assertEqual(len(self.host.writes), 2)
+        self.assertFalse(any(args[:2] == ("flatpak", "install") for args in self.host.calls))
+        self.assertIn("already installed", self.output.getvalue())
+
+    def test_flatpak_cli_stays_unprivileged_and_does_not_take_virtualization_lock(self):
+        self.host.vmm_installed = False
+        with patch.object(sys, "argv", ["devmode.py", "flatpak-install", devmode.VMM_APP_ID]), patch.object(
+            sys.stdin, "isatty", return_value=False
+        ), patch.object(devmode, "virtualization_operation_lock") as lock:
+            self.assertEqual(devmode.main(), 0)
+        lock.assert_not_called()
+        self.assertFalse(self.receipt.exists())
+        self.assertEqual(self.host.calls, [
+            ("flatpak", "list", "--system", "--app", "--columns=application"),
+            ("flatpak", "list", "--user", "--app", "--columns=application"),
+            ("flatpak", "install", "--system", "--assumeyes", "flathub", devmode.VMM_APP_ID),
+        ])
 
     def test_operation_lock_is_released_after_failure(self):
         self.host.failure = ("start", 1)

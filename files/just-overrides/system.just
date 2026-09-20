@@ -108,7 +108,7 @@ install-dev-ides:
             "GNOME Builder (Flatpak)")
                 if flatpak info --system org.gnome.Builder >/dev/null 2>&1 || flatpak info --user org.gnome.Builder >/dev/null 2>&1; then
                     echo "GNOME Builder is already installed; leaving it unchanged."
-                elif ! flatpak install --system --assumeyes flathub org.gnome.Builder; then
+                elif ! /usr/libexec/dakota-devmode flatpak-install org.gnome.Builder; then
                     failed+=("$selection")
                 fi
                 continue
@@ -163,7 +163,9 @@ install-system-flatpaks $confirm="1" $dx_only="0":
         if [ "$confirm" != 0 ] ; then
             gum confirm "Install optional development Flatpaks?" || exit 0
         fi
-        if brew bundle --file="${TARGET_FLATPAK_FILE:-/usr/share/ublue-os/homebrew/dakota-dev-flatpaks.Brewfile}"; then
+        # Not brew bundle: its forced `flatpak install -y` forbids polkit from
+        # asking for a password, which fails every install in a seatless session.
+        if /usr/libexec/dakota-devmode flatpak-install --file "${TARGET_FLATPAK_FILE:-/usr/share/ublue-os/homebrew/dakota-dev-flatpaks.Brewfile}"; then
             echo "Optional development Flatpaks installed."
         else
             status=$?
@@ -176,7 +178,7 @@ install-system-flatpaks $confirm="1" $dx_only="0":
     if [ "$confirm" != 0 ] ; then
         gum confirm "Install system flatpaks?" || exit 0
     fi
-    brew bundle --file="${TARGET_FLATPAK_FILE:-/usr/share/ublue-os/homebrew/system-flatpaks.Brewfile}"
+    /usr/libexec/dakota-devmode flatpak-install --file "${TARGET_FLATPAK_FILE:-/usr/share/ublue-os/homebrew/system-flatpaks.Brewfile}"
 
 # Install default system flatpaks (alias for install-system-flatpaks)
 # For additional applications, use ChairLift (Applications page)
