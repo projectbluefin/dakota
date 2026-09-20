@@ -2,12 +2,21 @@
 """Interactive Dakota developer-tool management, using installed state, not a marker."""
 
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, replace
 
 BREW = "/home/linuxbrew/.linuxbrew/bin/brew"
 VMM_APP_ID = "org.virt_manager.virt-manager"
+DEFAULT_REMOTE = "flathub"
+# Only the Brewfile forms Dakota ships are understood; anything else fails
+# closed rather than being silently skipped.
+FLATPAK_ENTRY = re.compile(
+    r'^\s*flatpak\s+"(?P<id>[^"]+)"\s*(?:,\s*remote:\s*"(?P<remote>[^"]+)")?\s*(?:#.*)?$'
+)
+FLATPAK_LINE = re.compile(r"^\s*flatpak(\s|$)")
+APP_ID = re.compile(r"^[A-Za-z0-9_.-]+$")
 DRIVERS = (
     "qemu",
     "interface",
@@ -93,6 +102,125 @@ def confirm(prompt: str) -> bool:
     if result.returncode not in (0, 1, 130, -2):
         raise SetupError("Could not display the confirmation; nothing was changed.")
     return result.returncode == 0
+
+
+def parse_brewfile(path: str) -> list[tuple[str, str]]:
+    """Return (app id, remote) for each Flatpak entry; formula, cask and tap lines are brew's."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+    except OSError as error:
+        raise SetupError(f"Cannot read Brewfile {path}: {error}") from error
+    entries = []
+    for line in lines:
+        if not FLATPAK_LINE.match(line):
+            continue
+        match = FLATPAK_ENTRY.match(line)
+        if not match:
+            raise SetupError(
+                f"Unsupported Flatpak entry in {path}: {line.strip()} "
+                "Only 'flatpak \"id\"' with an optional 'remote:' is understood."
+            )
+        entries.append((match.group("id"), match.group("remote") or DEFAULT_REMOTE))
+    return entries
+
+
+def installed_flatpaks() -> set[str]:
+    installed = set()
+    for scope in ("system", "user"):
+        result = run(
+            "flatpak", "list", f"--{scope}", "--app", "--columns=application",
+            capture=True,
+        )
+        installed.update(line for line in (result.stdout or "").splitlines() if line)
+    return installed
+
+
+def session_is_remote() -> bool:
+    session = os.environ.get("XDG_SESSION_ID")
+    if not session:
+        return False
+    result = run(
+        "loginctl", "show-session", session, "-p", "Remote", "--value", capture=True
+    )
+    return result.returncode == 0 and (result.stdout or "").strip() == "yes"
+
+
+def install_flatpaks(requests: list[tuple[str, str]]) -> None:
+    """Install missing system Flatpaks so polkit can still ask for a password.
+
+    Homebrew's bundle command always runs `flatpak install -y`. That flag does
+    more than answer the "Proceed?" question: it marks the transaction
+    non-interactive and the system helper then asks polkit with user
+    interaction forbidden. Flatpak's shipped polkit rule lets wheel users in a
+    local, active session install without a password, so seated desktops never
+    notice, but a session without a seat (SSH, gnome-remote-desktop) needs an
+    admin password and nothing is allowed to ask for it: every install fails
+    with "Deploy not allowed for user" and no prompt.
+
+    Flatpak only reads the "Proceed?" answer when stdin and stdout are both
+    terminals; anything else counts as "no". So `--assumeyes` is dropped
+    exactly when a terminal is present, letting Flatpak's own text polkit
+    agent prompt on the tty, and kept otherwise so scripted callers behave as
+    they always have. Already-installed apps are skipped so the transaction
+    never fails on "already installed".
+    """
+    installed = installed_flatpaks()
+    pending: dict[str, list[str]] = {}
+    seen = set()
+    for app_id, remote in requests:
+        if app_id in seen:
+            continue
+        seen.add(app_id)
+        if app_id in installed:
+            print(f"{app_id} is already installed; leaving it unchanged.")
+            continue
+        pending.setdefault(remote, []).append(app_id)
+    if not pending:
+        print("All requested Flatpaks are already installed.")
+        return
+    interactive = sys.stdin.isatty() and sys.stdout.isatty()
+    if interactive and session_is_remote():
+        print(
+            "This session has no seat, so Flatpak will ask for your password before installing."
+        )
+    failed = []
+    for remote, apps in pending.items():
+        flags = [] if interactive else ["--assumeyes"]
+        result = run("flatpak", "install", "--system", *flags, remote, *apps)
+        if result.returncode:
+            failed.append(f"{remote} (exit code {result.returncode})")
+    if failed:
+        raise SetupError("Flatpak installation failed from: " + ", ".join(failed))
+
+
+def flatpak_install_command(args: list[str]) -> int:
+    """CLI entry: dakota-devmode flatpak-install [--file BREWFILE]... [APP_ID]..."""
+    usage = "Usage: dakota-devmode flatpak-install [--file BREWFILE]... [APP_ID]..."
+    requests: list[tuple[str, str]] = []
+    pending = list(args)
+    while pending:
+        arg = pending.pop(0)
+        if arg == "--file":
+            if not pending:
+                print(usage, file=sys.stderr)
+                return 2
+            requests.extend(parse_brewfile(pending.pop(0)))
+        elif arg.startswith("--file="):
+            requests.extend(parse_brewfile(arg[len("--file="):]))
+        elif arg.startswith("-"):
+            print(usage, file=sys.stderr)
+            return 2
+        elif APP_ID.match(arg):
+            requests.append((arg, DEFAULT_REMOTE))
+        else:
+            print(f"Invalid app ID: {arg}", file=sys.stderr)
+            return 2
+    if not requests:
+        print(usage, file=sys.stderr)
+        return 2
+    install_flatpaks(requests)
+    return 0
 
 
 @dataclass(frozen=True)
@@ -201,12 +329,13 @@ def uninstall_apps() -> None:
                     env={**os.environ, "HOMEBREW_NO_AUTOREMOVE": "1"},
                 )
             else:
+                # No --assumeyes: it would forbid polkit from prompting, and
+                # main() already guarantees a terminal for the confirmation.
                 result = run(
                     "flatpak",
                     "uninstall",
                     f"--{app.scope}",
                     "--app",
-                    "--assumeyes",
                     "--no-related",
                     app.package,
                 )
@@ -349,9 +478,7 @@ def setup_virtualization() -> None:
                 )
                 break
         else:
-            checked(
-                "flatpak", "install", "--system", "--assumeyes", "flathub", VMM_APP_ID
-            )
+            install_flatpaks([(VMM_APP_ID, DEFAULT_REMOTE)])
     except SetupError as error:
         raise SetupError(
             f"Virtualization setup incomplete: {error} Some changes may remain. "
@@ -495,9 +622,20 @@ def main() -> int:
         "setup": setup_virtualization,
         "uninstall": uninstall_apps,
     }
+    if len(sys.argv) >= 2 and sys.argv[1] == "flatpak-install":
+        # Also used by ujust recipes; must work without a terminal, where it
+        # keeps the traditional --assumeyes behavior.
+        try:
+            return flatpak_install_command(sys.argv[2:])
+        except SetupError as error:
+            print(error, file=sys.stderr)
+            return 1
+        except KeyboardInterrupt:
+            print("\nInterrupted. Retry the same command to continue.", file=sys.stderr)
+            return 130
     if len(sys.argv) > 2 or (len(sys.argv) == 2 and sys.argv[1] not in actions):
         print(
-            "Usage: dakota-devmode [menu|virtualization|setup|uninstall]",
+            "Usage: dakota-devmode [menu|virtualization|setup|uninstall|flatpak-install ...]",
             file=sys.stderr,
         )
         return 2

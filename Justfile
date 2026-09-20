@@ -106,6 +106,11 @@ validate:
 test-chairlift-migration:
     bash scripts/test_chairlift_migration.sh
 
+# Offline tests for the dakota-devmode Flatpak install path with a mocked flatpak.
+[group('test')]
+test-devmode:
+    python3 -m unittest scripts.test_devmode -v
+
 # Unit tests for .github/scripts/render_card.py.
 [group('dev')]
 test-render-card:
