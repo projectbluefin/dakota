@@ -28,8 +28,7 @@ environment:
   CODE_NAME: "Dakotaraptor"
   ID: "bluefin-dakota"
   # Fedora platform ID — update alongside the gnome-build-meta junction when
-  # the Fedora base bumps. The countme script reads this at runtime to build
-  # the Fedora metalink URL (repo=fedora-NN).
+  # the Fedora base bumps.
   PLATFORM_ID: "platform:f42"
 
 config:
