@@ -89,6 +89,7 @@ check-publish-workflow:
     python3 -m unittest scripts.test_ownership_metadata scripts.test_ownership_oci scripts.test_compare_oci_layers scripts.test_ownership_recipes scripts.test_sync_next
     python3 -m unittest scripts.test_image_variants
     python3 -m unittest scripts.test_desktop_defaults
+    just test-devmode
     just test-chairlift-migration
 
 # Local convenience wrapper. CI does NOT run this recipe; it runs
@@ -105,6 +106,11 @@ validate:
 [group('test')]
 test-chairlift-migration:
     bash scripts/test_chairlift_migration.sh
+
+# Offline virtualization setup regression tests; never changes the host firewall.
+[group('test')]
+test-devmode:
+    python3 -m unittest scripts.test_devmode
 
 # Unit tests for .github/scripts/render_card.py.
 [group('dev')]
