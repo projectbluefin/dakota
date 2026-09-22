@@ -91,6 +91,7 @@ check-publish-workflow:
     python3 -m unittest scripts.test_desktop_defaults
     just test-devmode
     just test-chairlift-migration
+    just test-release
 
 # Local convenience wrapper. CI does NOT run this recipe; it runs
 # `check-publish-workflow` plus its own bst show steps. Do not register
@@ -101,6 +102,21 @@ validate:
     just test-render-card
     just bst show --deps all oci/bluefin.bst
     just bst show --deps all oci/bluefin-nvidia.bst
+
+# Usage: just release [--apply] [sha=<full-40-character-SHA>]
+# sha= is a recovery override and bypasses the successful-publish-run lookup.
+# Arguments are passed to Python as data, never interpolated into shell code.
+
+# Dispatch a stable preflight (default); --apply enables promotion.
+[group('release')]
+[positional-arguments]
+release *FLAGS:
+    python3 scripts/release.py dispatch "$@"
+
+# Offline release CLI and publish-readiness tests; no workflow dispatches.
+[group('test')]
+test-release:
+    python3 -m unittest scripts.test_release
 
 # Offline migration/assembly checks; never invokes the host Homebrew.
 [group('test')]

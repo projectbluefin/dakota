@@ -160,8 +160,10 @@ Copy `files/hive/hive-project.yaml.example` to `/etc/hive/hive-project.yaml` and
 
 ## Image stream and branch model
 
-Dakota uses trunk-based development. `testing` is the development trunk; `main`
-is a release bookmark advanced by `execute-release.yml` after promotion.
+Dakota uses trunk-based development. `testing` is the default branch and
+integration trunk. Changes merge there; `sync-next.yml` synthesizes `next`
+from testing plus its stream-specific overlay. Stable promotion selects a
+published testing commit SHA, not a commit from `main`.
 
 ```text
 testing change or daily schedule
@@ -170,19 +172,27 @@ testing change or daily schedule
       ├─ :sha
       └─ :testing
 
-Mon/Wed/Fri release schedule
-  → execute-release.yml
-  → freshness and signature checks
-  → :stable + main bookmark
+testing merge
+  → sync-next.yml
+  → next + next-stream overlay (separate rolling stream)
+
+just release (default: preflight only)
+  → successful publish for testing SHA + default-image digest comparison
+just release --apply
+  → signature checks and digest-based promotion
+  → :stable + GitHub release
 ```
 
 `next` follows the same build/publish machinery but advances `:next` and `:btw`;
 it never promotes to `:stable`. E2e is manually dispatched against an already
 published image and is not a pull-request check.
 
-**All normal PRs target `testing`.** The `main` branch is a release bookmark and
-must not be used as a contributor PR base. Confirm live branch protection and
-required checks in GitHub rather than copying them into documentation.
+**All normal PRs target `testing`.** Stable promotion does not move `main` or
+require any merge into it. Post-release verification checks the published image
+digests directly against the selected testing SHA. See [the CI reference](ci.md#stable-release)
+for preflight limitations and recovery-SHA handling. Confirm live branch
+protection and required checks in GitHub rather than copying them into
+documentation.
 
 ### Branch flow for contributors
 

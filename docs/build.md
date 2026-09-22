@@ -141,6 +141,6 @@ Because Dakota uses Ghostty as its primary terminal emulator:
 | `rpm-ostree`, `pip install`, `apt-get` in elements | BST-only build; all deps from junctions |
 | `$(date)`, `$(hostname)`, `$(curl ...)` in `install-commands` | Breaks reproducibility and BST caching |
 | Patch junction files directly | Use `patch_queue` source in the junction `.bst` |
-| Force-push to `main` | `main` is a release bookmark; `execute-release.yml` is the only writer |
+| Force-push to `main` | Stable promotion operates on image digests from testing SHAs, not Git branch updates |
 | Close issues via API or comment | Use `Closes #NNN` in the PR body |
 | Open a PR without running `just validate` | Wastes everyone's time |

@@ -16,7 +16,7 @@ Release workflows cross a cryptographic and security boundary. Stop for human ap
 - Modifying `.github/workflows/execute-release.yml` or `rollback-stable.yml`
 - Auditing or updating cosign keyless OIDC signatures or SLSA build provenance attestations
 - Managing image digest pinning, release receipts, or immutable tag promotion
-- Managing the Mon/Wed/Fri stable promotion schedule or rollback procedures
+- Managing the on-demand stable promotion flow or rollback procedures
 
 ## When NOT to Use
 
@@ -34,7 +34,8 @@ Release workflows cross a cryptographic and security boundary. Stop for human ap
 
 ## Invariants
 
-- **Bookmark Invariant**: `main` is a stable-release bookmark, not a branch for contributor PRs.
+- **Branch Model**: `testing` is the default branch and integration trunk. `sync-next.yml` derives `next` with its stream overlay. Stable candidates are published testing SHAs, not commits from `main`. Promotion must neither move `main` nor require it to match the candidate; post-release verification compares image digests directly.
+- **Manual Preflight**: `just release` dispatches a remote preflight, not a local simulation or a full signature/variant verification. `--apply` explicitly enables promotion. `sha=<full-40-character-SHA>` is a recovery override that bypasses the successful-publish-run lookup; malformed or repeated SHA arguments must fail before dispatch.
 - **Rolling Streams**: `next` and `btw` are rolling development streams; they never promote to `:stable`.
 - **Promotion Gates**: Stable promotion intentionally avoids the testsuite e2e gate. It enforces freshness locking, cosign verification, and digest-based copy.
 - **Cryptographic Anchoring**: Anchor `--certificate-identity-regexp` with `^...$` and restrict it strictly to the authorized publishing workflow and branch.
@@ -62,11 +63,15 @@ Release workflows cross a cryptographic and security boundary. Stop for human ap
 - [ ] Certificate identity regex is anchored with `^` and `$`
 - [ ] Digest copy commands use skopeo/cosign without intermediate re-tagging
 - [ ] Every affected variant is accounted for; the default/NVIDIA rollback is not reported as recovery of gaming variants
+- [ ] No Git branch update gates promotion or post-release verification; stable-digest checks and cleanup remain intact
 - [ ] Human approval obtained before any release execution
+- [ ] `just test-release` passes offline; new tests are registered in the CI-facing `check-publish-workflow` recipe
 
 ## References
 
 - [`.github/workflows/execute-release.yml`](../../../.github/workflows/execute-release.yml)
+- [`scripts/release.py`](../../../scripts/release.py)
+- [`scripts/test_release.py`](../../../scripts/test_release.py)
 - [`.github/workflows/rollback-stable.yml`](../../../.github/workflows/rollback-stable.yml)
 - [`docs/ci.md`](../../../docs/ci.md)
 - [`SECURITY.md`](../../../SECURITY.md)

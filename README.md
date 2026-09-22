@@ -65,7 +65,7 @@ Comment `/claim` to take an issue. See [AGENTS.md](AGENTS.md) for the full contr
 
 |        Tag |  Stream |                                                                                                    What it is |
 | ---------: | ------: | ------------------------------------------------------------------------------------------------------------: |
-|  `:stable` |  Stable |                                       GNOME 50 — production. Mon/Wed/Fri automated promotion from `:testing`. |
+|  `:stable` |  Stable |                        GNOME 50 — production. On-demand promotion from `:testing` via `just release --apply`. |
 | `:testing` |     Dev |                                              GNOME 50 — daily builds from `testing` branch. Boot-check gated. |
 |    `:next` | Rolling | **GNOME master — the bleeding edge.** Tracks gnome-build-meta `master` daily. Auto-updates, zero maintenance. |
 |     `:btw` | Rolling |                                                                                            Alias for `:next`. |

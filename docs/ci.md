@@ -13,7 +13,7 @@ disagrees with this page.
 | `e2e.yml` | Manual only | Run testsuite suites against an explicitly published image |
 | `build-aarch64.yml` | Manual only; automatic ARM CI paused | Build the decoupled aarch64 image on explicit request |
 | `boot-test-aarch64.yml` | Manual only; automatic ARM CI paused | Experimental ARM boot validation; requires KVM |
-| `execute-release.yml` | Mon/Wed/Fri 18:00 UTC and manual recovery | Verify and promote the tested x86 variants to `stable` |
+| `execute-release.yml` | Manual dispatch (maintainer-initiated) | Verify and promote the tested x86 variants to `stable` |
 
 PRs do not publish their image, so `e2e.yml` does not run on pull requests: it
 would test a stale public tag rather than the PR. Run it manually only after the
@@ -27,7 +27,9 @@ must be followed by a separate explicit boot-test dispatch; a skipped KVM test
 is not boot-verification evidence. ARM elements and x86 CI are unchanged.
 
 GitHub's [manual workflow documentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
-describes `workflow_dispatch`; the workflow must exist on the default branch.
+describes `workflow_dispatch`; the workflow must exist on the default branch,
+which is `testing` in Dakota. Scheduled workflows also use that default branch,
+not `main`.
 
 ## Build and publish contract
 
@@ -82,14 +84,61 @@ by expanding `NEXT_OWNED`, which would prevent testing updates flowing through.
 
 ## Stable release
 
-`execute-release.yml` is scheduled after the daily build window. It resolves the
-published testing SHA and digest, skips an already-current release, invokes the
-managed release workflow with anchored cosign identity rules, advances the
-`main` bookmark, and verifies resulting tags. The testsuite release gate is
-currently disabled in workflow configuration; do not describe it as active.
+`testing` is the default branch and integration trunk. `sync-next.yml` derives
+`next` from it with the next-stream overlay. Stable promotion selects a published
+`testing` commit SHA and promotes its images by digest; it does not build from
+`main`, merge into `main` first, or promote the `next`/`btw` streams.
 
-`main` is a release bookmark, not the development branch. `next` and `btw` never
-promote to `stable`.
+`execute-release.yml` has no schedule. Both the workflow input and the local
+recipe default to **preflight only**. The Python helper in `scripts/release.py`
+prints the mode, repository, workflow ref, and candidate before dispatching:
+
+```bash
+just release          # dispatch remote preflight; no promotion
+just release --apply  # explicitly enable stable promotion
+```
+
+These commands dispatch `projectbluefin/dakota` at remote `testing`, not the
+local worktree or a fork inferred from Git remotes. Preflight resolves testing
+HEAD, requires a successful `publish.yml` run for that exact SHA, resolves the
+default-image digest, and compares it to `:stable`. Missing publication fails
+with a clear error; an already-current stable digest is a successful no-op.
+Wait for the selected SHA's build and publish to finish before cutting stable.
+
+Preflight **does not run the reusable promotion workflow**, including its
+signature checks and full variant resolution. A green preflight is not proof
+that every promotion check passed. On apply, the existing anchored cosign
+policy and digest-based promotion remain in place, followed by GitHub release
+creation. The testsuite release gate remains disabled in workflow configuration.
+
+For recovery, append `sha=<full-40-character-SHA>` to either command to select
+an already-published testing commit instead of testing HEAD. Empty, abbreviated,
+malformed, or repeated SHA arguments are rejected before dispatch. This explicit
+recovery override bypasses only the successful-publish-run lookup; digest
+resolution and apply-time signature checks still run. Without an explicit SHA,
+preflight and apply resolve HEAD independently and may select different commits
+if testing advances between runs.
+
+Stable promotion neither updates `main` nor requires it to match the promoted
+SHA. Post-release verification compares all four `:stable` image digests with
+their SHA-tagged candidates, checks `:stable-multiarch`, and retains the existing
+stale-branch scan and untagged GHCR cleanup. These checks depend on image
+promotion, not a Git branch update; no branch-protection bypass is needed.
+
+`just test-release` runs offline Python tests with a mocked `gh`, including the
+real Justfile argument path. It is registered in `check-publish-workflow` so CI
+runs it too. Unlike `just release`, it creates no remote workflow run.
+
+```text
+merge into testing → build → publish SHA-tagged images
+                   └→ sync-next.yml → next (separate rolling stream)
+
+just release → preflight → inspect the run's candidate and result
+just release --apply → verify signatures → promote digests to :stable
+                                        └→ create GitHub release
+
+ISO: separate dakota-iso workflow consumes :stable (not main)
+```
 
 ## Operating rules
 
