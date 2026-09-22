@@ -307,7 +307,7 @@ jobs:
     name: Post-release verification + cleanup
     if: inputs.dry_run != true && needs.execute.result == 'success' && needs.create-multiarch-stable.result == 'success'
     needs: [freshness-check, execute, create-multiarch-stable]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write

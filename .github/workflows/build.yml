@@ -44,7 +44,7 @@ concurrency:
 jobs:
   verify-default-branch:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -64,7 +64,7 @@ jobs:
   # and will build a superset of this state. Skip the expensive build then.
   stale-check:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build') && github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       actions: read
     outputs:
@@ -100,7 +100,7 @@ jobs:
   build:
     needs: [verify-default-branch, stale-check]
     if: (!cancelled()) && needs.stale-check.outputs.stale != 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build') && github.event.pull_request.head.repo.full_name == github.repository))
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 350
     # The BuildBox backend has four action slots. Start every image variant
     # together; the backend remains the global execution-capacity limit.
@@ -218,7 +218,7 @@ jobs:
   pr-image:
     needs: build
     if: (!cancelled()) && needs.build.result == 'success' && (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build') && github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -312,7 +312,7 @@ jobs:
   build-gate:
     needs: [stale-check, build]
     if: always() && github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Require a green build when the PR is labeled build

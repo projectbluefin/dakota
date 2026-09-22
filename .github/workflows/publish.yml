@@ -37,7 +37,7 @@ jobs:
   # ── Resolve context ───────────────────────────────────────────────────────
   # Single source of truth for SHA and trigger event, shared by all downstream jobs.
   setup:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       sha: ${{ steps.context.outputs.sha }}
       event: ${{ steps.context.outputs.event }}
@@ -91,7 +91,7 @@ jobs:
   # in parallel with promote rather than blocking it.
   publish-image:
     needs: setup
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     # Variant matrix: default and NVIDIA publish in parallel from the shared
     # BST artifact cache. NVIDIA is `continue-on-error: true` so its failure
@@ -290,7 +290,7 @@ jobs:
   # repeated runs skip the GitLab git fetch entirely.
   publish-sbom:
     needs: [setup, publish-image]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -422,7 +422,7 @@ jobs:
       needs.publish-image.result == 'success' &&
       needs.setup.outputs.testing_tag != '' &&
       github.event_name == 'workflow_run'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
