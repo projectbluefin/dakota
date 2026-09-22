@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:ubuntu/gnome-shell-extension-appindicator.git
   track: v*
-  ref: v65-0-gbd6775ad627117d8397d82403c650e753a5514c1
+  ref: v66-0-g52da5222a17f7a862e8a47d2bc523f29abf59964
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-meson.bst
