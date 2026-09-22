@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: gnome:gnome-build-meta.git
   track: gnome-51
-  ref: 51.0-3-ge34f1eb8c12742aedb1ee65b855c5d88741d9f92
+  ref: 51.0-4-gd87c508b29a8d5b76d06d06a739ab55065eb2a3d
 - kind: patch_queue
   path: patches/gnome-build-meta
 
