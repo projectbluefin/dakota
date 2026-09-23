@@ -117,6 +117,10 @@ Metadata rows are pulled live from GitHub at every transition:
 
 `ujust confirm` adds another hardware instance without opening a duplicate. `ujust verify` adds post-fix evidence on real hardware and moves the issue toward closure.
 
+The Bonedigger caller is pinned to an immutable commit. Advance the pin whenever
+Bonedigger changes report-intake semantics so this workflow and the canonical
+bug-report template enforce the same data-donation contract.
+
 **`flow/agent-donation` issues:** write the report as a comment, cite sources, close the issue. Do not open a PR.
 
 ## Actionadon bot
