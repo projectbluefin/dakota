@@ -38,19 +38,17 @@ public:
       - mkdir /run
       - mkdir /sysroot
       - mkdir /sysroot/ostree
-      - ln -s sysroot/ostree ostree
 
-      # Wipe /var (may contain build-time state) and all FHS dirs that should
-      # be symlinks into /var, then recreate with the correct structure.
-      # Relative symlinks (var/home not /var/home) match zirconium-hawaii and
-      # are safer in chroot/deploy tooling flows.
-      - rm -rfv /home /root /opt /mnt /srv /var
+      # Remove link paths first: ln -s nests inside an existing directory.
+      - rm -rfv /home /root /opt /mnt /srv /var /ostree /usr/local
       # Mount points for bind mounts
       - mkdir /home /root /snap
       - mkdir -p /var/home /var/roothome /var/opt /var/mnt /var/srv /var/tmp
-      - ln -s var/opt /opt
-      - ln -s var/mnt /mnt
-      - ln -s var/srv /srv
-      - ln -s ../../var/usrlocal usr/local
+      # Relative targets: bootc container lint rejects absolute ones.
+      - ln -sT sysroot/ostree /ostree
+      - ln -sT var/opt /opt
+      - ln -sT var/mnt /mnt
+      - ln -sT var/srv /srv
+      - ln -sT ../var/usrlocal /usr/local
 
       - touch /etc/machine-id
