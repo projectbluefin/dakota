@@ -5,10 +5,6 @@ sources:
   url: github:gsconnect/gnome-shell-extension-gsconnect.git
   track: v*
   ref: v73-0-gf68c95cb2985ba273129e9d4d9017f5b028c96d7
-# GNOME 51: GJS 1.86 made GjsPrivate.DBusImplementation final. Backport of
-# upstream PR #2192; drop once a release lists "51" in metadata.json.
-- kind: patch
-  path: patches/gsconnect/0001-gnome-51-support.patch
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-meson.bst
