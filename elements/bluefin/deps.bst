@@ -38,7 +38,10 @@ depends:
   - bluefin/composefs-loop-udisks-ignore.bst
   - bluefin/udev-groups.bst
   - bluefin/gnome-epub-thumbnailer.bst
-  - bluefin/papers-thumbnailer.bst
+  # Papers' thumbnailer and PDF backend. The full package already reaches the
+  # image through gnome-build-meta's sushi, and the Papers Flatpak's desktop
+  # entry takes precedence in XDG_DATA_DIRS, so users see one Papers app.
+  - gnome-build-meta.bst:core/papers.bst
   - bluefin/wallpapers.bst
 
   - bluefin/uutils-coreutils.bst
