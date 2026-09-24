@@ -54,16 +54,6 @@ logs-this-boot:
 logs-last-boot:
     sudo journalctl --no-hostname -b -1
 
-# Enroll Nvidia driver & KMOD signing key for secure boot - Enter password "universalblue" if prompted
-enroll-secure-boot-key:
-    #!/usr/bin/bash
-    ENROLLMENT_PASSWORD="universalblue"
-    sudo bash <<EOF
-    mokutil --timeout -1
-    echo -e "$ENROLLMENT_PASSWORD\n$ENROLLMENT_PASSWORD" | mokutil --import "/etc/pki/akmods/certs/akmods-ublue.der"
-    EOF
-    echo 'At next reboot, the mokutil UEFI menu UI will be displayed (*QWERTY* keyboard input and navigation).\nThen, select "Enroll MOK", and input "universalblue" as the password'
-
 # Toggle display of the user-motd in terminal
 toggle-user-motd:
     #!/usr/bin/bash
@@ -80,56 +70,6 @@ toggle-user-motd:
       gum style --foreground 245 "MOTD hidden. Run 'ujust toggle-user-motd' to bring it back."
       exit 0
     fi
-
-# Check for local overrides
-check-local-overrides:
-    #!/usr/bin/bash
-    RESET="\x1b[0m"
-    if [ "${NO_COLOR}" == 1 ]; then
-        BLUE_COLOR=""
-        GREEN_COLOR=""
-        YELLOW_COLOR=""
-    else
-        BLUE_COLOR="${BLUE_COLOR:-\x1b[38;5;117m}"
-        GREEN_COLOR="${GREEN_COLOR:-\x1b[38;5;85m}"
-        YELLOW_COLOR="${YELLOW_COLOR:-\x1b[93m}"
-    fi
-
-    diff -qr \
-      --suppress-common-lines \
-      --color="always" \
-      --exclude "passwd*" \
-      --exclude "group*" \
-      --exclude="subgid*" \
-      --exclude="subuid*" \
-      --exclude="machine-id" \
-      --exclude="adjtime" \
-      --exclude="fstab" \
-      --exclude="system-connections" \
-      --exclude="shadow*" \
-      --exclude="gshadow*" \
-      --exclude="ssh_host*" \
-      --exclude="cmdline" \
-      --exclude="crypttab" \
-      --exclude="hostname" \
-      --exclude="localtime" \
-      --exclude="locale*" \
-      --exclude="*lock" \
-      --exclude=".updated" \
-      --exclude="*LOCK" \
-      --exclude="vconsole*" \
-      --exclude="00-keyboard.conf" \
-      --exclude="grub" \
-      --exclude="system.control*" \
-      --exclude="cdi" \
-      --exclude="default.target" \
-      /usr/etc /etc 2>/dev/null | sed \
-          -e '/Binary\ files\ /d ; /Common subdirectories/d' \
-          -e "/Files/ s/^/${BLUE_COLOR}&/g" \
-          -e "/Files/ s/\$/&${RESET}/g" \
-          -e "/Only in/ s/^/${GREEN_COLOR}&/g" \
-          -e "/Only in/ s/\$/&${RESET}/g" \
-          -e "s/\:.*/${RESET}${YELLOW_COLOR}&${RESET}/g"
 
 # Deprecated alias for ujust report.
 device-info:
@@ -429,15 +369,6 @@ probe:
         "Starting session..."
     echo ""
     goose session
-
-# Measure Idle Power Draw
-check-idle-power-draw:
-    #!/usr/bin/bash
-    if ! command -v powerstat ; then
-        echo "Powerstat is not available"
-        exit 1
-    fi
-    sudo powerstat -a -r
 
 # Run a one minute system benchmark
 [group('System')]
