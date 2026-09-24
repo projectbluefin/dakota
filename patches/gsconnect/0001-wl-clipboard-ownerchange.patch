@@ -1,0 +1,25 @@
+From: Dakota maintainers
+Subject: wl_clipboard: declare OwnerChange signal for DBus.wrapObject
+
+GSConnect v73 ships upstream PR #2192 (GNOME 51), but the wl-clipboard
+fallback class still lacks the OwnerChange signal declaration.
+DBus.wrapObject() connects every interface signal, so the fallback
+throws without it. Drop once upstream declares the signal.
+
+diff --git a/src/wl_clipboard.js b/src/wl_clipboard.js
+index 3bca744..d5c2322 100644
+--- a/src/wl_clipboard.js
++++ b/src/wl_clipboard.js
+@@ -56,6 +56,12 @@ const TEXT_MIMETYPES = [
+ export const Clipboard = GObject.registerClass(
+     {
+         GTypeName: 'GSConnectShellClipboard',
++        Signals: {
++            'OwnerChange': {
++                flags: GObject.SignalFlags.RUN_FIRST,
++                param_types: [],
++            },
++        },
+     },
+     class GSConnectShellClipboard extends GObject.Object {
+         _init() {
