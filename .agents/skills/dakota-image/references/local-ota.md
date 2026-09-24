@@ -110,7 +110,7 @@ journalctl -p err --since boot   # check for boot errors
 ## Reverting to GHCR
 
 ```bash
-sudo bootc switch ghcr.io/projectbluefin/dakota:latest
+sudo bootc switch ghcr.io/projectbluefin/dakota:stable
 sudo systemctl reboot
 ```
 

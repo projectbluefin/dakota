@@ -433,13 +433,6 @@ clean:
     rm -f bootable.raw .ovmf-vars.fd
     rm -rf .build-out
 
-# ── Containerfile build (lint helper only) ───────────────────────────
-# This is not Dakota's package assembly path.
-# Real image content changes happen in BuildStream elements and `just build`.
-[group('build')]
-build-containerfile $image_name=image_name:
-    sudo podman build --security-opt label=type:unconfined_t --squash-all -t "${image_name}:latest" .
-
 # ── bootc helper ─────────────────────────────────────────────────────
 [group('dev')]
 bootc *ARGS:
@@ -1335,15 +1328,15 @@ sbom variant="default":
 # ── Verify supply-chain signatures ───────────────────────────────────
 # Verify cosign signature + SBOM referrer + SLSA attestation for a
 # pushed image. Requires: cosign, oras, gh CLI.
-# Usage: just verify                           (uses IMAGE_REGISTRY/IMAGE_NAME:latest)
-#        just verify ghcr.io/projectbluefin/dakota:latest
+# Usage: just verify                           (uses ghcr.io/projectbluefin/dakota:stable)
+#        just verify ghcr.io/projectbluefin/dakota:testing
 [group('test')]
 verify image_ref="":
     #!/usr/bin/env bash
     set -euo pipefail
 
     IMAGE="{{image_ref}}"
-    [ -z "$IMAGE" ] && IMAGE="ghcr.io/projectbluefin/dakota:latest"
+    [ -z "$IMAGE" ] && IMAGE="ghcr.io/projectbluefin/dakota:stable"
 
     echo "==> Verifying supply-chain security for: ${IMAGE}"
     echo ""
