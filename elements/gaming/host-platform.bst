@@ -42,6 +42,10 @@ depends:
   # native Steam package by gaming/steam-native.bst.
   - gaming/sdl-gamecontrollerdb.bst
 
+  # OGC xonedo Xbox wireless-dongle driver (Bazzite parity) + firmware.
+  - gaming/xonedo.bst
+  - gaming/xonedo-firmware.bst
+
   # Vulkan loader/link compatibility for native host tools. Mesa/NVIDIA ICDs
   # arrive via the normal COSMIC/NVIDIA stacks; this makes discovery paths sane.
   - freedesktop-sdk.bst:components/vulkan-icd-loader.bst
