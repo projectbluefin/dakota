@@ -9,10 +9,10 @@ config:
   - |
     for prog in $(target/release/coreutils --list); do
       ln -sr "%{install-root}/usr/bin/uutils-coreutils" "%{install-root}/usr/bin/uutils-${prog}"
-      # Keep cp/mv/rm from GNU coreutils — uutils has unresolved TOCTOU issues.
-      # See projectbluefin/common#290.
+      # kill and uptime belong to procps-ng, not coreutils; GNU coreutils
+      # does not install them either. Leave procps as their only provider.
       case "${prog}" in
-        cp|mv|rm) continue ;;
+        kill|uptime) continue ;;
       esac
       ln -sr "%{install-root}/usr/bin/uutils-coreutils" "%{install-root}/usr/bin/${prog}"
     done
@@ -34,6 +34,7 @@ public:
     - /usr/bin/chroot
     - /usr/bin/cksum
     - /usr/bin/comm
+    - /usr/bin/cp
     - /usr/bin/csplit
     - /usr/bin/cut
     - /usr/bin/date
@@ -58,7 +59,6 @@ public:
     - /usr/bin/id
     - /usr/bin/install
     - /usr/bin/join
-    - /usr/bin/kill
     - /usr/bin/link
     - /usr/bin/ln
     - /usr/bin/logname
@@ -69,6 +69,7 @@ public:
     - /usr/bin/mknod
     - /usr/bin/mktemp
     - /usr/bin/more
+    - /usr/bin/mv
     - /usr/bin/nice
     - /usr/bin/nl
     - /usr/bin/nohup
@@ -85,6 +86,7 @@ public:
     - /usr/bin/pwd
     - /usr/bin/readlink
     - /usr/bin/realpath
+    - /usr/bin/rm
     - /usr/bin/rmdir
     - /usr/bin/seq
     - /usr/bin/sha1sum
@@ -117,7 +119,6 @@ public:
     - /usr/bin/unexpand
     - /usr/bin/uniq
     - /usr/bin/unlink
-    - /usr/bin/uptime
     - /usr/bin/users
     - /usr/bin/vdir
     - /usr/bin/wc
@@ -131,6 +132,12 @@ build-depends:
 
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
+# uutils replaces GNU coreutils by overwriting the same /usr/bin paths, and a
+# compose keeps whichever element stages last. Depending on GNU coreutils makes
+# it stage first, so uutils wins regardless of how the junctions order the rest
+# of the graph (freedesktop-sdk 26.08 moved GNU coreutils out of runtime-minimal,
+# which silently let it win).
+- freedesktop-sdk.bst:bootstrap/coreutils.bst
 
 sources:
 - kind: git_repo
