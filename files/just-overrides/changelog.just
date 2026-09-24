@@ -6,13 +6,19 @@ alias changelog := changelogs
 changelogs:
     #!/usr/bin/bash
 
-    # Get Image Tag
-    TAG="$(jq -r '.["image-tag"]' < /usr/share/ublue-os/image-info.json)"
+    # The tag baked into image-info.json is a compose-time placeholder;
+    # promotion retags the same digest, so read the followed stream from the
+    # booted ref that ublue-booted-image.service records each boot.
+    BOOTED_REF=""
+    [[ -r /run/ublue-os/booted-image ]] && read -r BOOTED_REF < /run/ublue-os/booted-image
+    TAG="${BOOTED_REF##*:}"
 
-    # If stable or gts, get changelogs from Github Releases
-    if [[ "$TAG" =~ gts$|stable$ ]]; then
-        DATE="$(grep -oP "OSTREE_VERSION=.*\d{2}\.\K\d{8}" /etc/os-release)"
-        CONTENT="$(curl -Ls "https://api.github.com/repos/projectbluefin/dakota/releases" | jq -r ".[] | select(.tag_name==\"${TAG}-${DATE}\") | .body")"
+    # Stable releases are tagged stable-<IMAGE_VERSION> (the build date).
+    if [[ "$BOOTED_REF" == *:* && "$TAG" == "stable" ]]; then
+        DATE="$(. /usr/lib/os-release && echo "${IMAGE_VERSION:-}")"
+        if [[ "$DATE" =~ ^[0-9]{8}$ ]]; then
+            CONTENT="$(curl -Ls "https://api.github.com/repos/projectbluefin/dakota/releases/tags/stable-${DATE}" | jq -r '.body // empty')"
+        fi
     fi
 
     # Render with glow when available (brew-preinstall), otherwise plain output.
