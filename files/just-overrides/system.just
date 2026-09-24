@@ -191,10 +191,94 @@ alias switch-stream := rebase-helper
 alias switch-streams := rebase-helper
 alias rollback-helper := rebase-helper
 
-# Rebase assistant
+# Switch Dakota stream or variant, or roll back to the previous deployment
 [group('System')]
 rebase-helper:
-    @/usr/bin/ublue-rollback-helper
+    #!/usr/bin/bash
+    set -euo pipefail
+    if [[ ! -t 0 || ! -t 1 ]]; then
+        echo "Run ujust rebase-helper in a terminal." >&2
+        exit 1
+    fi
+
+    REGISTRY="ghcr.io/projectbluefin"
+    # Written once per boot by ublue-booted-image.service; unprivileged
+    # bootc status cannot report the booted ref.
+    BOOTED_REF=""
+    [[ -r /run/ublue-os/booted-image ]] && read -r BOOTED_REF < /run/ublue-os/booted-image
+
+    CUR_VARIANT=""
+    CUR_STREAM=""
+    if [[ "${BOOTED_REF}" =~ ^${REGISTRY}/(dakota(-nvidia)?(-gaming)?):(stable|testing|next)$ ]]; then
+        CUR_VARIANT="${BASH_REMATCH[1]}"
+        CUR_STREAM="${BASH_REMATCH[4]}"
+        echo "Current image: ${CUR_VARIANT}:${CUR_STREAM}"
+    else
+        echo "Current image: ${BOOTED_REF:-unknown} (not a Dakota stream)"
+    fi
+
+    reboot_prompt() {
+        if gum confirm "Reboot now to finish?"; then
+            systemctl reboot
+        else
+            echo "The change takes effect on the next reboot."
+        fi
+    }
+
+    ACTION="$(gum choose --header="What would you like to do?" \
+        "Switch stream" "Switch variant" "Roll back to the previous deployment" "Cancel")" || exit 0
+    case "${ACTION}" in
+        "Roll back to the previous deployment")
+            gum confirm "Boot the previous deployment on next reboot?" || exit 0
+            sudo bootc rollback
+            reboot_prompt
+            exit 0
+            ;;
+        "Switch stream"|"Switch variant") ;;
+        *) exit 0 ;;
+    esac
+
+    NEW_VARIANT="${CUR_VARIANT:-dakota}"
+    NEW_STREAM="${CUR_STREAM:-stable}"
+
+    if [[ "${ACTION}" == "Switch stream" ]]; then
+        CHOICE="$(gum choose --header="Choose a stream" \
+            "stable: tested releases promoted from testing" \
+            "testing: daily builds that feed stable" \
+            "next: GNOME development builds, expect breakage")" || exit 0
+        NEW_STREAM="${CHOICE%%:*}"
+    else
+        CHOICE="$(gum choose --header="Choose a variant" \
+            "dakota: standard" \
+            "dakota-nvidia: NVIDIA driver" \
+            "dakota-gaming: gaming stack" \
+            "dakota-nvidia-gaming: gaming stack with NVIDIA driver")" || exit 0
+        NEW_VARIANT="${CHOICE%%:*}"
+
+        # PCI vendor 0x10de is NVIDIA; class 0x03xxxx is a display controller.
+        HAS_NVIDIA=0
+        for dev in /sys/bus/pci/devices/*; do
+            if [[ "$(cat "${dev}/vendor" 2>/dev/null)" == "0x10de" && "$(cat "${dev}/class" 2>/dev/null)" == 0x03* ]]; then
+                HAS_NVIDIA=1
+                break
+            fi
+        done
+        if [[ "${NEW_VARIANT}" == *-nvidia* && "${HAS_NVIDIA}" == 0 ]]; then
+            gum confirm "No NVIDIA GPU detected. Switch to an NVIDIA variant anyway?" || exit 0
+        elif [[ "${NEW_VARIANT}" != *-nvidia* && "${HAS_NVIDIA}" == 1 ]]; then
+            gum confirm "An NVIDIA GPU is present. Without the NVIDIA variant it falls back to the open-source driver. Continue?" || exit 0
+        fi
+    fi
+
+    if [[ "${NEW_VARIANT}" == "${CUR_VARIANT}" && "${NEW_STREAM}" == "${CUR_STREAM}" ]]; then
+        echo "Already on ${CUR_VARIANT}:${CUR_STREAM}; nothing to do."
+        exit 0
+    fi
+
+    TARGET="${REGISTRY}/${NEW_VARIANT}:${NEW_STREAM}"
+    gum confirm "Switch to ${TARGET}?" || exit 0
+    sudo bootc switch "${TARGET}"
+    reboot_prompt
 
 # Show current kernel parameters and explain how to add persistent ones
 [group('System')]
