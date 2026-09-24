@@ -15,6 +15,11 @@ build-depends:
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 - freedesktop-sdk.bst:components/linux-pam.bst
+# The image also stages C sudo (components/sudo.bst, via vm/config/sudo.bst),
+# which owns /etc/pam.d/sudo and the sudoers files sudo-rs reads. A compose
+# keeps whichever element stages last, so depend on it to stage C sudo first
+# and let sudo-rs own /usr/bin/sudo and /usr/bin/sudoedit.
+- freedesktop-sdk.bst:vm/config/sudo.bst
 
 variables:
   strip-binaries: ""
