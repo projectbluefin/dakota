@@ -18,6 +18,8 @@ sources:
 # Drop once common ships an interactive-shell guard.
 - kind: patch
   path: patches/common/0003-uwelcome-interactive-only.patch
+- kind: patch
+  path: patches/common/0004-policy-drop-redhat-gpg-entries.patch
 - kind: git_module
   url: github:projectbluefin/branding/
   path: bluefin-branding
@@ -42,6 +44,10 @@ build-depends:
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 - freedesktop-sdk.bst:components/sed.bst
+# common's /etc/containers/policy.json replaces the permissive stock policy
+# from containers-common. A compose keeps whichever element stages last, so
+# depend on containers-common to stage it first and let common's policy win.
+- freedesktop-sdk.bst:components/containers-common.bst
 
 public:
   bst:

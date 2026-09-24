@@ -1,0 +1,30 @@
+Upstream-Status: Not-applicable [Dakota ships no Red Hat release GPG key]
+# Dakota has no /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release, so these
+# signedBy entries would reject every pull from the Red Hat registries.
+# Without them those registries fall back to the docker "" default, as on
+# every Dakota image to date.
+# Exit: Drop if Dakota ships the Red Hat release key or common drops the entries.
+
+--- a/system_files/shared/etc/containers/policy.json
++++ b/system_files/shared/etc/containers/policy.json
+@@ -6,20 +6,6 @@
+     ],
+     "transports": {
+         "docker": {
+-            "registry.access.redhat.com": [
+-                {
+-                    "type": "signedBy",
+-                    "keyType": "GPGKeys",
+-                    "keyPath": "/etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release"
+-                }
+-            ],
+-            "registry.redhat.io": [
+-                {
+-                    "type": "signedBy",
+-                    "keyType": "GPGKeys",
+-                    "keyPath": "/etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release"
+-                }
+-            ],
+             "quay.io/toolbx-images": [
+                 {
+                     "type": "sigstoreSigned",
