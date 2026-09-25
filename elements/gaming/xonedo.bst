@@ -15,7 +15,11 @@
 # - Device permissions come from Valve's Steam udev rules (already in
 #   gaming/steam-native.bst); upstream ships no rules file.
 # - install/modprobe.conf blacklists mt76x2u (MediaTek WiFi dongle that
-#   claims the Xbox receiver USB ID) — NOT xpad. Preserved here.
+#   claims the Xbox receiver USB ID) — NOT xpad. Preserved verbatim for
+#   upstream/Bazzite parity. Scope note: kmod `blacklist` only suppresses
+#   alias-based autoload; explicit `modprobe mt76x2u` still works, and kmod
+#   offers no per-USB-ID blacklist, so a narrower mechanism would diverge
+#   from upstream packaging without fixing the underlying ID collision.
 kind: manual
 
 sources:
