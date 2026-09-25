@@ -4,7 +4,6 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/common.git
   track: main
-  # Includes the external-chairlift-v1 handoff API; install.sh checks it.
   ref: v2026.08-163-g3399e47791bde6edc473b17f2760aeb22583610d
 # Consume common's fastfetch layout directly; only adapt the install-date input.
 # Drop this patch once common provides a shared install-date helper.
@@ -26,16 +25,6 @@ sources:
   ref: f5213ca61615bb79a8315fc4c5378a80ca93922e
 - kind: local
   path: files/wallpaper-month
-# Image-owned integration for the Bluefin Homebrew cask; no privileged
-# helper is installed from the user-writable Brew prefix.
-- kind: git_repo
-  url: github:projectbluefin/chairlift.git
-  track: v0.12.2
-  ref: v0.12.2-0-g5e92e9bd6b24d641cabcff84d079f45532ca94ae
-  directory: chairlift-upstream
-- kind: local
-  path: files/chairlift
-  directory: dakota-chairlift
 
 build-depends:
 - core/sandbox-tools.bst
@@ -147,10 +136,6 @@ config:
     # Dakota uses its own ublue-motd (from motd.bst) with a double-display guard.
     # Remove common's umotd.sh hook to prevent dual MOTD on every login.
     rm -f "%{install-root}%{sysconfdir}/profile.d/umotd.sh"
-
-    # Replace common's legacy Frostyard declaration and integration, with
-    # a guarded preinstall migration for the persistent Homebrew prefix.
-    bash dakota-chairlift/install.sh "%{install-root}"
 
     # Add BudsLink to default system flatpaks
     echo 'flatpak "io.github.maniacx.BudsLink"' >> "%{install-root}%{datadir}/ublue-os/homebrew/system-flatpaks.Brewfile"

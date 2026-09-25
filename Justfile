@@ -90,7 +90,6 @@ check-publish-workflow:
     python3 -m unittest scripts.test_image_variants
     python3 -m unittest scripts.test_desktop_defaults
     just test-devmode
-    just test-chairlift-migration
     just test-release
 
 # Local convenience wrapper. CI does NOT run this recipe; it runs
@@ -117,11 +116,6 @@ release *FLAGS:
 [group('test')]
 test-release:
     python3 -m unittest scripts.test_release
-
-# Offline migration/assembly checks; never invokes the host Homebrew.
-[group('test')]
-test-chairlift-migration:
-    bash scripts/test_chairlift_migration.sh
 
 # Offline developer-tool tests; never changes host services, firewall, or apps.
 [group('test')]

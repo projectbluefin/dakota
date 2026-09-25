@@ -12,11 +12,17 @@ build-depends:
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 
+environment:
+  MAXJOBS: "%{max-jobs}"
+
+environment-nocache:
+- MAXJOBS
+
 config:
   configure-commands:
   - ./bootstrap.sh --with-libraries=regex
   build-commands:
-  - ./b2 --with-regex -j%{max-jobs} variant=release threading=multi link=shared
+  - ./b2 --with-regex -j"${MAXJOBS}" variant=release threading=multi link=shared
   install-commands:
   - ./b2 --with-regex variant=release threading=multi link=shared --prefix=%{install-root}%{prefix} --libdir=%{install-root}%{libdir} install
   - install -Dm644 LICENSE_1_0.txt %{install-root}%{datadir}/licenses/boost/LICENSE_1_0.txt
