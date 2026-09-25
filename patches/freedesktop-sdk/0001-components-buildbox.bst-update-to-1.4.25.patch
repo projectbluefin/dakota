@@ -1,0 +1,22 @@
+From 471ca6868fb92a6da6b75fd9c77a78d545ae4084 Mon Sep 17 00:00:00 2001
+From: Abderrahim Kitouni <akitouni@gnome.org>
+Date: Sun, 20 Sep 2026 09:15:06 +0100
+Subject: [PATCH] components/buildbox.bst: update to 1.4.25
+
+---
+ elements/components/buildbox.bst | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/elements/components/buildbox.bst b/elements/components/buildbox.bst
+index 123b17266..9260bf210 100644
+--- a/elements/components/buildbox.bst
++++ b/elements/components/buildbox.bst
+@@ -36,4 +36,4 @@ sources:
+ - kind: git_repo
+   url: gitlab:BuildGrid/buildbox/buildbox.git
+   track: '*.*.*'
+-  ref: 1.4.23-0-g8830917a47c42b02af7f2692a863f30d0f4a1e24
++  ref: 1.4.25-0-g2bc8bcad8c21d2c121dabc846148ea9e340daaa9
+-- 
+2.55.0
+
