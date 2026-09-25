@@ -8,6 +8,9 @@ depends:
 
   - bluefin/gnome-shell-extensions.bst
 
+  # IBus Rime; users select their own input sources in GNOME.
+  - bluefin/ibus-rime.bst
+
   - bluefin/brew.bst
   - bluefin/brew-tarball.bst
 
