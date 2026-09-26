@@ -16,6 +16,7 @@ depends:
 
   - bluefin/tailscale.bst
   - bluefin/uupd.bst
+  - bluefin/chairlift.bst
 
 
   - bluefin/ghostty.bst
