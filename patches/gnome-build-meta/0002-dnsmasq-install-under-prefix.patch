@@ -1,0 +1,18 @@
+Upstream-Status: Pending
+Exit: Drop when gnome-build-meta passes PREFIX to dnsmasq itself.
+Subject: dnsmasq: install under %{prefix} instead of /usr/local
+
+Overriding make-args with only BINDIR drops the make plugin's PREFIX, so
+dnsmasq's Makefile default of /usr/local wins and its man page lands in
+/usr/local/share/man. Pass PREFIX explicitly so it goes to %{mandir}.
+
+diff --git a/elements/core-deps/dnsmasq.bst b/elements/core-deps/dnsmasq.bst
+index 8e2c0917..288296a1 100644
+--- a/elements/core-deps/dnsmasq.bst
++++ b/elements/core-deps/dnsmasq.bst
+@@ -17,4 +17,4 @@ depends:
+ - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
+ 
+ variables:
+-  make-args: BINDIR=%{sbindir}
++  make-args: PREFIX=%{prefix} BINDIR=%{sbindir}
