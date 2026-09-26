@@ -1,8 +1,8 @@
 # gnome-build-meta dropped core-deps/libvirt.bst together with GNOME Boxes on
-# master (GNOME 52), so Dakota owns the recipe. It is a verbatim copy of the
-# junction's element on gnome-51; only the build-depends are remapped to
-# Dakota's build stack. Keep the meson flags and the preset in lockstep with
-# that copy: ujust setup-virtualization (files/just-overrides/devmode.py)
+# master (GNOME 52), so Dakota owns this recipe based on gnome-51. Dependencies
+# are remapped to Dakota's build stack, and PolicyKit is explicitly enabled:
+# GNOME's project-wide --auto-features=enabled is not inherited here.
+# ujust setup-virtualization (files/just-overrides/devmode.py)
 # relies on the modular virt*d units, the firewalld libvirt zone, the qemu
 # sysusers account, and every unit being disabled by default.
 kind: meson
@@ -30,6 +30,11 @@ build-depends:
 - freedesktop-sdk.bst:components/python3-docutils.bst
 - freedesktop-sdk.bst:components/perl.bst
 - freedesktop-sdk.bst:components/sed.bst
+
+# Libvirt talks to PolicyKit over D-Bus; enabled mode needs no polkit headers.
+# Keep its authorization service in the runtime closure, not just the desktop.
+runtime-depends:
+- freedesktop-sdk.bst:components/polkit.bst
 
 depends:
 - gnome-build-meta.bst:sdk/glib.bst
@@ -87,6 +92,7 @@ variables:
     -Dnumactl=disabled
     -Dnumad=disabled
     -Dopenwsman=disabled
+    -Dpolkit=enabled
     -Dsasl=enabled
     -Dsanlock=disabled
     -Dsecdriver_apparmor=enabled
@@ -113,3 +119,13 @@ config:
     - |
       presetdir="$(pkg-config --variable=systemdsystempresetdir systemd)"
       install -Dm644 -t "%{install-root}${presetdir}" 80-libvirt.preset
+    - |
+      # Fail the build if non-root management loses PolicyKit again (#1669).
+      # These are upstream-generated outputs, not permission/auth overrides.
+      test -s "%{install-root}%{prefix}/share/polkit-1/actions/org.libvirt.unix.policy"
+      test -s "%{install-root}%{prefix}/share/polkit-1/actions/org.libvirt.api.policy"
+      test -s "%{install-root}%{prefix}/share/polkit-1/rules.d/50-libvirt.rules"
+      for driver in qemu interface network nodedev nwfilter secret storage proxy; do
+        grep -Fx 'SocketMode=0666' "%{install-root}%{prefix}/lib/systemd/system/virt${driver}d.socket"
+        grep -Fx '#auth_unix_rw = "polkit"' "%{install-root}%{sysconfdir}/libvirt/virt${driver}d.conf"
+      done
