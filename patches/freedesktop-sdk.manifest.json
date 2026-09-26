@@ -1,7 +1,8 @@
 {
   "comment": "Written by `just patch-sync`; verified offline by `just patch-drift-check`.",
   "files": {
-    "0001-project.conf-Add-GNOME-CAS-servers.patch": "2a79bad1e6159c0b31a9cd5b914a7eb34f0431c406b27974fe12dbe5990d49e7"
+    "0001-project.conf-Add-GNOME-CAS-servers.patch": "2a79bad1e6159c0b31a9cd5b914a7eb34f0431c406b27974fe12dbe5990d49e7",
+    "0002-e2fsprogs-enable-fuse2fs.patch": "0aad4c2136eaf66c6526ef916c18f83a1e3afbfc832225ab66492ae8dd9621ce"
   },
   "gnome-build-meta-sha": "be7cb317ee21d45197ba5139c77317f171e20c38"
 }

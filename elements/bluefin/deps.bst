@@ -81,6 +81,12 @@ depends:
   - freedesktop-sdk.bst:components/podman.bst
   - freedesktop-sdk.bst:components/skopeo.bst
   - freedesktop-sdk.bst:components/flatpak-builder.bst
+  # projectbluefin/contribute needs userspace ext filesystem inspection.
+  - freedesktop-sdk.bst:components/e2fsprogs.bst
+  - bluefin/libkrun.bst
+  - bluefin/libkrunfw.bst
+  - bluefin/crun-krun.bst
+  - bluefin/gocryptfs.bst
 
   - freedesktop-sdk.bst:components/bpf-maybe.bst
   - gnome-build-meta.bst:gnomeos-deps/bpftop.bst
