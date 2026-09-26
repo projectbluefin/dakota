@@ -51,11 +51,6 @@
       "consumer": ".github/workflows/execute-release.yml",
       "fields": ["image"]
     },
-    "smoke": {
-      "derived": false,
-      "consumer": ".github/workflows/publish-smoke.yml",
-      "fields": ["image"]
-    },
     "scan": {
       "derived": false,
       "consumer": ".github/workflows/vulnerability-scan.yml",
@@ -79,7 +74,6 @@
         "sbom": { "continue": true },
         "tag_testing": { "continue": false },
         "promote_stable": {},
-        "smoke": {},
         "scan": {},
         "rollback": {}
       }
@@ -95,7 +89,6 @@
         "sbom": { "continue": true },
         "tag_testing": { "continue": true },
         "promote_stable": {},
-        "smoke": {},
         "scan": {},
         "rollback": {}
       }
@@ -112,9 +105,6 @@
         "sbom": { "excluded": "no SBOM entry wired for gaming builds yet" },
         "tag_testing": { "continue": true },
         "promote_stable": {},
-        "smoke": {
-          "excluded": "publish-smoke.yml has never covered the gaming variants (#1434)"
-        },
         "scan": {
           "excluded": "vulnerability-scan.yml has never covered the gaming variants (#1434)"
         },
@@ -135,9 +125,6 @@
         "sbom": { "excluded": "no SBOM entry wired for gaming builds yet" },
         "tag_testing": { "continue": true },
         "promote_stable": {},
-        "smoke": {
-          "excluded": "publish-smoke.yml has never covered the gaming variants (#1434)"
-        },
         "scan": {
           "excluded": "vulnerability-scan.yml has never covered the gaming variants (#1434)"
         },

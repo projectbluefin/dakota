@@ -5,8 +5,8 @@ name: Boot Test dakota (aarch64)
 # No aarch64 image has ever been boot-verified — x13s-era assumptions die here.
 #
 # Same decoupling invariants as build-aarch64.yml: this NEVER blocks x86_64
-# builds, publishes, promotes, or releases. Observational smoke lives in its
-# own workflow (see publish-smoke.yml for the rationale).
+# builds, publishes, promotes, or releases. This manual boot test stays
+# separate from the build and publish workflows.
 #
 # Boots via bcvk ephemeral (qemu + virtiofs root, direct kernel boot from the
 # container — same mechanism as `just boot-test`), with serial console and
