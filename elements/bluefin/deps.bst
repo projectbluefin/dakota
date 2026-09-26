@@ -87,6 +87,7 @@ depends:
   - gnome-build-meta.bst:core/sysprof-app.bst
 
   - bluefin/distrobox.bst
+  - bluefin/nspawn.bst
   - gnome-build-meta.bst:gnomeos-deps/just.bst
   - gnome-build-meta.bst:gnomeos-deps/wl-clipboard.bst
 
