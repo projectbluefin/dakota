@@ -95,3 +95,9 @@ depends:
   - bluefin/migrate-var-home-passwd.bst
 
   - gnome-build-meta.bst:gnomeos-deps/snapd.bst
+
+(?):
+- arch == "x86_64":
+    depends:
+      (>):
+      - bluefin/intel-media-driver.bst
