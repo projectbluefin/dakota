@@ -7,9 +7,6 @@ sources:
   ref: freedesktop-sdk-26.08.1-0-gb02b59ffe19a49a402f357fd5fcb1d552ebc50d7
 - kind: patch_queue
   path: patches/freedesktop-sdk
-# Dakota patches are separate from the GBM queue overwritten by `just patch-sync`.
-- kind: patch_queue
-  path: patches/freedesktop-sdk-dakota
 
 config:
   options:

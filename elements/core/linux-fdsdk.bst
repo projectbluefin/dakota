@@ -193,9 +193,9 @@ public:
 sources:
 - kind: git_repo
   url: kernel:linux/kernel/git/stable/linux.git
-  # Testing tracks the 7.2 stable series; rc kernels stay on next.
-  track: v7.2.*
-  ref: v7.2.6-0-g500df175a7f9e6bc1a9c328590ca5150f84f9ff0
+  # rc kernels are fair game on the next stream.
+  track: v*
+  ref: v7.3-rc3-0-gfd73f4a6659897191fa0d40695fe370925dd3780
 - kind: patch_queue
   path: patches/linux
 - kind: local

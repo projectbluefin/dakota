@@ -1,0 +1,15 @@
+Only in freedesktop-sdk.old/: .bstproject.yaml
+diff -ur freedesktop-sdk.old/files/linux/fdsdk-config.sh freedesktop-sdk/files/linux/fdsdk-config.sh
+--- freedesktop-sdk.old/files/linux/fdsdk-config.sh	2026-08-23 13:05:27.154039652 +0200
++++ freedesktop-sdk/files/linux/fdsdk-config.sh	2026-08-23 13:07:01.514318921 +0200
+@@ -2423,6 +2423,10 @@
+ 
+ # ZSWAP
+ enable ZSWAP
++enable ZSWAP_COMPRESSOR_DEFAULT_ZSTD
++remove ZSWAP_COMPRESSOR_DEFAULT_LZO
++enable ZSWAP_DEFAULT_ON
++enable ZSWAP_SHRINKER_DEFAULT_ON
+ 
+ # ZRAM
+ module ZRAM
