@@ -1,0 +1,27 @@
+From 4a2e003d7112f6a79b977bc1903b00873bedf268 Mon Sep 17 00:00:00 2001
+From: Adrien Plazas <adrien.plazas@codethink.co.uk>
+Date: Wed, 9 Sep 2026 11:06:44 +0200
+Subject: [PATCH] linux-pam-config: Skip unconfigured fprint reader
+
+This avoids using the fingerprint reader if it's not configured. The fix
+comes from Valentin David.
+
+Fixes https://gitlab.gnome.org/GNOME/gnome-build-meta/-/work_items/734.
+---
+ files/linux-pam-config/fingerprint-auth | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/files/linux-pam-config/fingerprint-auth b/files/linux-pam-config/fingerprint-auth
+index ca152fba60..b0f42e902e 100644
+--- a/files/linux-pam-config/fingerprint-auth
++++ b/files/linux-pam-config/fingerprint-auth
+@@ -1,5 +1,5 @@
+ auth        required      pam_env.so
+-auth        sufficient    pam_fprintd.so
++auth        [success=done default=ignore authinfo_unavail=done]    pam_fprintd.so
+ auth        required      pam_deny.so
+ 
+ account     required      pam_unix.so
+-- 
+GitLab
+
