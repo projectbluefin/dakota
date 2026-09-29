@@ -1,0 +1,12 @@
+diff --git a/files/linux/fdsdk-config.sh b/files/linux/fdsdk-config.sh
+index 33105f508b98..1f3a53bb0d73 100644
+--- a/files/linux/fdsdk-config.sh
++++ b/files/linux/fdsdk-config.sh
+@@ -2810,3 +2810,6 @@ enable MPTCP_IPV6
+ if has HAVE_ARCH_TRANSPARENT_HUGEPAGE; then
+     enable TRANSPARENT_HUGEPAGE
+ fi
++
++# Needed and/or helpful for graphics and multimedia (e.g. libcamera and mesa).
++enable UDMABUF
+
