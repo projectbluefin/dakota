@@ -11,9 +11,6 @@ sources:
 config:
   options:
     arch: '%{arch}'
-    # remote-execution sends every compile back to the casd running the
-    # element; with all casd job slots held by elements, those never run.
-    recc: upload-local-build
     (?):
     - x86_64_v3:
         x86_64_v3: true
