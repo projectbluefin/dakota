@@ -16,6 +16,7 @@ depends:
 
   - bluefin/tailscale.bst
   - bluefin/uupd.bst
+  - bluefin/chairlift.bst
 
 
   - bluefin/ghostty.bst
@@ -95,3 +96,9 @@ depends:
   - bluefin/migrate-var-home-passwd.bst
 
   - gnome-build-meta.bst:gnomeos-deps/snapd.bst
+
+(?):
+- arch == "x86_64":
+    depends:
+      (>):
+      - bluefin/intel-media-driver.bst
