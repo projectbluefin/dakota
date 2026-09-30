@@ -1,0 +1,31 @@
+Upstream-Status: Not-applicable
+Exit: Drop if freedesktop-sdk's base FFmpeg enables all native codecs.
+Subject: ffmpeg: enable all native encoders and decoders
+
+Replace Fedora's allowlist so the host FFmpeg handles H.264, HEVC, VC-1
+and VVC, including through its VA-API and Vulkan hwaccels. No external
+codec libraries are added, so FFmpeg stays LGPL.
+
+Resolves: projectbluefin/dakota#1686
+
+diff --git a/elements/components/ffmpeg.bst b/elements/components/ffmpeg.bst
+--- a/elements/components/ffmpeg.bst
++++ b/elements/components/ffmpeg.bst
+@@ -2,7 +2,7 @@
+ # SPDX-License-Identifier: MIT
+ 
+ kind: make
+-description: Base ffmpeg we ship in the SDK, no patented codecs
++description: Base ffmpeg we ship in the SDK
+ 
+ (@):
+ - elements/include/ffmpeg.yml
+@@ -118,6 +118,5 @@ variables:
+     zero12v,zerocodec,zlib,zmbv,%{extra-decoders}
+ 
+   conf-extra: >-
+-    --enable-encoder=%{encoders}
+-    --enable-decoder=%{decoders}
+-    --disable-decoder="h264,hevc,vc1,vvc"
++    --enable-encoders
++    --enable-decoders

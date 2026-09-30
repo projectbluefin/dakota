@@ -78,6 +78,8 @@ config:
     # (unsigned-modules, initramfs, nvidia-drivers) resolves the same
     # kernel and module/kernel co-versioning holds by construction.
     components/linux.bst: core/linux-fdsdk.bst
+
+    vm/mesa-default.bst: core/mesa-default.bst
     (?):
     - gaming == true:
         components/linux.bst: core/linux-ogc.bst

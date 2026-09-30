@@ -50,7 +50,7 @@ build-depends:
 - freedesktop-sdk.bst:cross-compilers/freedesktop-sdk-i686.bst:components/libdrm.bst
 - freedesktop-sdk.bst:cross-compilers/freedesktop-sdk-i686.bst:components/libva.bst
 - freedesktop-sdk.bst:cross-compilers/freedesktop-sdk-i686.bst:components/libvdpau.bst
-- freedesktop-sdk.bst:cross-compilers/freedesktop-sdk-i686.bst:extensions/mesa/mesa.bst
+- freedesktop-sdk.bst:cross-compilers/freedesktop-sdk-i686.bst:extensions/mesa/mesa-extra.bst
 # 32-bit Vulkan loader so 32-bit Vulkan clients (and Mesa's zink GL driver)
 # can reach the 32-bit ICDs: Mesa's radv/anv below, NVIDIA's from
 # bluefin-nvidia/nvidia-drivers.bst COMPAT32 rows. The loader's
