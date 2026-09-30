@@ -1,0 +1,23 @@
+Upstream-Status: Pending
+Exit: Drop when freedesktop-sdk's Ghostscript can safely read compressed ROM ICC profiles with its external zlib-ng.
+Subject: ghostscript: use bundled zlib for compressed ROM resources
+
+With --with-local-zlib=no, converting even an RGB PDF to CMYK aborts in
+zlib-ng's inflateEnd while Ghostscript reads a compressed built-in ICC
+profile. Controlled builds of both Ghostscript 10.07.1 and 10.08.0
+crash with external zlib-ng, but succeed with their bundled zlib.
+Limit the change to Ghostscript; do not replace the image's libz.
+
+Resolves: projectbluefin/dakota#1675
+
+diff --git a/elements/components/ghostscript.bst b/elements/components/ghostscript.bst
+--- a/elements/components/ghostscript.bst
++++ b/elements/components/ghostscript.bst
+@@ -22,6 +22,6 @@ variables:
+     --with-drivers=ALL
+     --with-system-libtiff=yes
+-    --with-local-zlib=no
++    --with-local-zlib=yes
+ 
+ config:
+   configure-commands:

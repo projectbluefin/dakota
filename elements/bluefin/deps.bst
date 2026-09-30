@@ -88,6 +88,7 @@ depends:
   - gnome-build-meta.bst:core/sysprof-app.bst
 
   - bluefin/distrobox.bst
+  - bluefin/nspawn.bst
   - gnome-build-meta.bst:gnomeos-deps/just.bst
   - gnome-build-meta.bst:gnomeos-deps/wl-clipboard.bst
 
@@ -95,3 +96,9 @@ depends:
   - bluefin/migrate-var-home-passwd.bst
 
   - gnome-build-meta.bst:gnomeos-deps/snapd.bst
+
+(?):
+- arch == "x86_64":
+    depends:
+      (>):
+      - bluefin/intel-media-driver.bst
