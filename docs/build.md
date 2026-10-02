@@ -61,6 +61,32 @@ opt-in through the Extensions app. Their required backends
 remain available; enabling a control should not require installing missing
 native software.
 
+- **Rounded blur:** `bluefin/gnome-rounded-blur.bst` is a runtime dependency of
+  Blur My Shell. It builds the pinned upstream source against the same Mutter
+  as GNOME Shell, with a downstream [GNOME 51 port](https://github.com/kancko/gnome-rounded-blur/pull/7).
+  All Mutter dependencies require ABI 51 and versions `>= 51.0, < 52.0`; review
+  the source pin and patch together with every GNOME major-version junction bump.
+  There is no automatic source tracking or cross-ABI fallback.
+  [Upstream](https://github.com/kancko/gnome-rounded-blur/blob/f3bfcc796e1214c1e1d4287ee35cb132ad8133f0/src/meson.build)
+  installs `libblur-effect-1.0.so.1` and `Blur-1.0.typelib` under the SDK's
+  architecture-specific library directory—not `libgnome-rounded-blur.so` or
+  Fedora's `/usr/lib64`. The compose drops development files, not the versioned
+  library or typelib. Blur My Shell imports `gi://Blur`; a loose `.so` alone
+  does not satisfy that contract.
+  `files/dconf/08-dakota-extension-defaults` enables popup blur through the
+  distro database because the extension bundles its own schemas. Users can
+  disable it; their saved settings are not rewritten or locked. If removing the
+  library, revert this popup default in the same change.
+  Verify in the changed image's active GNOME session with Blur My Shell enabled:
+  set `GSETTINGS_SCHEMA_DIR=/usr/share/gnome-shell/extensions/blur-my-shell@aunetx/schemas`
+  when using `/usr/bin/gsettings`; `org.gnome.shell.extensions.blur-my-shell`
+  `rounded-blur-found` and `org.gnome.shell.extensions.blur-my-shell.popup`
+  `blur` must both be `true`. Check Quick Settings, the calendar, and volume and
+  brightness OSDs visually, plus the Shell journal for loader errors. File
+  presence, a successful import, or an old image's settings are not rendering
+  evidence. Build, artifact inspection, and graphical checks belong on Ghost
+  Lab; use its exact-SHA build and an isolated candidate tag, never overwrite
+  `:testing` while validating a feature branch.
 - **Sync Folder (Syncthing):** `bluefin/syncthing.bst` builds the vendored source
   release, with CGO SQLite support and self-updates disabled. A private
   `core/syncthing-go.bst` build dependency supplies the required Go 1.26 compiler
