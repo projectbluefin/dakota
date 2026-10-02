@@ -4,13 +4,22 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/bluefin-bling.git
   track: main
-  ref: 67e89b215e390eb136a0fdf97bad2c0eba8b5b15
+  ref: d58a5281b7f249da33cac531365989ed0db7569a
 
 build-depends:
 - core/sandbox-tools.bst
 - freedesktop-sdk.bst:components/jq.bst
 
+runtime-depends:
+- bluefin/uutils-coreutils.bst
+- freedesktop-sdk.bst:bootstrap/bash.bst
+- freedesktop-sdk.bst:components/podman.bst
+- freedesktop-sdk.bst:components/xdg-user-dirs.bst
+- gnome-build-meta.bst:sdk/gjs.bst
+- gnome-build-meta.bst:sdk/libsoup.bst
+
 depends:
+# Retain the native unit for safe migration of existing, stopped services.
 - bluefin/syncthing.bst
 - gnome-build-meta.bst:sdk/glib.bst
 - gnome-build-meta.bst:core/gnome-shell.bst
@@ -26,7 +35,7 @@ config:
     _dest="%{install-root}%{datadir}/gnome-shell/extensions/${_uuid}"
     install -d "${_dest}"
 
-    cp -R extension.js prefs.js toggle.js metadata.json icons schemas "${_dest}/"
+    cp -R . "${_dest}/"
     install -Dm644 ../../README.md "${_dest}/README.md"
 
     glib-compile-schemas --strict "${_dest}/schemas"
