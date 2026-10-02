@@ -18,11 +18,6 @@ depends:
 - gnome-build-meta.bst:sdk/glib.bst
 - gnome-build-meta.bst:core/mutter.bst
 
-config:
-  install-commands:
-    (>):
-    - install -Dm644 LICENSE "%{install-root}%{datadir}/licenses/gnome-rounded-blur/LICENSE"
-
 public:
   bst:
     split-rules:
