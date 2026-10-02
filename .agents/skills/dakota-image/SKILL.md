@@ -1,74 +1,105 @@
 ---
 name: dakota-image
-description: OCI layer assembly, boot testing, installer boundaries, VM work, and local OTA verification for Dakota images.
+description: Ghost Lab exact-SHA builds, artifact inspection, OCI layer assembly, and container GUI verification for Dakota; distinguish these from boot and OTA evidence.
 metadata:
-  context7-sources:
-    - /bootc-dev/bootc
+  verified-sources:
+    - https://argo-workflows.readthedocs.io/en/latest/cli/argo_submit/
 ---
 
 # Dakota Image Integration
 
-Use this skill when filesystem content crosses from BuildStream artifacts into OCI layers, or when testing and booting a local Dakota image.
-
 ## When to Use
 
+- Building or inspecting a Dakota candidate on Ghost Lab
 - Modifying layer composition under `elements/oci/layers/`
-- Changing post-install integration steps in `elements/oci/bluefin.bst`
-- Running local VM boot tests (`just boot-test`, `just boot-fast`, `just boot-vm`)
-- Validating transactional OTA updates or testing local registries (`references/local-ota.md`)
+- Changing post-install integration in `elements/oci/bluefin.bst`
+- Verifying a candidate's container GUI or evaluating boot/OTA evidence
 - Enforcing the installer boundary between Dakota and live installer tools
 
 ## When NOT to Use
 
-- Building individual source packages or libraries → load `dakota-packaging`
-- Packaging GNOME Shell extensions → load `dakota-extensions`
-- Modifying GitHub Actions CI export or publication → load `dakota-ci`
+- Source package changes → also load `dakota-packaging`
+- GNOME Shell extension packaging → also load `dakota-extensions`
+- GitHub Actions export or publication changes → load `dakota-ci`
 
 ## Core Process
 
-1. **Layer Composition**: Compose layers with `kind: compose`. Build dependencies define layer contents.
-2. **Order Post-Install Steps**:
-   - `systemd-sysusers --root /layer`
-   - `glib-compile-schemas /layer/usr/share/glib-2.0/schemas`
-   - `dconf update /layer/etc/dconf/db`
-   - `ldconfig -r /layer` (must run LAST before `build-oci`)
-3. **Validate**: Run `just validate` to verify the composition graph.
-4. **Boot Verification Ladder**:
-   - Level 1: `just validate` (graph structure)
-   - Level 2: `just lint` (bootc container structure)
-   - Level 3: `just boot-test` (automated headless smoke test)
-   - Level 4: `just boot-fast` (interactive ephemeral VM with virtiofs)
-   - Level 5: Local OTA testing (`references/local-ota.md`) for hardware verification
+1. **Compose layers** with `kind: compose`; build dependencies define their contents.
+2. **Order post-install integration**: `systemd-sysusers --root /layer`, schema compilation, `dconf update /layer/etc/dconf/db`, then `ldconfig -r /layer` LAST before `build-oci`. Every library change must precede the linker-cache update.
+3. **Build and inspect on Ghost Lab** using the procedure below. Local `just check-publish-workflow` and `just test-render-card` are permitted non-BST checks. Run the BST graph portion of `just validate` on the lab, not the workstation.
+4. **Exercise the exact candidate** through Ghost Lab's current Dakota container GUI path. Check the changed behavior in its active GNOME session, with logs and visual evidence. A container GUI result proves only that surface; it does not prove hardware boot, a VM boot, or transactional OTA.
+5. **Report evidence boundaries**: record source SHA, workflow identity, image digest, candidate tag, and the runtime surface actually exercised. For a separately provisioned bootc target, read [`references/local-ota.md`](references/local-ota.md); no supported Dakota boot/OTA path is implied by the container GUI lane.
+
+## Ghost Lab procedure
+
+All BuildStream operations run inside Ghost Lab workloads launched or accessed with Argo/kubectl: builds, graph `show`, the BST portion of validation, shells, and artifact checkout. The workstation is only the submission/monitoring client. Do not run local `just bst`, `just build`, `just validate`, or export recipes that invoke BST. Do not SSH to cluster nodes or mutate GitOps-managed templates with live apply/patch; workflow changes belong in `projectbluefin/lab`.
+
+1. Read the deployed inputs before submitting:
+
+   ```bash
+   kubectl -n argo get workflowtemplate dakota-build-pipeline -o yaml
+   ```
+
+   Compare with `projectbluefin/lab`'s `Justfile` and `argo/workflow-templates/dakota-build-pipeline.yaml`. The supported build inputs are `repo`, `ref`, `commit-sha`, `image-tag`, `registry`, and `variants`. Admission already enforces remote execution; there is no caller `build-mode` parameter.
+
+2. Choose a pushed ref, its exact full Git SHA, and a unique candidate tag. `ref` must make the commit reachable from the selected repository. Use `variants=default` for the plain image; `all` requests the configured matrix. The lab's `just run-bst-build` accepts ref/repo/variants/SHA but leaves `image-tag` at `testing`, so use direct submission for isolated feature validation:
+
+   ```bash
+   REF=feat/example
+   SHA=<full-pushed-git-sha>
+   TAG=candidate-example-<short-sha>
+   argo submit --from workflowtemplate/dakota-build-pipeline -n argo \
+     -p repo=https://github.com/projectbluefin/dakota.git \
+     -p ref="$REF" -p commit-sha="$SHA" -p image-tag="$TAG" \
+     -p registry=192.168.1.102:30500 -p variants=default --watch
+   ```
+
+   Never overwrite `:testing` for candidate validation. Capture the generated workflow name; inspect its logs and resolved source SHA before attributing results to the candidate.
+
+3. Perform any additional graph or artifact inspection in the lab build workload, using its source checkout and configured BST environment via kubectl. If that workload is no longer available, use a lab-owned workflow for the operation rather than falling back to workstation BST. A successful build is not proof that the final OCI compose retained the library, typelib, or loader cache.
+
+4. Use the published candidate tag/digest explicitly for GUI QA. The lab's candidate-selectable container entrypoint is:
+
+   ```bash
+   # In the projectbluefin/lab checkout:
+   just run-dakota-container-qa "$TAG" dakota
+   ```
+
+   Its container smoke results are not visual proof. Verify the same candidate in the active lab GNOME container GUI session and exercise the changed controls. Do not substitute a default-tag QA run or an already-running old image.
+
+The [official Argo submit reference](https://argo-workflows.readthedocs.io/en/latest/cli/argo_submit/) documents `--from`, repeated `-p` inputs, namespace selection, and `--watch`.
 
 ## Invariants
 
-- **Layer Element Kind**: All layer elements in `elements/oci/layers/` MUST use `kind: compose`. `kind: stack` produces empty artifacts and will break filesystem generation.
-- **Linker Cache Load-Bearing Invariant**: `ldconfig -r /layer` must execute after all library updates and before `build-oci`. Any command altering `/usr/lib` must precede `ldconfig`.
-- **Installer Separation**: Installer-specific Flatpaks or setup tools are purged on first boot via `files/firstboot/`. Installer UI changes belong in `projectbluefin/bootc-installer`, not Dakota.
-- **Evidence Before Assertion**: Never assert boot success without executing one of the boot test recipes.
+- **Layer kind**: `kind: compose`, not `kind: stack`, for filesystem layers.
+- **Linker cache**: `ldconfig -r /layer` runs after all library updates and before `build-oci`.
+- **Installer separation**: Installer-specific Flatpaks/setup tools are purged via `files/firstboot/`; installer UI changes belong in `projectbluefin/bootc-installer`.
+- **Evidence before assertion**: Build, container GUI, VM boot, hardware boot, and OTA are distinct claims; report only the path actually exercised.
 
 ## Common Rationalizations
 
 | Rationalization | Reality |
 |---|---|
-| "The element built, so the layer is fine." | Build success does not guarantee runtime inclusion or correct compose filters. |
-| "I can put `ldconfig` anywhere in the post-install list." | If run before schema or dconf steps that copy libraries, `/etc/ld.so.cache` will be stale on boot. |
-| "Booting in QEMU isn't necessary for a small change." | Desktop regression (e.g. GDM loop) only manifests at real boot. |
+| "Graph checks or checkout are not builds, so local BST is fine." | Every BST operation belongs on Ghost Lab. |
+| "The recipe accepts an exact SHA, so it is safe for a candidate." | `run-bst-build` still defaults the published image tag to `testing`. |
+| "The library built, so the layer is fine." | Compose filters and runtime loading still require inspection and behavioral proof. |
+| "The container desktop works, so Dakota boots and upgrades." | Container GUI evidence proves neither boot nor OTA. |
 
 ## Red Flags
 
-- `kind: stack` inside `elements/oci/layers/`
-- New post-install commands inserted after `ldconfig -r /layer`
-- Using `rpm-ostree` or `dnf` in layer integration scripts
-- Modifying live installer code directly in Dakota instead of upstream repos
+- Workstation BST execution, including `show` or artifact checkout
+- Candidate publication to a shared testing tag
+- A stale `build-mode` input or bypass of lab admission
+- `kind: stack` in OCI filesystem layers or library writes after `ldconfig`
+- Runtime claims based on an old image, file presence alone, or another verification surface
 
 ## Verification
 
-- [ ] `just validate` passes
-- [ ] `just lint` passes on the exported container
-- [ ] `just boot-test` exits 0 (GDM desktop reaches ready state)
-- [ ] `/etc/ld.so.cache` contains newly introduced shared libraries
-- [ ] First-boot service cleanup scripts succeed
+- Source SHA and isolated candidate tag match the submitted workflow and published digest
+- Graph and artifact inspections ran on Ghost Lab
+- Final OCI includes required runtime libraries, typelibs, and linker-cache entries
+- Changed behavior was exercised in the candidate's active container GNOME session
+- Boot/OTA claims, if any, have separate target, reboot, and runtime evidence
 
 ## References
 

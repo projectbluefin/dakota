@@ -1,19 +1,24 @@
 ---
 
 name: local-ota
-description: Tests bootc upgrades via a local zot registry — QEMU VM or physical hardware. Covers registry setup, insecure registry configuration, and the build-push-upgrade loop. Use when validating image changes without pushing to GHCR, reproducing upgrade behavior on hardware, or testing a local bootc switch/upgrade path.
+description: Conditional bootc upgrade evidence for an independently provisioned VM or hardware target; not a supported Dakota boot or OTA entrypoint.
 metadata:
   context7-sources:
     - /bootc-dev/bootc
 ---
 
-# Local & Hardware OTA Testing
+# Conditional Bootc OTA Verification
 
-Load when testing bootc upgrades via a local registry — QEMU VM or physical hardware.
+Dakota's current supported lab verification surface is its container GNOME GUI.
+This reference applies only when a bootable candidate and an independently
+provisioned bootc VM or hardware target already exist. It is not a Dakota
+installer/boot recipe, and container QA does not demonstrate this path.
 
 ## When to Use
 
-Use when you need to validate a Dakota image upgrade locally before GHCR publish, reproduce bootc upgrade behavior on hardware, or test a boot path with a local registry.
+Use when explicitly validating upgrades on that separate bootc target. Read the
+[canonical Ghost Lab procedure](../SKILL.md#ghost-lab-procedure) for every BST
+operation; local registry work does not authorize local builds or checkout.
 
 ## When NOT to Use
 
@@ -22,14 +27,14 @@ Use when you need to validate a Dakota image upgrade locally before GHCR publish
 ## Core Process
 
 1. Start a local registry.
-2. Build and push the image to that registry.
+2. Obtain the exact-SHA candidate from Ghost Lab and copy its published OCI image to the target registry without invoking workstation BST.
 3. Point a VM or hardware target at the registry.
 4. Run `bootc upgrade` and reboot.
 5. Verify the upgraded system actually reaches the expected graphical state.
 
 ## Overview
 
-Run a local zot registry → build dakota image → push to local registry → boot a VM or physical machine pointed at the local registry → run `bootc upgrade`.
+Use an existing registry-accessible candidate → configure the separate bootc target → stage an upgrade → reboot → verify the active digest and changed runtime behavior.
 
 ## Setup
 
@@ -71,33 +76,23 @@ EOF
 
 This drop-in persists across reboots. Leave it in place — it's harmless when the machine points at GHCR.
 
-## Build → Push → Test Loop
+## Candidate → Target → Verification
 
-```bash
-# 1. Build the image
-just build
+Build and artifact operations follow the [Ghost Lab procedure](../SKILL.md#ghost-lab-procedure).
+Copy the published candidate to the target-accessible registry with OCI tooling,
+preserving its content, and record source and destination digests. Use a unique
+candidate tag rather than replacing a shared channel. The target's image source
+must resolve to the intended candidate, not the image already booted.
 
-# 2. Export OCI image to podman
-just export
+On the independently provisioned target, use `bootc switch` to select its
+registry image source, then reboot. For subsequent updates to that source, run
+`bootc upgrade` and reboot. Both operations stage the deployment; successful
+staging alone is not proof of a working upgrade. See the
+[official bootc upgrade guidance](https://bootc.dev/bootc/bootc-upgrades.7.html).
 
-# 3. Push to local registry
-just push-local localhost:5000          # QEMU path (host gateway = 10.0.2.2 from inside VM)
-just push-local <build-host-ip>:5000   # Physical hardware path
-
-# 4a. QEMU VM — boot a VM
-just boot-fast     # ephemeral VM via virtiofs (requires virtiofsd)
-just boot-vm       # standard QEMU VM with display
-
-# 5. On the test machine — switch to local registry (first time only)
-sudo bootc switch 10.0.2.2:5000/dakota:latest          # QEMU
-sudo bootc switch <build-host-ip>:5000/dakota:latest   # Physical
-
-# 6. Subsequent upgrades
-sudo bootc upgrade
-sudo systemctl reboot
-```
-
-**Lab rule:** Build host alone is not a lab result. Full loop = build → push → `bootc switch` on test machine → reboot → verify.
+Full OTA evidence requires the target's pre-upgrade digest, staged candidate,
+reboot, active candidate digest, and changed runtime behavior. If no separately
+provisioned bootc target is available, report OTA as unverified.
 
 ## After Reboot
 
@@ -128,8 +123,8 @@ sudo podman start egg-registry
 
 | Rationalization | Reality |
 |---|---|
-| "CI passed, so I don't need local OTA." | This repo explicitly values real upgrade evidence. |
-| "A local registry is too much setup for one test." | It's cheaper than shipping a broken upgrade path. |
+| "Container QA passed, so OTA works." | Container GUI and transactional upgrades are separate surfaces. |
+| "A bootable target must exist because these instructions exist." | This reference requires an independently provisioned target; it does not supply one. |
 | "Booted once" means success. | Success is upgrade + reboot + expected runtime state. |
 
 ## Red Flags
@@ -152,13 +147,8 @@ sudo podman start egg-registry
 
 Do not use `--compression-format=zstd:chunked` for local registry pushes. It breaks `bootc switch` and `bootc upgrade` when the image uses composefs.
 
-```bash
-# Correct
-just push-local localhost:5000
-
-# Wrong — breaks composefs
-sudo podman push --compression-format=zstd:chunked localhost:5000/dakota:latest
-```
+Use OCI copy/push tooling without `--compression-format=zstd:chunked`; this
+transfer step must not invoke a local BST-backed export or `push-local` recipe.
 
 ### bootc switch Same-Content Trap
 

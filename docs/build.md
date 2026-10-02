@@ -4,12 +4,9 @@
 
 | Tool | Why | Install |
 |---|---|---|
-| `podman` (rootful + rootless) | BST container + export/boot | Pre-installed on Bluefin |
-| `just` | All build/test commands | Pre-installed on Bluefin |
-| `qemu` | VM boot | `brew install qemu` |
-| `virtiofsd` | `just boot-fast` only | Host package manager / `brew install virtiofsd` |
-| `bcvk` | Ephemeral VM from container | Auto-installed by `just boot-fast` via cargo |
-| ~100 GB disk, ~16 GB RAM | BST cache + parallel builds | — |
+| `argo` and `kubectl` | Submit and monitor Ghost Lab workflows | Configure access to the lab's `argo` namespace |
+| `just` | Repository non-BST checks and lab recipes | Pre-installed on Bluefin |
+| Ghost Lab access | All BST operations and candidate container GUI verification | Lab Argo workflows; no workstation BST |
 
 ## Repo layout
 
@@ -22,34 +19,30 @@
 | `patches/linux/` | Kernel patches (via fdsdk linux element) |
 | `files/` | Static files installed by elements |
 | `.agents/skills/` | Agent skills — discovered and loaded on demand |
-| `Justfile` | All local dev commands — run `just --list` first |
+| `Justfile` | Repository recipes — local use is limited to non-BST checks |
 
 ## Dev loop
 
-```bash
-just validate                  # graph check — always run first (~5 min, no build)
+All BuildStream operations run on **Ghost Lab**, including graph `show`, the
+BST portion of validation, shells, and artifact checkout. The workstation is
+the Argo/kubectl client, not a BST build host.
 
-just build default             # build default image — warm cache: 2–5 min; cold: 60–90 min
-# or: just build all           # build all variants (default + nvidia)
+Follow the canonical [Ghost Lab procedure in `dakota-image`](../.agents/skills/dakota-image/SKILL.md#ghost-lab-procedure)
+for exact-SHA submission, isolated candidate tags, artifact inspection, and
+candidate GUI verification. Read the deployed WorkflowTemplate inputs before
+submitting; the lab procedure is the single source of truth for this flow.
 
-just lint                      # bootc container lint — must pass before PR
-
-just boot-test                 # automated smoke test — exits 0 on success
-just boot-fast                 # interactive ephemeral VM via virtiofs (requires virtiofsd)
-
-just show-me-the-future        # full loop: build → export → disk image → QEMU VM
-```
-
-First run is slow (cold BST cache). Subsequent runs are fast — BST caches by content hash.
-
-## Useful BST commands
+These non-BST checks may run locally:
 
 ```bash
-just validate                                        # check element graph
-just bst build bluefin/tailscale.bst                 # build one element
-just bst shell --build bluefin/tailscale.bst         # sandbox shell
-just bst show --deps all oci/bluefin.bst             # full dependency graph
+just check-publish-workflow
+just test-render-card
 ```
+
+`just validate` also invokes BST, so its graph portion belongs on the lab.
+The current Dakota runtime verification surface is the lab's container GNOME
+GUI. It does not establish VM/hardware boot or OTA support or success.
+
 
 ## Desktop integrations
 
@@ -84,9 +77,8 @@ native software.
   `blur` must both be `true`. Check Quick Settings, the calendar, and volume and
   brightness OSDs visually, plus the Shell journal for loader errors. File
   presence, a successful import, or an old image's settings are not rendering
-  evidence. Build, artifact inspection, and graphical checks belong on Ghost
-  Lab; use its exact-SHA build and an isolated candidate tag, never overwrite
-  `:testing` while validating a feature branch.
+  evidence. Use the [Ghost Lab procedure](../.agents/skills/dakota-image/SKILL.md#ghost-lab-procedure)
+  for the candidate build, artifact inspection, and graphical checks.
 - **Sync Folder (Syncthing):** `bluefin/syncthing.bst` builds the vendored source
   release, with CGO SQLite support and self-updates disabled. A private
   `core/syncthing-go.bst` build dependency supplies the required Go 1.26 compiler
@@ -140,10 +132,10 @@ records, not the presentation; `nerd-fonts-symbols.bst` supplies icon fallback
 without changing the default text font. The existing booted-image helper patch
 in `common.bst` is separate and remains until common supports that record too.
 
-Run `just bst build bluefin/common.bst` to exercise the patch against the pinned
-source. A source rewrite that invalidates the patch must be reviewed, not
-worked around by restoring a local config. Check glyph rendering in a booted
-image.
+Exercise `bluefin/common.bst` against the pinned source in a Ghost Lab build
+workload. A source rewrite that invalidates the patch must be reviewed, not
+worked around by restoring a local config. Check glyph rendering in the
+candidate's active container GUI session.
 The common source import also does not supply `fastfetch-user-count` or
 `bazaar-install-count`; those weekly-statistics inputs remain a separate parity
 gap, not a reason to fork the config or invent counts.
@@ -169,4 +161,4 @@ Because Dakota uses Ghostty as its primary terminal emulator:
 | Patch junction files directly | Use `patch_queue` source in the junction `.bst` |
 | Force-push to `main` | Stable promotion operates on image digests from testing SHAs, not Git branch updates |
 | Close issues via API or comment | Use `Closes #NNN` in the PR body |
-| Open a PR without running `just validate` | Wastes everyone's time |
+| Open a PR without graph validation on Ghost Lab | Local `just validate` invokes BST and is not the supported path |

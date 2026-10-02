@@ -4,7 +4,8 @@ Upstream-Status: Submitted [https://github.com/kancko/gnome-rounded-blur/pull/7]
 
 Port of upstream commit c0d67c886ac0b54fedaddf75817e85264d16322e.
 Dakota additionally requires every Mutter dependency to use ABI 51 and
-version >= 51.0, < 52.0, and includes Clutter-51 in the generated GIR.
+version >= 51.0, < 52.0. Use Mutter's exported GIR and private-library
+directories for introspection and installed-library loading.
 Drop the C port when merged upstream; retain an explicit ABI boundary when
 updating the source and GNOME junction together.
 
@@ -21,7 +22,7 @@ updating the source and GNOME junction together.
  
  clutter_pc = 'mutter-clutter-' + mutter_api_version
  cogl_pc = 'mutter-cogl-' + mutter_api_version
-@@ -30,14 +30,10 @@
+@@ -30,14 +30,12 @@
  # Dependencies
  glib_dep = dependency('glib-2.0', version: '>= 2.66')
  gobject_dep = dependency('gobject-2.0', version: '>= 2.66')
@@ -36,17 +37,28 @@ updating the source and GNOME junction together.
 -libmutter_dep = dependency('libmutter-18')
 +cogl_dep = dependency(cogl_pc, version: mutter_req)
 +libmutter_dep = dependency('libmutter-' + mutter_api_version, version: mutter_req)
++mutter_libdir = libmutter_dep.get_variable(pkgconfig: 'pkglibdir')
++mutter_girdir = libmutter_dep.get_variable(pkgconfig: 'girdir')
  
  # Required dependencies
  deps = [
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -40,7 +40,7 @@
+@@ -24,6 +24,7 @@
+   soversion: major_version,
+   install: true,
+   install_dir: libdir,
++  install_rpath: mutter_libdir,
+ )
+ 
+ # Install headers
+@@ -40,7 +41,8 @@
    namespace: 'Blur',
    symbol_prefix: 'gb',
    identifier_prefix: 'Gb',
 -  includes: ['GObject-2.0'],
 +  includes: ['GObject-2.0', 'Clutter-' + mutter_api_version],
++  include_directories: [mutter_girdir],
    install: true,
    install_dir_gir: join_paths(datadir, 'gir-1.0'),
    install_dir_typelib: join_paths(libdir, 'girepository-1.0'),
