@@ -1,5 +1,6 @@
 # Rebuild with the same Mutter as GNOME Shell. The downstream patch deliberately
 # requires ABI 51: review this element when the GNOME junction changes major.
+# LICENSE is installed to %{project_licensedir} automatically by BuildStream's %{install-extra}.
 kind: meson
 
 sources:
