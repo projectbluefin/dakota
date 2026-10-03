@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/bluefin-bling.git
   track: main
-  ref: f3ed7af099a79b85f18fb5f62eb6bf208239cb0b
+  ref: 3caa04c71e1d5a19b9f398c42ffaf3eb28b86af8
 
 build-depends:
 - core/sandbox-tools.bst
@@ -19,11 +19,12 @@ variables:
 config:
   install-commands:
   - |
+    cd extensions/power-status-color
     _uuid="$(jq -r .uuid metadata.json)"
     _dest="%{install-root}%{datadir}/gnome-shell/extensions/${_uuid}"
     install -d "${_dest}"
 
     cp -R extension.js metadata.json stylesheet.css "${_dest}/"
-    install -Dm644 README.md "${_dest}/README.md"
+    install -Dm644 ../../README.md "${_dest}/README.md"
   - |
     %{install-extra}

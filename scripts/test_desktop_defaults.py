@@ -93,7 +93,7 @@ class DesktopDefaultsTests(unittest.TestCase):
             "quick-settings-audio-panel@rayzeq.github.io",
             "quicksettings-audio-devices-hider@marcinjahn.com",
             "quicksettings-audio-devices-renamer@marcinjahn.com",
-            "power-status-color@local",
+            "power-status-color@projectbluefin.io",
         ):
             self.assertNotIn(uuid, enabled)
         self.assertIn("bluefin/syncthing.bst", (ROOT / "elements/bluefin/shell-extensions/syncthing-toggle.bst").read_text())
