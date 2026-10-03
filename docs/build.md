@@ -61,14 +61,25 @@ opt-in through the Extensions app. Their required backends
 remain available; enabling a control should not require installing missing
 native software.
 
-- **Sync Folder (Syncthing):** `bluefin/syncthing.bst` builds the vendored source
-  release, with CGO SQLite support and self-updates disabled. A private
-  `core/syncthing-go.bst` build dependency supplies the required Go 1.26 compiler
-  without replacing the image's toolchain. The Syncthing element installs the
-  standard `syncthing.service` user unit. Once enabled, its Quick Settings toggle starts and
-  stops that unit, waits for systemd jobs, and refreshes service state. Open its
-  Web GUI to pair devices and choose folders. Syncthing is not started for every
-  user automatically; identities are generated at runtime, never in the image.
+- **Sync Folder (Syncthing):** the opt-in Quick Settings control prepares a
+  same-UID, rootless Syncthing container through
+  [Podman's user Quadlet integration](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html).
+  Its extension element explicitly declares Podman (including the user Quadlet
+  generator), a POSIX shell, GJS, libsoup 3, `xdg-user-dirs`, and Dakota's core
+  utilities as runtime dependencies, alongside GLib and GNOME Shell. Install the complete
+  `extensions/syncthing-toggle/` directory, including hidden deployable assets;
+  `service.js` and `syncthing.container.in` are required runtime assets, not
+  build-only files. Keep the extension-local schemas strictly compiled and
+  install the schema XML globally as well.
+  `bluefin/syncthing.bst` still installs the native `syncthing.service` user unit
+  so existing stopped configurations can be inspected safely during migration;
+  preserve existing state, folders, and user startup choices. Fresh runtime
+  setup uses available XDG Documents locally and unpaused, with other XDG
+  presets paused; it does not create `~/Sync` or pair/share with peers without
+  explicit consent. Dakota's `start-stop-only=true` dconf default keeps the
+  sharing switch independent of login startup. No service is started for every
+  user automatically, and no identities, credentials, personal peer settings,
+  or user Quadlets are generated during image construction.
 - **Tailscale:** the daemon is enabled in the image, but a fresh installation is
   unauthenticated. The application launcher offers **Tailscale Setup**, as does
   the Quick Settings menu after the user enables that extension. Setup requests administrator
