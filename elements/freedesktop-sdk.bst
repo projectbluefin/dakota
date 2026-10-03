@@ -77,7 +77,7 @@ config:
     # Keep kernel selection at the junction boundary so every consumer
     # (unsigned-modules, initramfs, nvidia-drivers) resolves the same
     # kernel and module/kernel co-versioning holds by construction.
-    components/linux.bst: core/linux-fdsdk.bst
+    components/linux.bst: core/linux-ubuntu.bst
 
     vm/mesa-default.bst: core/mesa-default.bst
     (?):
