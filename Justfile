@@ -87,7 +87,7 @@ check-publish-workflow:
     python3 scripts/check_publish_workflow.py
     python3 -m unittest scripts.test_check_publish_workflow
     python3 -m unittest scripts.test_ownership_metadata scripts.test_ownership_oci scripts.test_compare_oci_layers scripts.test_ownership_recipes scripts.test_sync_next
-    python3 -m unittest scripts.test_image_variants
+    python3 -m unittest scripts.test_image_variants scripts.test_track_bundle
     python3 -m unittest scripts.test_desktop_defaults
     just test-devmode
     just test-release
