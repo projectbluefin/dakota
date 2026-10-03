@@ -1,0 +1,28 @@
+From 0c5b7890a7b4fe2ad29605f868d9d4ca4345c602 Mon Sep 17 00:00:00 2001
+From: Josh York <joshyork@users.noreply.github.com>
+Date: Sun, 20 Sep 2026 00:00:00 +0000
+Subject: [PATCH] e2fsprogs: enable fuse2fs for projectbluefin/contribute
+
+projectbluefin/contribute needs userspace filesystem inspection. Enable
+fuse2fs while retaining freedesktop-sdk ownership of the e2fsprogs element.
+
+Upstream-Status: Inappropriate [Dakota image integration]
+---
+ elements/components/e2fsprogs.bst | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/elements/components/e2fsprogs.bst b/elements/components/e2fsprogs.bst
+index 85708b2f04a0ee5489ae416df35e5b78cfe74490..d4ddb8b125601a0d9414589f15ce7e16c97a806a 100644
+--- a/elements/components/e2fsprogs.bst
++++ b/elements/components/e2fsprogs.bst
+@@ -16,7 +16,7 @@ variables:
+   # *bundled* versions and enabling use of the system versions of these libs.
+   conf-local: >-
+     --enable-elf-shlibs
+-    --disable-fuse2fs
++    --enable-fuse2fs
+     --disable-libblkid
+     --disable-libuuid
+     --disable-fsck
+--
+2.45.2
