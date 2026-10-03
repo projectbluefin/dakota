@@ -72,6 +72,7 @@ depends:
   - gnome-build-meta.bst:core-deps/libgtop.bst
 
   - bluefin/virtualization.bst
+  - bluefin/opensnitchd.bst
 
   - freedesktop-sdk.bst:components/buildstream2.bst
   - freedesktop-sdk.bst:components/containers-common.bst
