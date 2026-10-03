@@ -160,9 +160,9 @@ public:
 
 sources:
 - kind: git_repo
-  url: https://git.launchpad.net/~ubuntu-kernel/ubuntu/+source/linux/+git/noble
-  track: Ubuntu-6.8.0-*
-  ref: Ubuntu-6.8.0-98.98-0-g9b8bfb1b6b800829b32c7edf952e820fa6273be0
+  url: https://git.launchpad.net/~ubuntu-kernel/ubuntu/+source/linux/+git/stonking
+  track: Ubuntu-7.3.0-*
+  ref: Ubuntu-7.3.0-8.8-0-g664a2f84fd2459e2cdd2b0eed45a89bfee3776ef
 - kind: local
   path: files/linux/config-utils.sh
 - kind: local
