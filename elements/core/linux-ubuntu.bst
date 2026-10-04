@@ -25,6 +25,13 @@ build-depends:
 - freedesktop-sdk.bst:components/zstd.bst
 - filename: freedesktop-sdk.bst:components/linux-module-cert.bst
   strict: true
+# Remote compilation, wired the way gnome-build-meta's include/recc.yml and
+# include/gcc-for-recc.yml wire it: recc-wrapper puts recc-backed gcc/cc in
+# /usr/recc/bin, and the staged gcc digest becomes the remote chroot.
+- gnome-build-meta.bst:buildsystems/recc-wrapper.bst
+- filename: freedesktop-sdk.bst:components/gcc.bst
+  config:
+    digest-environment: RECC_REMOTE_PLATFORM_chrootRootDigest
 
 variables:
   indep-libdir: '%{prefix}/lib'
@@ -49,12 +56,43 @@ environment:
   # (Ubuntu's rust-src layout) instead of `rustc --print sysroot`. Point it at
   # freedesktop-sdk's rust-src, or RUST_IS_AVAILABLE=n silently drops RUST.
   RUST_LIB_SRC: '%{indep-libdir}/rustlib/src/rust/library'
+  # recc sends each C compile (`gcc -c` on a .c file) through the sandbox's
+  # remote-apis-socket as its own action, so Kbuild's compiles spread over
+  # every remote-execution worker instead of this element's one action.
+  # Everything recc does not support runs locally: links (vmlinux, modpost,
+  # modules), `-E`/`-S` (asm-offsets, linker scripts, genksyms), stdin input
+  # (Kconfig asm-goto probes), `-x assembler-with-cpp`, and rustc.
+  PATH: /usr/recc/bin:/usr/bin:/bin:/usr/sbin:/sbin
+  RECC_SERVER: unix:/tmp/casd.sock
+  RECC_DEPS_GLOBAL_PATHS: 'true'
+  RECC_NO_PATH_REWRITE: 'true'
+  # Inputs that must compile locally:
+  # - /dev/null: Kconfig and Kbuild cc-option probes. A remote failure there
+  #   would silently drop a flag or flip a config symbol.
+  # - *.S/*.s: several pull files in with `.incbin` (certs, initramfs,
+  #   piggy, bootconfig, embedded cmdline), which recc's `-M` scan cannot see.
+  # - kernel/configs.c, kernel/kheaders.c: `.incbin` from inline asm.
+  RECC_INVALID_INPUT_PATHS_REGEX: '/dev/null,.*\.[sS],.*/kernel/configs\.c,.*/kernel/kheaders\.c'
+  # Release the make jobserver slot while waiting on a remote compile, so
+  # -j%{max-jobs} bounds local work, not remote compiles in flight.
+  RECC_USE_JOBSERVER: 'true'
+  RECC_USE_LOCALCAS: 'true'
+  # Compile locally when the remote-apis socket cannot execute (no remote
+  # execution configured, transport errors). Same command, same output.
+  RECC_FALLBACK_TO_LOCAL: 'true'
   (?):
   - x86_64_v3:
       KCFLAGS: "-march=x86-64-v3 -mtune=skylake"
 
 environment-nocache:
 - MAXJOBS
+- RECC_USE_JOBSERVER
+- RECC_USE_LOCALCAS
+- RECC_FALLBACK_TO_LOCAL
+
+sandbox:
+  remote-apis-socket:
+    path: /tmp/casd.sock
 
 config:
   configure-commands:
