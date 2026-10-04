@@ -44,6 +44,11 @@ environment:
   KBUILD_BUILD_TIMESTAMP: 'Thu Nov 10 15:00:00 UTC 2011'
   KBUILD_BUILD_USER: 'tomjon'
   MAXJOBS: "%{max-jobs}"
+  # Ubuntu SAUCE in scripts/rust_is_available.sh and rust/Makefile derives
+  # the Rust std source from `rustc --version` as /usr/src/rustc-<ver>/library
+  # (Ubuntu's rust-src layout) instead of `rustc --print sysroot`. Point it at
+  # freedesktop-sdk's rust-src, or RUST_IS_AVAILABLE=n silently drops RUST.
+  RUST_LIB_SRC: '%{indep-libdir}/rustlib/src/rust/library'
   (?):
   - x86_64_v3:
       KCFLAGS: "-march=x86-64-v3 -mtune=skylake"
