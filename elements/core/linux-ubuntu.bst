@@ -1,10 +1,12 @@
-# Ubuntu 24.04 (Noble) kernel element tracking Ubuntu's official source.
+# Ubuntu 26.10 (Stonking Stingray) generic kernel, built for Dakota.
 #
 # Reproduces Dakota's standard kernel artifact contract:
 # - vmlinuz/vmlinux/System.map/config under /usr/lib/modules/<kver>/
 # - module tree under /usr/lib/modules/<kver>/
 # - build symlink pointing to /usr/src/linux-<kver>
 # - CRYPTO_ZSTD=y built-in for zswap.compressor=zstd karg
+# Track updates with `just bst source track core/linux-ubuntu.bst`.
+# Ubuntu annotations are the base; only Dakota integration deltas follow.
 kind: make
 description: Ubuntu Linux kernel for Dakota
 
@@ -44,6 +46,8 @@ environment:
   KBUILD_BUILD_TIMESTAMP: 'Thu Nov 10 15:00:00 UTC 2011'
   KBUILD_BUILD_USER: 'tomjon'
   MAXJOBS: "%{max-jobs}"
+  # Ubuntu's Rust packaging expects /usr/src/rustc-<version>/library.
+  RUST_LIB_SRC: '%{indep-libdir}/rustlib/src/rust/library'
   (?):
   - x86_64_v3:
       KCFLAGS: "-march=x86-64-v3 -mtune=skylake"
@@ -54,13 +58,10 @@ environment-nocache:
 config:
   configure-commands:
   - |
-    # Export Ubuntu kernel .config from debian.master/config/annotations
-    case "%{arch}" in
-      x86_64)  u_arch=amd64 ;;
-      aarch64) u_arch=arm64 ;;
-      *)       u_arch="%{arch}" ;;
-    esac
-    debian/scripts/misc/annotations --file debian.master/config/annotations --arch "$u_arch" --flavour generic --export > .config
+    python3 debian/scripts/misc/annotations --file debian.master/config/annotations --arch "%{go-arch}" --flavour generic --export > .config
+    # Reproduce debian/rules certificate targets from the pinned public certs.
+    cat debian/certs/*.pem > debian/canonical-certs.pem
+    cat debian/revoked-certs/*.pem > debian/canonical-revoked-certs.pem
 
   - |
     . ./config-utils.sh
@@ -69,6 +70,18 @@ config:
     enable CRYPTO_ZSTD
     # Apply Dakota hardware and VM enablement options
     . ./dakota-config.sh
+    # Match Dakota's existing module trust/signing contract without random keys.
+    if [ -f /keys/linux-module-cert.crt ]; then
+      cat /keys/linux-module-cert.crt >> debian/canonical-certs.pem
+    fi
+    value_str MODULE_SIG_KEY ""
+    remove MODULE_SIG_ALL
+    # Preserve Ubuntu's ABI in every make invocation, including installation.
+    ubuntu_version=$(python3 -c 'import re; print(re.search(r"\(([^)]+)\)", open("debian.master/changelog").readline()).group(1))')
+    ubuntu_abi=${ubuntu_version#*-}
+    value_str LOCALVERSION "-${ubuntu_abi%%.*}-generic-dakota"
+    remove LOCALVERSION_AUTO
+    enable RUST
 
   - |
     make -j1 olddefconfig
@@ -156,7 +169,5 @@ sources:
   ref: Ubuntu-7.3.0-8.8-0-g664a2f84fd2459e2cdd2b0eed45a89bfee3776ef
 - kind: local
   path: files/linux/config-utils.sh
-- kind: local
-  path: files/linux/fdsdk-config.sh
 - kind: local
   path: files/linux/dakota-config.sh
