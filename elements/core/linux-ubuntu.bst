@@ -54,37 +54,21 @@ environment-nocache:
 config:
   configure-commands:
   - |
-    make defconfig
+    # Export Ubuntu kernel .config from debian.master/config/annotations
+    case "%{arch}" in
+      x86_64)  u_arch=amd64 ;;
+      aarch64) u_arch=arm64 ;;
+      *)       u_arch="%{arch}" ;;
+    esac
+    debian/scripts/misc/annotations --file debian.master/config/annotations --arch "$u_arch" --flavour generic --export > .config
 
   - |
     . ./config-utils.sh
     rm -f expected-configs
-    . ./fdsdk-config.sh "%{arch}"
-
-  - |
-    . ./config-utils.sh
+    # Force CRYPTO_ZSTD=y for zswap.compressor=zstd karg
     enable CRYPTO_ZSTD
+    # Apply Dakota hardware and VM enablement options
     . ./dakota-config.sh
-    # Ubuntu 7.3 kernel does not enable in-kernel Rust binder by default.
-    # Drop Rust binder expectations and ensure C binder / binderfs are tracked.
-    sed -i '/^\(CONFIG_\)\{0,1\}ANDROID_BINDER_IPC_RUST$/d' expected-configs
-    sed -i '/^\(CONFIG_\)\{0,1\}RUST$/d' expected-configs
-    echo CONFIG_ANDROID_BINDER_IPC >> expected-configs
-    echo CONFIG_ANDROID_BINDERFS >> expected-configs
-    scripts/config --keep-case -e ANDROID_BINDER_IPC
-    scripts/config --keep-case -e ANDROID_BINDERFS
-  - |
-    find . -name 'Kconfig*' -exec grep -h '^\(menu\)\{0,1\}config ' {} + \
-      | awk '{print $2}' | sort -u > .kconfig-symbols
-    cp expected-configs expected-configs.orig
-    while IFS= read -r cfg; do
-      sym=${cfg#CONFIG_}
-      if ! grep -qx "$sym" .kconfig-symbols; then
-        echo "note: pruning expectation for ${cfg} (absent from this tree)" 1>&2
-        sed -i "/^\(CONFIG_\)\{0,1\}${sym}$/d" expected-configs
-      fi
-    done < expected-configs.orig
-    rm -f expected-configs.orig
 
   - |
     make -j1 olddefconfig
