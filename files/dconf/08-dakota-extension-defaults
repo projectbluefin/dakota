@@ -8,6 +8,7 @@
 
 [org/gnome/shell/extensions/tilingshell]
 show-indicator=false
+layouts-json='[{"id": "Horizontal","tiles": [{"x": 0,"y": 0,"width": 0.5,"height": 1,"groups": [1]},{"x": 0.5,"y": 0,"width": 0.5,"height": 1,"groups": [1]}]},{"id": "Vertical","tiles": [{"x": 0,"y": 0,"width": 1,"height": 0.5,"groups": [1]},{"x": 0,"y": 0.5,"width": 1,"height": 0.5,"groups": [1]}]},{"id": "Quarters","tiles": [{"x": 0,"y": 0,"width": 0.5,"height": 0.5,"groups": [1]},{"x": 0,"y": 0.5,"width": 0.5,"height": 0.5,"groups": [1]},{"x": 0.5,"y": 0,"width": 0.5,"height": 0.5,"groups": [1]},{"x": 0.5,"y": 0.5,"width": 0.5,"height": 0.5,"groups": [1]}]},{"id": "Full","tiles": [{"x": 0,"y": 0,"width": 1,"height": 1,"groups": [1]}]}]'
 
 [org/gnome/shell/extensions/BudsLink-Companion]
 level-indicator-color=0
