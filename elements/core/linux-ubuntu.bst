@@ -78,6 +78,10 @@ config:
     echo CONFIG_ANDROID_BINDERFS >> expected-configs
     scripts/config --keep-case -e ANDROID_BINDER_IPC
     scripts/config --keep-case -e ANDROID_BINDERFS
+    # Upstream x86_64_defconfig sets WERROR=y, but Ubuntu SAUCE does not
+    # build warning-clean (e.g. unused cred_euidcmp() in
+    # security/apparmor/audit.c); Ubuntu's own annotations ship WERROR=n.
+    remove WERROR
   - |
     find . -name 'Kconfig*' -exec grep -h '^\(menu\)\{0,1\}config ' {} + \
       | awk '{print $2}' | sort -u > .kconfig-symbols
