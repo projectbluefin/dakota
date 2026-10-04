@@ -70,10 +70,10 @@ config:
     . ./config-utils.sh
     enable CRYPTO_ZSTD
     . ./dakota-config.sh
-    # Ubuntu 7.3 kernel does not enable in-kernel Rust binder by default.
-    # Drop Rust binder expectations and ensure C binder / binderfs are tracked.
+    # Ship the C binder (as Ubuntu does): Rust binder depends on
+    # !ANDROID_BINDER_IPC, so drop its expectation and track C binder /
+    # binderfs instead. RUST itself stays expected (see RUST_LIB_SRC).
     sed -i '/^\(CONFIG_\)\{0,1\}ANDROID_BINDER_IPC_RUST$/d' expected-configs
-    sed -i '/^\(CONFIG_\)\{0,1\}RUST$/d' expected-configs
     echo CONFIG_ANDROID_BINDER_IPC >> expected-configs
     echo CONFIG_ANDROID_BINDERFS >> expected-configs
     scripts/config --keep-case -e ANDROID_BINDER_IPC
