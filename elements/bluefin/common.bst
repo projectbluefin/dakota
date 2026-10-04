@@ -25,6 +25,14 @@ sources:
   ref: f5213ca61615bb79a8315fc4c5378a80ca93922e
 - kind: local
   path: files/wallpaper-month
+- kind: remote
+  url: github-raw:projectbluefin/artwork/de74de65647f9109594345fd30966136d70fa458/assets/vector/logos/bluefin/bluefin-logo-light.svg
+  ref: d336d743082bded58c561c2c53baf1896dae87d7346224d9d06512e6c247cf74
+  filename: bluefin-logo-light.svg
+- kind: remote
+  url: github-raw:projectbluefin/artwork/de74de65647f9109594345fd30966136d70fa458/assets/vector/logos/bluefin/bluefin-logo-dark.svg
+  ref: 4ae1d486e6e73743fad1e1ef625615c4a28e72bbcc0a966ba3c5294303e4e380
+  filename: bluefin-logo-dark.svg
 
 build-depends:
 - core/sandbox-tools.bst
@@ -114,8 +122,10 @@ config:
     # Map Bluefin icons to GNOME OS expected names
     # About dialog (gnome-control-center reads LOGO=img-logo-icon from os-release,
     # then looks for img-logo-icon-text-dark, img-logo-icon-text, img-logo-icon-dark, img-logo-icon)
-    cp "%{install-root}%{datadir}/pixmaps/fedora-logo-icon.png" "%{install-root}%{datadir}/pixmaps/img-logo-icon.png"
-    cp "%{install-root}%{datadir}/pixmaps/fedora-logo-icon.png" "%{install-root}%{datadir}/pixmaps/img-logo-icon-dark.png"
+    install -Dm644 bluefin-logo-light.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon-text.svg"
+    install -Dm644 bluefin-logo-dark.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon-text-dark.svg"
+    install -Dm644 bluefin-logo-light.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon.svg"
+    install -Dm644 bluefin-logo-dark.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon-dark.svg"
     # Override GNOME OS boot logo with Bluefin branding
     cp "%{install-root}%{datadir}/pixmaps/fedora-gdm-logo.png" "%{install-root}%{datadir}/pixmaps/gnome-boot-logo.png"
     install -Dm755 bluefin-wallpaper-month-sync "%{install-root}%{prefix}/libexec/bluefin-wallpaper-month-sync"
