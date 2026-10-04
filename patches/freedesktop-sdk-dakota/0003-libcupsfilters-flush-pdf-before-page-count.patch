@@ -1,0 +1,46 @@
+Upstream-Status: Accepted [https://github.com/OpenPrinting/libcupsfilters/commit/e14bad406189a66bdeb40131112944bfb58ee0cc]
+Exit: Drop when freedesktop-sdk's libcupsfilters source includes e14bad406189a66bdeb40131112944bfb58ee0cc or an equivalent backport.
+Subject: libcupsfilters: flush temporary PDF before counting pages
+
+Backport OpenPrinting/libcupsfilters#167 to the SDK's 2.2.1 source.
+cfPDFPagesFP() opens its temporary PDF through PDFio before flushing the
+stdio writer. The missing tail can contain the cross-reference table and
+trailer, causing "Missing Root object" and "Unexpected page count" errors
+in both PDF-to-raster and PDF-to-PCL-XL printing.
+
+Keep this in Dakota's patch queue, not the GNOME-synchronized SDK queue.
+The upstream change is reduced to its functional fflush() addition.
+
+Related: projectbluefin/dakota#1707
+
+diff --git a/elements/components/libcupsfilters.bst b/elements/components/libcupsfilters.bst
+--- a/elements/components/libcupsfilters.bst
++++ b/elements/components/libcupsfilters.bst
+@@ -34,3 +34,5 @@ sources:
+   exclude:
+   - '*rc*'
+   ref: 2.2.1-0-g2a00cf6aa4234e2e0ac91b9844ab8990d04c7089
++- kind: patch
++  path: patches/libcupsfilters/flush-pdf-before-page-count.patch
+diff --git a/patches/libcupsfilters/flush-pdf-before-page-count.patch b/patches/libcupsfilters/flush-pdf-before-page-count.patch
+new file mode 100644
+--- /dev/null
++++ b/patches/libcupsfilters/flush-pdf-before-page-count.patch
+@@ -0,0 +1,17 @@
++Upstream-Status: Accepted [https://github.com/OpenPrinting/libcupsfilters/commit/e14bad406189a66bdeb40131112944bfb58ee0cc]
++Exit: Drop when libcupsfilters includes the upstream fix.
++Subject: cfPDFPagesFP: flush the temporary PDF before PDFio opens it
++
++Backport the functional change from OpenPrinting/libcupsfilters#167.
++
++diff --git a/cupsfilters/pdf.c b/cupsfilters/pdf.c
++--- a/cupsfilters/pdf.c
+++++ b/cupsfilters/pdf.c
++@@ -165,6 +165,7 @@ cfPDFPagesFP(FILE *file)
++     fwrite(buffer, 1, bytes_read, temp_fp);
++   }
++ 
+++  fflush(temp_fp);
++   // Open the temp file with pdfio
++   pdfio_file_t *pdf = pdfioFileOpen(temp_filename, NULL, NULL, NULL, NULL);
++ 
