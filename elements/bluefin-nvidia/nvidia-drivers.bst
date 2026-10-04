@@ -48,6 +48,12 @@ variables:
   nvidia-version: '615.71.09'
   strip-binaries: ''
 
+environment:
+  MAXJOBS: "%{max-jobs}"
+
+environment-nocache:
+- MAXJOBS
+
 config:
   build-commands:
   - |
@@ -100,7 +106,7 @@ config:
     # error; NVIDIA's source still has benign mismatches. Demote to warn.
     echo 'EXTRA_CFLAGS += -Wno-error=incompatible-pointer-types' >> Kbuild
     echo "Building NVIDIA kernel modules against $KVER"
-    make -j${BST_BUILD_THREADS:-1} KERNEL_UNAME="$KVER"
+    make -j"${MAXJOBS}" KERNEL_UNAME="$KVER"
 
   install-commands:
   # depmod is intentionally deferred to OCI integration time so it sees

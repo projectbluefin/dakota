@@ -1,0 +1,45 @@
+Upstream-Status: Not-applicable
+Exit: Drop when GNOME's synced 0001-project.conf-Add-GNOME-CAS-servers.patch carries the Bluefin CAS, or Bluefin stops serving FSDK artifacts.
+Subject: project.conf: Add Bluefin CAS server
+
+Add https://cache.projectbluefin.io:11001 to the junctioned FSDK's
+artifacts and source-caches, after gbm.gnome.org, so junction elements
+pull from the Bluefin CAS without per-user BuildStream config. The
+top-level project.conf remotes do not reach junction elements.
+
+Keep this in Dakota's patch queue: patches/freedesktop-sdk is
+overwritten by `just patch-sync` and checked by `just patch-drift-check`.
+Applies on top of patches/freedesktop-sdk/0001.
+
+Mirrors projectbluefin/server#400.
+
+diff --git a/project.conf b/project.conf
+index 982bddf..ff7c2bc 100644
+--- a/project.conf
++++ b/project.conf
+@@ -155,6 +155,12 @@ artifacts:
+     retry-limit: 4
+     retry-delay: 500
+     request-timeout: 300
++- url: https://cache.projectbluefin.io:11001
++  connection-config:
++    keepalive-time: 60
++    retry-limit: 4
++    retry-delay: 500
++    request-timeout: 300
+ 
+ source-caches:
+ - url: https://cache.freedesktop-sdk.io:11001
+@@ -169,6 +175,12 @@ source-caches:
+     retry-limit: 4
+     retry-delay: 500
+     request-timeout: 300
++- url: https://cache.projectbluefin.io:11001
++  connection-config:
++    keepalive-time: 60
++    retry-limit: 4
++    retry-delay: 500
++    request-timeout: 300
+ 
+ sandbox:
+   build-arch: '%{target_arch}'
