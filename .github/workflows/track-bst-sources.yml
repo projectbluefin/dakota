@@ -19,11 +19,8 @@ on:
 
 permissions: read-all
 
-# Own group, deliberately NOT dakota-bst-build-global: tracking only queries
-# upstream repos and release URLs to resolve refs — it never builds and never
-# touches the CAS, so it has no reason to wait behind (or contend with)
-# multi-hour BST builds. On 2026-08-22 the scheduled tracker entering the
-# shared build group cancelled the pending next build.
+# Tracking queries upstream refs, never builds or touches the CAS. Keep it
+# independent of the global build concurrency group.
 concurrency:
   group: dakota-source-track
   cancel-in-progress: false
@@ -31,70 +28,34 @@ concurrency:
 env:
   BST2_IMAGE: registry.gitlab.com/freedesktop-sdk/infrastructure/freedesktop-sdk-docker-images/bst2
 
-# Every element except the core junctions lands in ONE bundle PR
-# (auto/track-bundle). Image builds serialize globally and each PR build plus
-# the next sync it triggers costs hours, so one PR per element turned a day of
-# small bumps into days of queue. The track and track-tarballs jobs only
-# resolve refs and record the changed files; the bundle job commits each
-# element separately onto testing and opens or refreshes the single PR.
-# Recording and composing live in .github/scripts/track_bundle.py (tested by
-# scripts/test_track_bundle.py).
-# The bundle is always rebuilt from a full tracking pass, so every trigger
-# tracks every element: a partial pass would drop pending bumps from the PR.
+# Every non-junction update lands in ONE bundle PR (auto/track-bundle).
+# Always run a full tracking pass: a partial pass would drop pending updates.
+# Source selection and update logic are shared with `just update-sources`.
+# Recording/composition remain separate in .github/scripts/track_bundle.py.
 jobs:
+  tracking-matrix:
+    if: github.event_name != 'workflow_dispatch' || inputs.group != 'core-junctions'
+    runs-on: ubuntu-26.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Read shared source list
+        id: matrix
+        run: |
+          matrix=$(python3 scripts/update_sources.py --matrix)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   track:
+    needs: tracking-matrix
     if: github.event_name != 'workflow_dispatch' || inputs.group != 'core-junctions'
     runs-on: ubuntu-26.04
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - element: bluefin/brew.bst
-            title: "chore(deps): update brew"
-          - element: bluefin/common.bst
-            title: "chore(deps): update common"
-          - element: bluefin/jetbrains-mono.bst
-            title: "chore(deps): update jetbrains-mono"
-          - element: bluefin/shell-extensions/app-indicators.bst
-            title: "chore(deps): update app-indicators extension"
-          - element: bluefin/shell-extensions/blur-my-shell.bst
-            title: "chore(deps): update blur-my-shell extension"
-          - element: bluefin/shell-extensions/dash-to-dock.bst
-            title: "chore(deps): update dash-to-dock extension"
-          - element: bluefin/shell-extensions/gsconnect.bst
-            title: "chore(deps): update gsconnect extension"
-          - element: bluefin/shell-extensions/custom-command-menu.bst
-            title: "chore(deps): update custom-command-menu extension"
-          - element: bluefin/efibootmgr.bst
-            title: "chore(deps): update efibootmgr"
-          - element: bluefin/shell-extensions/caffeine.bst
-            title: "chore(deps): update caffeine extension"
-          - element: bluefin/distrobox.bst
-            title: "chore(deps): update distrobox"
-          - element: bluefin/xdg-terminal-exec.bst
-            title: "chore(deps): update xdg-terminal-exec"
-          - element: bluefin/nautilus-python.bst
-            title: "chore(deps): update nautilus-python"
-          # `note` marks bumps that need a human look before the bundle merges.
-          # Core junctions (freedesktop-sdk + gnome-build-meta) are tracked
-          # atomically by the separate track-core-junctions job.
-          - element: gnomeos-deps/bootc.bst
-            title: "chore(deps): update bootc"
-            note: "review: core system component"
-          - element: bluefin/sudo-rs.bst
-            title: "chore(deps): update sudo-rs"
-            note: "review: core system component"
-          - element: bluefin/uutils-coreutils.bst
-            title: "chore(deps): update uutils-coreutils"
-            note: "review: core system component"
-          # gradia-capture tracks the master branch head (no upstream tags), so
-          # every bump is unreleased code.
-          - element: bluefin/shell-extensions/gradia-capture.bst
-            title: "chore(deps): update gradia-capture extension"
-            note: "review: unreleased branch head"
-
+      matrix: ${{ fromJSON(needs.tracking-matrix.outputs.matrix) }}
     steps:
       - name: Setup Just
         uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2
@@ -108,8 +69,9 @@ jobs:
         run: podman pull "$BST2_IMAGE"
 
       - name: Track sources with BuildStream
-        run: |
-          just bst --no-interactive source track "${{ matrix.element }}"
+        env:
+          ELEMENT: ${{ matrix.element }}
+        run: just update-sources --element "$ELEMENT"
 
       - name: Record update
         id: record
@@ -130,9 +92,8 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Release-asset elements: resolve the latest upstream release, rewrite the
-  # URL, then let bst re-pin the checksum. Each step is independent: one
-  # upstream outage must not drop the other updates.
+  # Release URLs must advance before BuildStream re-pins checksums. The shared
+  # updater continues after individual failures and records only successes.
   track-tarballs:
     if: github.event_name != 'workflow_dispatch' || inputs.group != 'core-junctions'
     runs-on: ubuntu-26.04
@@ -149,202 +110,11 @@ jobs:
         with:
           tool: just
 
-      - name: Update brew-tarball
-        continue-on-error: true
-        run: |
-          LATEST_VERSION=$(gh api repos/ublue-os/brew/releases --jq '.[0].tag_name // empty' 2>/dev/null | sed 's/^v//' || true)
-          if [ -z "$LATEST_VERSION" ]; then
-            echo "No ublue-os/brew releases found yet, skipping."
-            exit 0
-          fi
-          echo "Latest brew version: $LATEST_VERSION"
-
-          BST_FILE="elements/bluefin/brew-tarball.bst"
-          # Collect all unique versions present in the file; both arches should always match
-          VERSIONS=$(grep -oP 'download/\K[^/]+' "$BST_FILE" | sort -u)
-          VERSION_COUNT=$(echo "$VERSIONS" | wc -l)
-          if [ "$VERSION_COUNT" -gt 1 ]; then
-            echo "::warning::brew-tarball has mismatched arch versions: $VERSIONS — updating all"
-          fi
-          CURRENT_VERSION=$(echo "$VERSIONS" | head -1)
-          echo "Current version: $CURRENT_VERSION"
-
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
-            echo "brew-tarball is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|download/${CURRENT_VERSION}/|download/${LATEST_VERSION}/|g" "$BST_FILE"
-          just bst -o arch x86_64 source track bluefin/brew-tarball.bst
-          just bst -o arch aarch64 source track bluefin/brew-tarball.bst
-
-          python3 .github/scripts/track_bundle.py record --slug brew-tarball \
-            --title "chore(deps): update brew-tarball ${CURRENT_VERSION} -> ${LATEST_VERSION}" \
-            --change "\`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`" \
-            --links "[releases](https://github.com/ublue-os/brew/releases)" \
-            "$BST_FILE"
-
-      - name: Update wallpapers
-        continue-on-error: true
-        run: |
-          WALL_RELEASE=$(gh api repos/ublue-os/artwork/releases \
-            --jq '[.[] | select(.tag_name | startswith("bluefin-"))][0].tag_name // empty')
-          echo "Latest wallpaper release: $WALL_RELEASE"
-
-          if [ -z "$WALL_RELEASE" ] || [ "$WALL_RELEASE" = "null" ]; then
-            echo "No bluefin wallpaper releases found, skipping."
-            exit 0
-          fi
-
-          BST_FILE="elements/bluefin/wallpapers.bst"
-          CURRENT_TAG=$(grep -oP 'download/\K[^/]+' "$BST_FILE")
-          echo "Current tag: $CURRENT_TAG"
-
-          if [ "$WALL_RELEASE" = "$CURRENT_TAG" ]; then
-            echo "wallpapers is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_TAG -> $WALL_RELEASE"
-          sed -i "s|download/${CURRENT_TAG}/|download/${WALL_RELEASE}/|" "$BST_FILE"
-          just bst -o arch x86_64 source track bluefin/wallpapers.bst
-
-          python3 .github/scripts/track_bundle.py record --slug wallpapers \
-            --title "chore(deps): update wallpapers ${CURRENT_TAG} -> ${WALL_RELEASE}" \
-            --change "\`${CURRENT_TAG}\` → \`${WALL_RELEASE}\`" \
-            --links "[release](https://github.com/ublue-os/artwork/releases/tag/${WALL_RELEASE})" \
-            "$BST_FILE"
-
-      - name: Update gum
-        continue-on-error: true
-        run: |
-          LATEST_VERSION=$(gh api repos/charmbracelet/gum/releases/latest --jq '.tag_name' | sed 's/^v//')
-          echo "Latest gum version: $LATEST_VERSION"
-
-          BST_FILE="elements/bluefin/gum.bst"
-          CURRENT_VERSION=$(grep -oP 'download/v\K[0-9.]+' "$BST_FILE" | head -1)
-          echo "Current version: $CURRENT_VERSION"
-
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
-            echo "gum is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|v${CURRENT_VERSION}/gum_${CURRENT_VERSION}|v${LATEST_VERSION}/gum_${LATEST_VERSION}|g" "$BST_FILE"
-          just bst -o arch x86_64 source track bluefin/gum.bst
-          just bst -o arch aarch64 source track bluefin/gum.bst
-
-          python3 .github/scripts/track_bundle.py record --slug gum \
-            --title "chore(deps): update gum v${CURRENT_VERSION} -> v${LATEST_VERSION}" \
-            --change "\`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\`" \
-            --links "[release](https://github.com/charmbracelet/gum/releases/tag/v${LATEST_VERSION}) · [compare](https://github.com/charmbracelet/gum/compare/v${CURRENT_VERSION}...v${LATEST_VERSION})" \
-            "$BST_FILE"
-
-      - name: Update gtk4-layer-shell
-        continue-on-error: true
-        run: |
-          LATEST_VERSION=$(gh api repos/wmww/gtk4-layer-shell/releases/latest --jq '.tag_name' | sed 's/^v//')
-          echo "Latest gtk4-layer-shell version: $LATEST_VERSION"
-
-          BST_FILE="elements/bluefin/gtk4-layer-shell.bst"
-          CURRENT_VERSION=$(grep -oP 'tags/v\K[0-9]+\.[0-9]+\.[0-9]+' "$BST_FILE" | head -1)
-          echo "Current version: $CURRENT_VERSION"
-
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
-            echo "gtk4-layer-shell is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|tags/v${CURRENT_VERSION}|tags/v${LATEST_VERSION}|g" "$BST_FILE"
-          just bst source track bluefin/gtk4-layer-shell.bst
-
-          python3 .github/scripts/track_bundle.py record --slug gtk4-layer-shell \
-            --title "chore(deps): update gtk4-layer-shell v${CURRENT_VERSION} -> v${LATEST_VERSION}" \
-            --change "\`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\`" \
-            --links "[release](https://github.com/wmww/gtk4-layer-shell/releases/tag/v${LATEST_VERSION}) · [compare](https://github.com/wmww/gtk4-layer-shell/compare/v${CURRENT_VERSION}...v${LATEST_VERSION})" \
-            "$BST_FILE"
-
-      - name: Update tailscale
-        continue-on-error: true
-        run: |
-          LATEST_VERSION=$(gh api repos/tailscale/tailscale/releases/latest --jq '.tag_name' | sed 's/^v//')
-          echo "Latest tailscale version: $LATEST_VERSION"
-
-          BST_FILE="elements/bluefin/tailscale.bst"
-          CURRENT_VERSION=$(grep -oP 'tailscale_\K[0-9][0-9.]+(?=_amd64)' "$BST_FILE" | head -1)
-          echo "Current version: $CURRENT_VERSION"
-
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
-            echo "tailscale is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|tailscale_${CURRENT_VERSION}_|tailscale_${LATEST_VERSION}_|g" "$BST_FILE"
-          just bst -o arch x86_64 source track bluefin/tailscale.bst
-          just bst -o arch aarch64 source track bluefin/tailscale.bst
-
-          python3 .github/scripts/track_bundle.py record --slug tailscale \
-            --title "chore(deps): update tailscale ${CURRENT_VERSION} -> ${LATEST_VERSION}" \
-            --change "\`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`" \
-            --links "[release](https://github.com/tailscale/tailscale/releases/tag/v${LATEST_VERSION}) · [compare](https://github.com/tailscale/tailscale/compare/v${CURRENT_VERSION}...v${LATEST_VERSION})" \
-            "$BST_FILE"
-
-      - name: Update uupd
-        continue-on-error: true
-        run: |
-          LATEST_VERSION=$(gh api repos/ublue-os/uupd/releases/latest --jq '.tag_name')
-          echo "Latest uupd version: $LATEST_VERSION"
-
-          BST_FILE="elements/bluefin/uupd.bst"
-          CURRENT_VERSION=$(grep -oP 'download/\Kv[^/]+' "$BST_FILE" | head -1)
-          echo "Current version: $CURRENT_VERSION"
-
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
-            echo "uupd is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|download/${CURRENT_VERSION}/|download/${LATEST_VERSION}/|g" "$BST_FILE"
-          just bst -o arch x86_64 source track bluefin/uupd.bst
-          just bst -o arch aarch64 source track bluefin/uupd.bst
-
-          python3 .github/scripts/track_bundle.py record --slug uupd \
-            --title "chore(deps): update uupd ${CURRENT_VERSION} -> ${LATEST_VERSION}" \
-            --change "\`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`" \
-            --links "[release](https://github.com/ublue-os/uupd/releases/tag/${LATEST_VERSION}) · [compare](https://github.com/ublue-os/uupd/compare/${CURRENT_VERSION}...${LATEST_VERSION})" \
-            "$BST_FILE"
-
-      - name: Update jetbrains-mono-nerd-font
-        continue-on-error: true
-        run: |
-          LATEST_VERSION=$(gh api repos/ryanoasis/nerd-fonts/releases/latest --jq '.tag_name')
-          echo "Latest nerd-fonts version: $LATEST_VERSION"
-
-          BST_FILE="elements/bluefin/jetbrains-mono-nerd-font.bst"
-          CURRENT_VERSION=$(grep -oP 'download/\Kv[^/]+' "$BST_FILE" | head -1)
-          echo "Current version: $CURRENT_VERSION"
-
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
-            echo "jetbrains-mono-nerd-font is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|download/${CURRENT_VERSION}/|download/${LATEST_VERSION}/|g" "$BST_FILE"
-          just bst source track bluefin/jetbrains-mono-nerd-font.bst
-
-          python3 .github/scripts/track_bundle.py record --slug jetbrains-mono-nerd-font \
-            --title "chore(deps): update jetbrains-mono-nerd-font ${CURRENT_VERSION} -> ${LATEST_VERSION}" \
-            --change "\`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`" \
-            --links "[release](https://github.com/ryanoasis/nerd-fonts/releases/tag/${LATEST_VERSION}) · [compare](https://github.com/ryanoasis/nerd-fonts/compare/${CURRENT_VERSION}...${LATEST_VERSION})" \
-            "$BST_FILE"
+      - name: Update release assets
+        run: just update-sources --group tarballs --record-dir "$RUNNER_TEMP/tracked"
 
       - name: Upload updates
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: track-tarballs
@@ -435,33 +205,7 @@ jobs:
         run: podman pull "$BST2_IMAGE"
 
       - name: Track gnome-build-meta, derive freedesktop-sdk from its pin
-        run: |
-          just bst --no-interactive source track gnome-build-meta.bst
-
-          # freedesktop-sdk must match gnome-build-meta's own pin (the junction
-          # overrides and patch queue are only valid against it), so derive the
-          # ref from GBM instead of tracking the fdsdk glob independently.
-          gbm_ref=$(awk '/^[[:space:]]*ref: / { print $2; exit }' elements/gnome-build-meta.bst)
-          if [[ ! "$gbm_ref" =~ -g([0-9a-f]{40})$ ]]; then
-            echo "ERROR: could not extract GBM sha from ref: ${gbm_ref}" >&2
-            exit 1
-          fi
-          gbm_sha="${BASH_REMATCH[1]}"
-
-          files_api="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/files"
-          fdsdk_ref=$(curl -fsSL "${files_api}/elements%2Ffreedesktop-sdk.bst/raw?ref=${gbm_sha}" \
-            | awk '/url: gitlab:freedesktop-sdk/ { found=1 } found && /^[[:space:]]*ref: / { print $2; exit }')
-          if [ -z "$fdsdk_ref" ]; then
-            echo "ERROR: could not read the freedesktop-sdk pin from gnome-build-meta @ ${gbm_sha}" >&2
-            exit 1
-          fi
-          sed -i "0,/^\s*ref:/{s|^\(\s*\)ref:.*|\1ref: ${fdsdk_ref}|}" elements/freedesktop-sdk.bst
-
-          # Mirror gnome-build-meta's fdsdk patch queue and write the offline
-          # drift manifest, then assert it. Failing here means the sync broke
-          # and the PR should not be opened.
-          just patch-sync
-          just patch-drift-check
+        run: just update-sources --group core-junctions
 
       - name: Create or update PR
         env:
