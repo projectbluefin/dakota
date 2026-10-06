@@ -79,12 +79,6 @@ bst *ARGS:
         "{{bst2_image}}" \
         bash -c 'bst --colors "$@"' -- ${EFFECTIVE_BST_FLAGS} {{ARGS}}
 
-# Update CI-managed source pins locally; never commit, push, or open a PR.
-[group('dev')]
-[positional-arguments]
-update-sources *FLAGS:
-    python3 scripts/update_sources.py "$@"
-
 # The ONLY recipe CI runs directly (.github/workflows/validate.yml).
 # New python test suites must be registered here to be enforced; anything
 # added to `validate` below runs on developer machines only.
@@ -93,7 +87,7 @@ check-publish-workflow:
     python3 scripts/check_publish_workflow.py
     python3 -m unittest scripts.test_check_publish_workflow
     python3 -m unittest scripts.test_ownership_metadata scripts.test_ownership_oci scripts.test_compare_oci_layers scripts.test_ownership_recipes scripts.test_sync_next
-    python3 -m unittest scripts.test_image_variants scripts.test_track_bundle scripts.test_update_sources
+    python3 -m unittest scripts.test_image_variants scripts.test_track_bundle
     python3 -m unittest scripts.test_desktop_defaults
     just test-devmode
     just test-release

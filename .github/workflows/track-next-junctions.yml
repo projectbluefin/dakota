@@ -1,4 +1,4 @@
-name: Track next branch junctions and kernels
+name: Track next branch junctions
 
 # Runs at 20:00 UTC daily — offset from the main tracker (06:00 UTC) to avoid
 # saturating runners when stable-branch builds are active. gnome-build-meta's
@@ -29,10 +29,8 @@ jobs:
   # races ahead of gnome-build-meta whenever fdsdk tags a release (see the
   # 26.08beta.4 failure on 2026-08-17).
   #
-  # Kernels are next-owned too: track their configured patterns in the same PR.
-  # Junction-only PRs retain auto-merge. Kernel changes require human review
-  # and successful kernel/NVIDIA builds; the general build matrix permits
-  # optional-variant failures, so its aggregate status alone is insufficient.
+  # Opens a PR against next with auto-merge enabled — next is a fully
+  # automated rolling stream, no human gate required.
   track-core-junctions-next:
     runs-on: ubuntu-26.04
     permissions:
@@ -62,12 +60,32 @@ jobs:
         run: podman pull "$BST2_IMAGE"
 
       - name: Track gnome-build-meta, derive freedesktop-sdk from its pin
-        run: just update-sources --group core-junctions
+        run: |
+          just bst --no-interactive source track gnome-build-meta.bst
 
-      - name: Track next-owned kernels
-        run: just update-sources --group kernels
+          gbm_ref=$(awk '/^[[:space:]]*ref: / { print $2; exit }' elements/gnome-build-meta.bst)
+          if [[ ! "$gbm_ref" =~ -g([0-9a-f]{40})$ ]]; then
+            echo "ERROR: could not extract GBM sha from ref: ${gbm_ref}" >&2
+            exit 1
+          fi
+          gbm_sha="${BASH_REMATCH[1]}"
 
-      - name: Create or update PR against next
+          files_api="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/files"
+          fdsdk_ref=$(curl -fsSL "${files_api}/elements%2Ffreedesktop-sdk.bst/raw?ref=${gbm_sha}" \
+            | awk '/url: gitlab:freedesktop-sdk/ { found=1 } found && /^[[:space:]]*ref: / { print $2; exit }')
+          if [ -z "$fdsdk_ref" ]; then
+            echo "ERROR: could not read the freedesktop-sdk pin from gnome-build-meta @ ${gbm_sha}" >&2
+            exit 1
+          fi
+          sed -i "0,/^\s*ref:/{s|^\(\s*\)ref:.*|\1ref: ${fdsdk_ref}|}" elements/freedesktop-sdk.bst
+
+          # Mirror gnome-build-meta's fdsdk patch queue and write the offline
+          # drift manifest, then assert it. Failing here means the sync broke
+          # and the PR should not be opened.
+          just patch-sync
+          just patch-drift-check
+
+      - name: Create or update PR against next (auto-merge)
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -75,11 +93,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git checkout -B auto/track-next-junction origin/next
-          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst patches/freedesktop-sdk patches/freedesktop-sdk.manifest.json \
-            elements/core/linux-fdsdk.bst elements/core/linux-ogc.bst
+          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst patches/freedesktop-sdk patches/freedesktop-sdk.manifest.json
 
           if git diff --cached --quiet; then
-            echo "No junction or kernel updates"
+            echo "No junction updates"
             # A leftover open PR at this point predates the current junction
             # state (e.g. an unmergeable bump) — close it rather than let it
             # linger with auto-merge armed.
@@ -91,39 +108,21 @@ jobs:
             exit 0
           fi
 
-          KERNEL_UPDATES=false
-          git diff --cached --quiet -- elements/core/linux-fdsdk.bst elements/core/linux-ogc.bst || KERNEL_UPDATES=true
-          EXISTING=$(gh pr list --head auto/track-next-junction --base next --state open --json number --jq '.[0].number // empty')
-          # Disable an existing auto-merge BEFORE pushing a kernel update.
-          # API failures must stop the job rather than publish with auto-merge armed.
-          if [ "$KERNEL_UPDATES" = true ] && [ -n "$EXISTING" ]; then
-            AUTO_MERGE=$(gh pr view "$EXISTING" --json autoMergeRequest --jq '.autoMergeRequest != null')
-            if [ "$AUTO_MERGE" = true ]; then
-              gh pr merge "$EXISTING" --disable-auto
-            elif [ "$AUTO_MERGE" != false ]; then
-              echo "ERROR: could not determine existing PR auto-merge state" >&2
-              exit 1
-            fi
-          fi
-
-          git commit -m "chore(deps): update next junctions and kernels"
+          git commit -m "chore(deps): update core junctions (next branch)"
           git push --force-with-lease origin auto/track-next-junction
 
+          EXISTING=$(gh pr list --head auto/track-next-junction --base next --state open --json number --jq '.[0].number // empty' || true)
           if [ -n "$EXISTING" ]; then
             PR_URL=$(gh pr view "$EXISTING" --json url --jq '.url')
-            echo "Existing PR: $PR_URL"
+            echo "Existing PR: $PR_URL — re-enabling auto-merge"
           else
             PR_URL=$(gh pr create \
               --base next \
               --head auto/track-next-junction \
-              --title "chore(deps): update next junctions and kernels" \
-              --body "Tracks GBM along master, derives its matching FDSDK pin and patches, and tracks next's configured kernel series. Kernel updates require patch review and successful kernel/NVIDIA builds before human approval. Only junction-only updates enable auto-merge.")
+              --title "chore(deps): update core junctions (next branch)" \
+              --body "Tracks \`gnome-build-meta.bst\` along master and pins \`freedesktop-sdk.bst\` plus \`patches/freedesktop-sdk\` to exactly what the tracked commit uses. Auto-merges once validation passes.")
             echo "Created PR: $PR_URL"
           fi
 
-          if [ "$KERNEL_UPDATES" = true ]; then
-            echo "Kernel changes: leaving auto-merge disabled for patch review and kernel/NVIDIA build validation."
-          else
-            # Preserve the existing auto-merge policy for junction-only changes.
-            gh pr merge "$PR_URL" --auto --squash
-          fi
+          # Enable auto-merge — merges automatically once required checks pass.
+          gh pr merge "$PR_URL" --auto --squash

@@ -195,7 +195,7 @@ sources:
   url: kernel:linux/kernel/git/stable/linux.git
   # Testing tracks the 7.2 stable series; rc kernels stay on next.
   track: v7.2.*
-  ref: v7.2.9-0-g5fce161649b4d779d1b76d9fcd52dc77779774b8
+  ref: v7.2.6-0-g500df175a7f9e6bc1a9c328590ca5150f84f9ff0
 - kind: patch_queue
   path: patches/linux
 - kind: local

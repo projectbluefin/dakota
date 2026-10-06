@@ -208,16 +208,6 @@ class RecordElementTests(GitFixture):
         self.assertEqual(self.record(), "")
         self.assertFalse(self.tracked.exists())
 
-    def test_non_ref_change_is_recorded_even_with_same_commit(self):
-        original = element(f"v1.0-0-g{SHA_A}") + "variables:\n  ogc-localversion: '-ogc1'\n"
-        self.write("a", original)
-        self.git("add", self.path("a"))
-        self.git("commit", "-qm", "kernel fixture")
-        self.write("a", original.replace("'-ogc1'", "'-ogc2'"))
-        self.assertEqual(self.record(), "slug=a\n")
-        self.assertIn("ogc-localversion: '-ogc2'",
-                      (self.tracked / "files" / self.path("a")).read_text())
-
     def test_real_change_is_recorded(self):
         self.write("a", element(f"v1.1-0-g{SHA_B}"))
         self.assertEqual(self.record(), "slug=a\n")
@@ -331,7 +321,7 @@ class WorkflowWiringTests(unittest.TestCase):
 
     def test_invocations_parse(self):
         calls = self.invocations()
-        self.assertEqual({c[0] for c in calls}, {"record-element", "compose"})
+        self.assertEqual({c[0] for c in calls}, {"record-element", "record", "compose"})
         for argv in calls:
             with self.subTest(argv=argv[:3]), \
                     mock.patch.object(track_bundle, "cmd_record_element", return_value=0), \

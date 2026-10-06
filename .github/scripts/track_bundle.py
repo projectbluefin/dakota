@@ -32,7 +32,6 @@ BOT_NAME = "github-actions[bot]"
 BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 
 REF_LINE = re.compile(r"^\s*ref:\s+(\S+)", re.MULTILINE)
-REF_VALUE_LINE = re.compile(r"^([ \t]*ref:)[^\n]*$", re.MULTILINE)
 DIFF_REF = re.compile(r"ref:\s+(\S+)")
 SHA40 = re.compile(r"[0-9a-f]{40}$")
 DESCRIBE_SHA = re.compile(r"(?<=g)[0-9a-f]+$")
@@ -293,12 +292,10 @@ def cmd_record_element(args: argparse.Namespace) -> int:
 
     # bst source track can normalize ref format without changing the underlying
     # commit (e.g. plain SHA -> git-describe "v0.2.13-0-g<sha>"). Identical
-    # commit sets only imply formatting changes if nothing else changed.
-    # In particular, keep an OGC localversion correction with an unchanged ref.
-    old_text = run("git", "show", f"HEAD:{path}").stdout
+    # commit sets mean only formatting changed: no real update.
+    old_text = git("show", f"HEAD:{path}")
     old_shas = ref_shas(old_text)
-    if (old_shas and old_shas == ref_shas(new_text)
-            and REF_VALUE_LINE.sub(r"\1", old_text) == REF_VALUE_LINE.sub(r"\1", new_text)):
+    if old_shas and old_shas == ref_shas(new_text):
         print("Ref format normalized but same underlying commit(s), no update")
         return 0
 
