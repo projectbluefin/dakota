@@ -45,7 +45,7 @@ variables:
   # OGC patchset revision of the pinned tag; keep in sync with the
   # `ref:` under sources (v<kver>-ogcN-...). Not derivable at build
   # time: the tree ships no EXTRAVERSION or localversion files.
-  ogc-localversion: '-ogc1'
+  ogc-localversion: '-ogc2'
   indep-libdir: '%{prefix}/lib'
   # Modules are stripped by kbuild (INSTALL_MOD_STRIP=1) *before* the
   # module signature is appended; a post-build strip pass would tear
@@ -144,7 +144,7 @@ config:
     # The zswap.compressor=zstd karg needs the compressor built in, not =m.
     enable CRYPTO_ZSTD
 
-    # Warnings are errors; OGC out-of-tree fixups live in patches/linux-ogc.
+    # Keep warnings fatal; fix source regressions rather than disabling WERROR.
     enable WERROR
 
     # Hardware-enablement deltas from the Fedora config audit (VM guests,
@@ -255,11 +255,9 @@ sources:
   url: github:OpenGamingCollective/linux.git
   # rc-based OGC tags are fair game on the next stream.
   track: v7.2.*-ogc*
-  ref: v7.2.6-ogc1-0-gd71739861de0d6c7ce433fe43d711b8069f9f2d7
-# Dakota fixups for the OGC patchset itself; review at every tag bump and
-# drop each patch once the fix lands upstream.
-- kind: patch_queue
-  path: patches/linux-ogc
+  ref: v7.2.8-ogc2-0-g6d2c9978054f076eb88c2de81ad6b3752bcb790d
+# The old Dakota fixups are obsolete at v7.2.8-ogc2: ayn-ec and aw87xxx
+# are absent, and hid-asus already registers its listener on drvdata.
 - kind: local
   path: files/linux/config-utils.sh
 - kind: local

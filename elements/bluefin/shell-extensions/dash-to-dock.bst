@@ -7,7 +7,7 @@ sources:
   # but unreleased; restore `track: extensions.gnome.org-v*` once a tag
   # lists "51" in metadata.json, so the tracker stops rolling back to v106.
   track: master
-  ref: extensions.gnome.org-v109-18-g4846ec267d8dce66e432c85049dca5dcbe863fb5
+  ref: extensions.gnome.org-v109-24-g8c2cb998972a72c5c459dc07a8c2067bf654779e
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-make.bst
