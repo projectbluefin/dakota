@@ -14,6 +14,10 @@ menuoptions-setting=2
 menuicon-setting='ublue-logo-symbolic'
 menulocation-setting=1
 menuposition-setting=0
+# The extension renders only the slots listed here. Common's 04 file lists
+# [1..11] for its own layout; Dakota adds Ask Bluefin as command12, so it must
+# own the order too or that entry never appears in the menu.
+command-order=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 command1=('---$(hostname)', '', '', true)
 command2=('About', 'gnome-control-center system about', '', true)
 command3=('System Monitor', '/usr/bin/flatpak run io.missioncenter.MissionCenter', '', true)
