@@ -51,15 +51,15 @@ Dakota's feedback loop model is grounded in Andy Anderson's work on autonomous A
 
 **Architects and designers** — these features and epics need your input before any code is written. Design decisions, tradeoffs, and priorities:
 
-### [Open features and epics for discussion &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fdiscussing+label%3Atype%2Ffeature%2Ckind%2Fepic)
+### [Open issues needing triage &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Aneeds-triage)
 
-Leave a comment, challenge the design, propose alternatives. When a discussion reaches consensus a maintainer marks it `status/approved` and it enters the build queue.
+Leave a comment, challenge the design, propose alternatives. When an issue reaches consensus a maintainer marks it with `/triage accepted`.
 
 **Engineers** — these issues have clear acceptance criteria and no open design questions. Pick one up and build it:
 
-### [Agent-ready build queue &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fqueued+no%3Aassignee)
+### [Triage-accepted queue &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Atriage%2Faccepted+no%3Aassignee)
 
-Comment `/claim` to take an issue. See [AGENTS.md](AGENTS.md) for the full contributor workflow.
+Assign yourself with `/assign`. See [docs/workflow.md](docs/workflow.md) for the contributor workflow.
 
 ## Image streams
 
