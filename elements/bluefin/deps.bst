@@ -50,6 +50,7 @@ depends:
 
   - bluefin/uutils-coreutils.bst
   - bluefin/sudo-rs.bst
+  - bluefin/sudo-linuxbrew-path.bst
   - bluefin/fprintd-system-auth.bst
   - bluefin/fprintd-fingerprint-auth.bst
   - bluefin/efibootmgr.bst
