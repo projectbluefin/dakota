@@ -59,6 +59,7 @@ depends:
   # Restores the VTE typelibs the app-drop strips out (dakota#1022)
   - bluefin/vte.bst
   - bluefin/network.bst
+  - bluefin/networkmanager-polkit.bst
   - bluefin/wireplumber-pcsp.bst
   - bluefin/alsa-utils.bst
   - bluefin/brlaser.bst
