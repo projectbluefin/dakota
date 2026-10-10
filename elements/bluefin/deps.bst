@@ -99,6 +99,10 @@ depends:
 
   - gnome-build-meta.bst:gnomeos-deps/snapd.bst
 
+  - bluefin/nethogs.bst
+  - bluefin/lm-sensors.bst
+  - freedesktop-sdk.bst:components/which.bst
+
 (?):
 - arch == "x86_64":
     depends:
