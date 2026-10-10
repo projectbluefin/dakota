@@ -8,7 +8,7 @@ disagrees with this page.
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `validate.yml` | PR and merge queue targeting `testing`, `next`, or `main` | Workflow checks, patch drift, and default/NVIDIA BST graphs |
-| `build.yml` | Relevant pushes to `testing`/`next`, daily 13:00 UTC, manual | Build four x86 variants through remote execution |
+| `build.yml` | Relevant pushes to `testing`, daily 13:00 UTC, manual | Build four x86 variants through remote execution |
 | `publish.yml` | Successful build workflow on `testing`/`next`, manual recovery | Export CAS artifacts, publish immutable and stream tags, sign, attest, and attach SBOMs |
 | `e2e.yml` | Manual only | Run testsuite suites against an explicitly published image |
 | `build-aarch64.yml` | Manual only; automatic ARM CI paused | Build the decoupled aarch64 image on explicit request |
@@ -64,6 +64,10 @@ promoted; `bootc switch` to one to try it. `pr-cleanup.yml` deletes the tags
 when the PR closes.
 
 ## Next synchronization
+
+The `next` stream is paused until the next GNOME beta: `sync-next.yml` is
+disabled and has no push trigger, and `build.yml` no longer builds `next`.
+The machinery below is kept for its return.
 
 `sync-next.yml` synthesizes `next` from `testing`, restores `NEXT_OWNED` paths,
 and three-way merges `NEXT_MERGED` files. Divergence outside those lists or a

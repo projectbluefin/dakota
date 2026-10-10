@@ -2,11 +2,11 @@ name: Build Bluefin dakota
 
 on:
   push:
-    # next builds per content push too: syncs and merged junction bumps queue
-    # behind testing in the shared concurrency group. queue: max keeps every
+    # The next stream is paused until the next GNOME beta; add next back here
+    # (and to pull_request below) when it returns. queue: max keeps every
     # queued run (FIFO) instead of superseding — the stale-check job below
-    # collapses burst days to one build of the newest state per branch.
-    branches: [testing, next]
+    # collapses burst days to one build of the newest state.
+    branches: [testing]
     paths:
       - "elements/**"
       - "plugins/**"
@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
   # Label a same-repo PR `build` to build it; adding the label starts a run.
   pull_request:
-    branches: [testing, next]
+    branches: [testing]
     types: [opened, synchronize, reopened, labeled]
 
 permissions: read-all

@@ -144,7 +144,7 @@ config:
     # The zswap.compressor=zstd karg needs the compressor built in, not =m.
     enable CRYPTO_ZSTD
 
-    # Keep warnings fatal; fix source regressions rather than disabling WERROR.
+    # Warnings are errors; OGC out-of-tree fixups live in patches/linux-ogc.
     enable WERROR
 
     # Hardware-enablement deltas from the Fedora config audit (VM guests,
@@ -256,8 +256,10 @@ sources:
   # rc-based OGC tags are fair game on the next stream.
   track: v7.2.*-ogc*
   ref: v7.2.9-ogc2-0-ge4ded9909ce12e84a46a3519e9c7747ff13aa9b0
-# The old Dakota fixups are obsolete at v7.2.8-ogc2: ayn-ec and aw87xxx
-# are absent, and hid-asus already registers its listener on drvdata.
+# Dakota fixups for the OGC patchset itself; review at every tag bump and
+# drop each patch once the fix lands upstream.
+- kind: patch_queue
+  path: patches/linux-ogc
 - kind: local
   path: files/linux/config-utils.sh
 - kind: local

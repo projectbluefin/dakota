@@ -77,8 +77,12 @@ config:
 
     - |
       # umotd and uwelcome take the first NAME="..." match as the OS name, so
-      # NAME= must precede PRETTY_NAME=, VENDOR_NAME= and IMAGE_NAME=.
-      first="$(sed -n '/NAME="/{p;q}' "%{install-root}%{indep-libdir}/os-release")"
+      # NAME= must precede PRETTY_NAME=, VENDOR_NAME= and IMAGE_NAME=. The
+      # sandbox has only bash and coreutils, so no sed or grep here.
+      first=""
+      while IFS= read -r line; do
+        case "${line}" in *NAME=\"*) first="${line}"; break ;; esac
+      done <"%{install-root}%{indep-libdir}/os-release"
       if [ "${first}" != "NAME=\"${IMAGE_PRETTY_NAME}\"" ]; then
         echo "ERROR: os-release must list NAME= before any other *NAME= field" >&2
         exit 1
