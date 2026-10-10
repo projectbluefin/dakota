@@ -65,6 +65,18 @@ jobs:
       # Keep generic /label gated so a verbatim allowlist cannot bypass the restriction.
       prow-commands: /kind /area /hold /lgtm /approve /assign /unassign /cc /uncc /close /reopen /retest /test /ok-to-test /help /good-first-issue /check-required-labels ${{ needs.authorize.outputs.triage == 'true' && '/triage /priority /label' || '' }}
 
+  transfer:
+    needs: authorize
+    if: needs.authorize.outputs.triage == 'true' && github.event_name == 'issue_comment'
+    permissions:
+      issues: write
+    uses: projectbluefin/.project/.github/workflows/prow-transfer.yml@f197982266c80f4716c2bcd73c74de1513ae033d
+    with:
+      authorized: ${{ needs.authorize.outputs.triage }}
+    secrets:
+      MERGERAPTOR_APP_ID: ${{ secrets.MERGERAPTOR_APP_ID }}
+      MERGERAPTOR_PRIVATE_KEY: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}
+
   label-sync:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     permissions:
