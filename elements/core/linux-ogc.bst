@@ -255,7 +255,7 @@ sources:
   url: github:OpenGamingCollective/linux.git
   # rc-based OGC tags are fair game on the next stream.
   track: v7.2.*-ogc*
-  ref: v7.2.8-ogc2-0-g6d2c9978054f076eb88c2de81ad6b3752bcb790d
+  ref: v7.2.9-ogc2-0-ge4ded9909ce12e84a46a3519e9c7747ff13aa9b0
 # The old Dakota fixups are obsolete at v7.2.8-ogc2: ayn-ec and aw87xxx
 # are absent, and hid-asus already registers its listener on drvdata.
 - kind: local
