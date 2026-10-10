@@ -67,16 +67,13 @@ Assign yourself with `/assign`. See [docs/workflow.md](docs/workflow.md) for the
 | ---------: | ------: | ------------------------------------------------------------------------------------------------------------: |
 |  `:stable` |  Stable |                        GNOME 50 — production. On-demand promotion from `:testing` via `just release --apply`. |
 | `:testing` |     Dev |                                              GNOME 50 — daily builds from `testing` branch. Boot-check gated. |
-|    `:next` | Rolling | **GNOME master — the bleeding edge.** Tracks gnome-build-meta `master` daily. Auto-updates, zero maintenance. |
-|     `:btw` | Rolling |                                                                                            Alias for `:next`. |
+|    `:next` |  Paused |                                     GNOME master. Paused until the next GNOME beta; receives no updates. |
+|     `:btw` |  Paused |                                                                                            Alias for `:next`. |
 
-`:next` / `:btw` is the arch competitor stream — latest GNOME the moment it lands upstream, built from source with memory-safe defaults (sudo-rs, uutils-coreutils). If you want to run GNOME before everyone else and help find regressions before they reach stable, this is your image.
+`:next` / `:btw` is paused until the next GNOME beta and no longer receives updates, including security fixes. If you are on it, switch to `:testing`. Moving from GNOME master back to the current release is a downgrade, so some settings or app data written by the newer GNOME may not carry over.
 
 ```bash
-# Switch to the rolling stream
-sudo bootc switch ghcr.io/projectbluefin/dakota:next
-# or
-sudo bootc switch ghcr.io/projectbluefin/dakota:btw
+sudo bootc switch ghcr.io/projectbluefin/dakota:testing
 ```
 
 ## ISO Download
