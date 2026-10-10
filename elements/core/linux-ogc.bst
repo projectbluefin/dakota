@@ -14,8 +14,8 @@
 #   3. Modules stripped (INSTALL_MOD_STRIP=1) and vmlinux to the devel
 #      split: OGC forces DEBUG_INFO=y for BTF.
 #
-# Bumps: `just bst source track core/linux-ogc.bst` follows stable v7.2.*-ogc*
-# tags on testing (next tracks v*-ogc*); update ogc-localversion to match. On a
+# Bumps: `just bst source track core/linux-ogc.bst` follows stable v*-ogc*
+# tags (release candidates included on next); update ogc-localversion to match. On a
 # stable-series jump, nvidia-drivers.bst must compile against the new
 # tree before shipping.
 kind: make
@@ -45,7 +45,7 @@ variables:
   # OGC patchset revision of the pinned tag; keep in sync with the
   # `ref:` under sources (v<kver>-ogcN-...). Not derivable at build
   # time: the tree ships no EXTRAVERSION or localversion files.
-  ogc-localversion: '-ogc2'
+  ogc-localversion: '-ogc1'
   indep-libdir: '%{prefix}/lib'
   # Modules are stripped by kbuild (INSTALL_MOD_STRIP=1) *before* the
   # module signature is appended; a post-build strip pass would tear
@@ -144,7 +144,7 @@ config:
     # The zswap.compressor=zstd karg needs the compressor built in, not =m.
     enable CRYPTO_ZSTD
 
-    # Keep warnings fatal; fix source regressions rather than disabling WERROR.
+    # Warnings are errors; OGC out-of-tree fixups live in patches/linux-ogc.
     enable WERROR
 
     # Hardware-enablement deltas from the Fedora config audit (VM guests,
@@ -254,10 +254,12 @@ sources:
 - kind: git_repo
   url: github:OpenGamingCollective/linux.git
   # rc-based OGC tags are fair game on the next stream.
-  track: v7.2.*-ogc*
-  ref: v7.2.8-ogc2-0-g6d2c9978054f076eb88c2de81ad6b3752bcb790d
-# The old Dakota fixups are obsolete at v7.2.8-ogc2: ayn-ec and aw87xxx
-# are absent, and hid-asus already registers its listener on drvdata.
+  track: v*-ogc*
+  ref: v7.2.6-ogc1-0-gd71739861de0d6c7ce433fe43d711b8069f9f2d7
+# Dakota fixups for the OGC patchset itself; review at every tag bump and
+# drop each patch once the fix lands upstream.
+- kind: patch_queue
+  path: patches/linux-ogc
 - kind: local
   path: files/linux/config-utils.sh
 - kind: local

@@ -1,0 +1,36 @@
+From: Ahmed Adan <ahmed.adan@gmail.com>
+Subject: [PATCH] HID: asus: register the backlight listener on drvdata
+
+Stable 7.2.5 backported the hid-asus refactor that removed struct
+asus_kbd_leds and the backlight work item. The OGC asus branch rebased
+onto 7.2.6 with asus_kbd_register_leds still using them, so the driver
+no longer compiles. Register the listener the way upstream 7.2.6 does.
+Carried by Dakota against v7.2.6-ogc1; drop once OGC takes the fix.
+---
+diff --git a/drivers/hid/hid-asus.c b/drivers/hid/hid-asus.c
+index 83ec960de..592da5efb 100644
+--- a/drivers/hid/hid-asus.c
++++ b/drivers/hid/hid-asus.c
+@@ -963,20 +963,8 @@ static int asus_kbd_register_leds(struct hid_device *hdev)
+ 			return ret;
+ 	}
+ 
+-	drvdata->kbd_backlight = devm_kzalloc(&hdev->dev,
+-					      sizeof(struct asus_kbd_leds),
+-					      GFP_KERNEL);
+-	if (!drvdata->kbd_backlight)
+-		return -ENOMEM;
+-
+-	drvdata->kbd_backlight->removed = false;
+-	drvdata->kbd_backlight->brightness = 0;
+-	drvdata->kbd_backlight->hdev = hdev;
+-	drvdata->kbd_backlight->listener.brightness_set = asus_kbd_backlight_set;
+-	INIT_WORK(&drvdata->kbd_backlight->work, asus_kbd_backlight_work);
+-	spin_lock_init(&drvdata->kbd_backlight->lock);
+-
+-	ret = asus_hid_register_listener(&drvdata->kbd_backlight->listener);
++	drvdata->listener.brightness_set = asus_kbd_backlight_set;
++	ret = asus_hid_register_listener(&drvdata->listener);
+ 	if (ret < 0) {
+ 		hid_err(hdev, "Unable to register kbd brightness listener: %d\n", ret);
+ 		drvdata->listener.brightness_set = NULL;

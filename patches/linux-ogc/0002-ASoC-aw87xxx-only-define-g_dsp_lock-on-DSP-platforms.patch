@@ -1,0 +1,19 @@
+From: Ahmed Adan <ahmed.adan@gmail.com>
+Subject: [PATCH] ASoC: aw87xxx: only define g_dsp_lock on DSP platforms
+
+The mutex is only used inside the AW_MTK/AW_QCOM_OPEN_DSP_PLATFORM
+blocks, so on x86 it is unused and fails the build under -Werror.
+Carried by Dakota against v7.2.6-ogc1; drop once OGC takes the fix.
+---
+--- a/sound/soc/codecs/aw87xxx/aw87xxx_dsp.c
++++ b/sound/soc/codecs/aw87xxx/aw87xxx_dsp.c
+@@ -23,7 +23,9 @@
+ #include "aw87xxx_log.h"
+ #include "aw87xxx_dsp.h"
+ 
++#if (defined AW_QCOM_OPEN_DSP_PLATFORM) || (defined AW_MTK_OPEN_DSP_PLATFORM)
+ static DEFINE_MUTEX(g_dsp_lock);
++#endif
+ static unsigned int g_spin_value = 0;
+ 
+ static int g_rx_topo_id = AW_RX_DEFAULT_TOPO_ID;
