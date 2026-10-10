@@ -97,8 +97,10 @@ just release --apply
 ```
 
 `next` follows the same build/publish machinery but advances `:next` and `:btw`;
-it never promotes to `:stable`. E2e is manually dispatched against an already
-published image and is not a pull-request check.
+it never promotes to `:stable`. The `next` stream is currently paused until the
+next GNOME beta: it is neither synced nor built, so target `testing`. E2e is
+manually dispatched against an already published image and is not a
+pull-request check.
 
 **All normal PRs target `testing`.** Stable promotion does not move `main` or
 require any merge into it. Post-release verification checks the published image

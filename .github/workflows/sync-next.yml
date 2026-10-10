@@ -15,9 +15,10 @@ name: Sync next
 # Anything else on next outside both lists fails the drop guard instead of being
 # deleted.
 
+# Paused until the next GNOME beta: no push trigger, and the workflow is
+# disabled in GitHub. When next returns, restore `push: branches: [testing]`,
+# re-enable it, then run it once by hand.
 on:
-  push:
-    branches: [testing]
   workflow_dispatch:
 
 permissions:
