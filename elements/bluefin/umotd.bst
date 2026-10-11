@@ -5,11 +5,11 @@ sources:
   filename: umotd
   (?):
   - arch == "x86_64":
-      url: github_files:projectbluefin/umotd/releases/download/v0.3.2/umotd_0.3.2_linux_amd64
-      ref: eddae399e87ed5d7a3ccc2fdc2e51e4cf183281ac29ed36621f3c16393c048cb
+      url: github_files:projectbluefin/umotd/releases/download/v0.3.3/umotd_0.3.3_linux_amd64
+      ref: 76a2452c669db4e8426b822ccab4429579c8ef2977b20bafa4d2f2de4b545a30
   - arch == "aarch64":
-      url: github_files:projectbluefin/umotd/releases/download/v0.3.2/umotd_0.3.2_linux_arm64
-      ref: fd3c09c9edb47e68d897569daef7e1d9e7d100148848b349c76f20e3855fb9e0
+      url: github_files:projectbluefin/umotd/releases/download/v0.3.3/umotd_0.3.3_linux_arm64
+      ref: a8337de651abb2657947c30a61515542323a2677d279d05c39efbbe4d2d72730
 - kind: remote
   url: https://raw.githubusercontent.com/projectbluefin/umotd/97520c61e8fca7eae7359bf3d329542078f17412/LICENSE
   filename: LICENSE

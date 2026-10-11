@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:aunetx/blur-my-shell.git
   track: v*
-  ref: v73-0-g425761d5504941899cfb8cda24202d829024c622
+  ref: v74-0-g99660f4e87eab4ea1e02e39e79cebf7cfa320dbb
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-make.bst
