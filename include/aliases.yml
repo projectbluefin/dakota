@@ -38,6 +38,7 @@ aliases:
   gnome_nightly: https://nightly.gnome.org/
   gnupg_ftp: https://www.gnupg.org/ftp/
   gstreamer: https://gstreamer.freedesktop.org/
+  gvisor: https://storage.googleapis.com/gvisor/
   infradead: https://www.infradead.org/
   kerberos: https://kerberos.org/
   kldp: https://kldp.net/
