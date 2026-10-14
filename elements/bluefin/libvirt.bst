@@ -120,6 +120,14 @@ config:
       presetdir="$(pkg-config --variable=systemdsystempresetdir systemd)"
       install -Dm644 -t "%{install-root}${presetdir}" 80-libvirt.preset
     - |
+      # bluefin-stack.bst wipes /var, dropping the secrets dir meson installs.
+      # virt-secret-init-encryption.service writes its key there before
+      # virtsecretd could create it, so recreate it at boot.
+      install -Dm644 /dev/null "%{install-root}%{indep-libdir}/tmpfiles.d/libvirt.conf"
+      cat > "%{install-root}%{indep-libdir}/tmpfiles.d/libvirt.conf" <<'EOF'
+      d %{localstatedir}/lib/libvirt/secrets 0700 root root -
+      EOF
+    - |
       # Fail the build if non-root management loses PolicyKit again (#1669).
       # These are upstream-generated outputs, not permission/auth overrides.
       test -s "%{install-root}%{prefix}/share/polkit-1/actions/org.libvirt.unix.policy"
