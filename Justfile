@@ -12,6 +12,8 @@ export image_tag := env("BUILD_IMAGE_TAG", "latest")
 # every bst invocation here; exported podman refs get a -gaming suffix
 # so builds don't collide.
 export gaming := env("BUILD_GAMING", "false")
+# Secure Boot signing: publish CI only, with the key in files/boot-keys/private/.
+export secure_boot_signing := env("BUILD_SECURE_BOOT_SIGNING", "false")
 export base_dir := env("BUILD_BASE_DIR", ".")
 export filesystem := env("BUILD_FILESYSTEM", "btrfs")
 
@@ -61,6 +63,9 @@ bst *ARGS:
         if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]-o[[:space:]]+gaming[[:space:]]+(true|false)([[:space:]]|$) ]]; then
             EFFECTIVE_BST_FLAGS="${EFFECTIVE_BST_FLAGS} -o gaming {{gaming}}"
         fi
+        if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]-o[[:space:]]+secure_boot_signing[[:space:]]+(true|false)([[:space:]]|$) ]]; then
+            EFFECTIVE_BST_FLAGS="${EFFECTIVE_BST_FLAGS} -o secure_boot_signing {{secure_boot_signing}}"
+        fi
     fi
 
     # BST_FLAGS allows appending --no-interactive, --config, etc.
@@ -78,6 +83,50 @@ bst *ARGS:
         -w /src \
         "{{bst2_image}}" \
         bash -c 'bst --colors "$@"' -- ${EFFECTIVE_BST_FLAGS} {{ARGS}}
+
+# Generate the Dakota Secure Boot key pair. The certificate is public and
+# committed; the kernel trusts it for modules, and users enroll it as a MOK.
+# The private key stays in the gitignored files/boot-keys/private/ and goes
+# into the publish CI secret. `just secure-boot-keygen test` makes a
+# throwaway pair for local signing builds; never commit a test certificate.
+[group('dev')]
+secure-boot-keygen kind="release":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    key=files/boot-keys/private/secure-boot.key
+    cert=files/boot-keys/modules/linux-module-cert.crt
+    if [ -e "$key" ] || [ -e "$cert" ]; then
+        echo "Refusing to overwrite $key or $cert; move them aside first." >&2
+        exit 1
+    fi
+    case "{{kind}}" in
+        release) cn="Dakota Secure Boot Signing Key" ;;
+        test) cn="TEST Dakota Secure Boot Signing Key - do not ship" ;;
+        *) echo "kind must be release or test" >&2; exit 1 ;;
+    esac
+    conf="$(mktemp)"
+    trap 'rm -f "$conf"' EXIT
+    cat > "$conf" <<EOF
+    [req]
+    distinguished_name = dn
+    prompt = no
+    x509_extensions = ext
+    [dn]
+    O = Project Bluefin
+    OU = Dakota
+    CN = $cn
+    [ext]
+    basicConstraints = critical,CA:FALSE
+    keyUsage = digitalSignature
+    extendedKeyUsage = codeSigning
+    subjectKeyIdentifier = hash
+    authorityKeyIdentifier = keyid
+    EOF
+    (umask 077 && openssl req -x509 -new -quiet -config "$conf" -newkey rsa:4096 \
+        -sha256 -nodes -days 36500 -keyout "$key" -out "$cert")
+    chmod 644 "$cert"
+    openssl x509 -in "$cert" -noout -subject -enddate -fingerprint -sha256
+    echo "Private key: $key (never commit; store it as the DAKOTA_SECURE_BOOT_KEY secret)"
 
 # Update CI-managed source pins locally; never commit, push, or open a PR.
 [group('dev')]

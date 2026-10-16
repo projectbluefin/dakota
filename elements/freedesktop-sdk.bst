@@ -59,7 +59,7 @@ config:
     # not the Flatpak runtime, as its easy to bundle when needed.
     components/zenity.bst: gnome-build-meta.bst:void/zenity.bst
 
-    components/linux-module-cert.bst: gnome-build-meta.bst:gnomeos/linux-module-cert.bst
+    components/linux-module-cert.bst: core/linux-module-cert.bst
     components/_private/systemd-base.bst: gnome-build-meta.bst:core-deps/systemd-base.bst
     components/systemd.bst: gnome-build-meta.bst:core-deps/systemd.bst
     components/systemd-ukify.bst: gnome-build-meta.bst:core-deps/systemd-ukify.bst

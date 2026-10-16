@@ -139,6 +139,9 @@ def check_build_workflow(build: str, errors: list[str]) -> None:
         "Pull prebuilt artifacts from remote CAS": "explicit CAS pre-pull",
         "Push OCI artifact to remote CAS": "standalone artifact push",
         "buildstream-push.conf": "legacy push-only config",
+        # PR code controls the build and could exfiltrate the key.
+        "DAKOTA_SECURE_BOOT_KEY": "the Secure Boot signing key",
+        "BUILD_SECURE_BOOT_SIGNING": "Secure Boot signing",
     }
     for token, description in forbidden.items():
         if token in build:

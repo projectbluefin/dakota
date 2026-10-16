@@ -18,6 +18,7 @@ aliases:
   crates: https://static.crates.io/
   dbmx: https://dbmx.net/
   dotat: https://dotat.at/prog/
+  fedora_koji: https://kojipkgs.fedoraproject.org/packages/
   fedora_rpms: https://src.fedoraproject.org/rpms/
   ghostty_deps: https://deps.files.ghostty.org/
   ghostty_releases: https://release.files.ghostty.org/

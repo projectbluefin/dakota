@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+# Dakota Secure Boot setup.
+#
+#   dakota-secure-boot enroll   Install the shim chain on the ESP, add a
+#                               firmware boot entry, and queue the Dakota key
+#                               for MOK enrollment. Interactive.
+#   dakota-secure-boot update   Refresh the ESP copies from /usr when they
+#                               differ. No-op until enroll has run. Runs at
+#                               boot from dakota-secure-boot-update.service.
+#   dakota-secure-boot status   Show what is set up.
+#
+# Chain on the ESP: \EFI\dakota\shimx64.efi (Fedora, Microsoft-signed) ->
+# \EFI\dakota\grubx64.efi (our signed systemd-boot; shim launches that
+# name) -> the signed kernel. The same files go to \EFI\BOOT as the
+# removable-media fallback for firmware that loses its boot entries.
+#
+# fwupd also needs the shim: with Secure Boot on it starts its capsule
+# loader through \EFI\<dir>\shimx64.efi, where <dir> is fixed at build time
+# (gnome-build-meta builds fwupd with -Defi_os_dir=org.gnome.os). Normal
+# boots never use that copy.
+set -euo pipefail
+
+src=/usr/lib/dakota/secure-boot
+cert="$src/dakota-secure-boot.der"
+sdboot=/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed
+loader='\EFI\dakota\shimx64.efi'
+mok_password=dakota
+
+die() {
+    echo "error: $*" >&2
+    exit 1
+}
+
+need_root() {
+    [ "$(id -u)" -eq 0 ] || die "run as root"
+}
+
+esp_path() {
+    bootctl --print-esp-path 2>/dev/null || die "no EFI system partition found"
+}
+
+# Copy a file onto the ESP only when it differs, via a temporary name so an
+# interrupted write never leaves a truncated bootloader.
+put() {
+    local from="$1" to="$2"
+    if [ -f "$to" ] && cmp -s "$from" "$to"; then
+        return 1
+    fi
+    install -D -m 0644 "$from" "$to.new"
+    mv -f "$to.new" "$to"
+    echo "updated $to"
+}
+
+install_files() {
+    local esp="$1" changed=0
+    put "$src/shimx64.efi" "$esp/EFI/dakota/shimx64.efi" && changed=1
+    put "$src/mmx64.efi" "$esp/EFI/dakota/mmx64.efi" && changed=1
+    put "$sdboot" "$esp/EFI/dakota/grubx64.efi" && changed=1
+    # bootctl update leaves \EFI\BOOT\BOOTX64.EFI alone once it is not
+    # systemd-boot, so the shim fallback survives systemd-boot updates.
+    put "$src/shimx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI" && changed=1
+    put "$src/mmx64.efi" "$esp/EFI/BOOT/mmx64.efi" && changed=1
+    put "$sdboot" "$esp/EFI/BOOT/grubx64.efi" && changed=1
+    put "$src/shimx64.efi" "$esp/EFI/org.gnome.os/shimx64.efi" && changed=1
+    if [ "$changed" -eq 1 ]; then
+        sync -f "$esp/EFI"
+    fi
+}
+
+# Print the number of the firmware boot entry for our shim, if any.
+boot_entry() {
+    local line
+    while IFS= read -r line; do
+        if [[ ${line,,} == *'\efi\dakota\shimx64.efi'* && $line =~ ^Boot([0-9A-Fa-f]{4}) ]]; then
+            echo "${BASH_REMATCH[1]}"
+            return
+        fi
+    done < <(efibootmgr -v 2>/dev/null)
+}
+
+add_boot_entry() {
+    local esp="$1" dev disk part num order
+    num="$(boot_entry)"
+    if [ -z "$num" ]; then
+        # The ESP is often an automount; skip the autofs entry.
+        dev="$(findmnt -nro SOURCE -t vfat --mountpoint "$esp")"
+        [ -b "$dev" ] || die "cannot find the block device of $esp"
+        dev="$(readlink -f "$dev")"
+        disk="/dev/$(lsblk -no PKNAME "$dev")"
+        part="$(cat "/sys/class/block/$(basename "$dev")/partition")"
+        efibootmgr --quiet --create --disk "$disk" --part "$part" \
+            --label "Dakota" --loader "$loader"
+        num="$(boot_entry)"
+        [ -n "$num" ] || die "could not create the firmware boot entry"
+        echo "created firmware boot entry Boot$num (Dakota)"
+    fi
+    order="$(efibootmgr | sed -n 's/^BootOrder: //p')"
+    if [ "${order%%,*}" != "$num" ]; then
+        order="$(echo "$order" | tr ',' '\n' | { grep -v -x -i "$num" || true; } | paste -sd, -)"
+        efibootmgr --quiet --bootorder "$num${order:+,$order}"
+        echo "Boot$num is now first in the boot order"
+    fi
+}
+
+# mokutil's exit codes vary by command, so match its messages instead.
+# --ignore-keyring: the kernel already has this certificate built in, and
+# without the flag mokutil treats that as enrolled and skips the import.
+key_enrolled() {
+    [[ $(mokutil --ignore-keyring --test-key "$cert" 2>&1 || true) == *"already enrolled"* ]]
+}
+
+key_pending() {
+    [[ -n $(mokutil --list-new 2>/dev/null || true) ]]
+}
+
+sb_enabled() {
+    [[ $(mokutil --sb-state 2>&1 || true) == *"SecureBoot enabled"* ]]
+}
+
+cmd_status() {
+    # The ESP is only readable by root; checking it unprivileged would
+    # report the shim as missing.
+    need_root
+    local esp
+    esp="$(esp_path)"
+    echo "Secure Boot:     $(mokutil --sb-state 2>/dev/null | head -n1)"
+    if [ -f "$esp/EFI/dakota/shimx64.efi" ]; then
+        echo "Shim on ESP:     $esp/EFI/dakota"
+    else
+        echo "Shim on ESP:     not installed"
+    fi
+    if [ -n "$(boot_entry)" ]; then
+        echo "Boot entry:      Boot$(boot_entry)"
+    else
+        echo "Boot entry:      missing"
+    fi
+    if key_enrolled; then
+        echo "Dakota key:      enrolled"
+    elif key_pending; then
+        echo "Dakota key:      pending, confirm it in MokManager on the next boot"
+    else
+        echo "Dakota key:      not enrolled"
+    fi
+    echo "Kernel lockdown: $(cat /sys/kernel/security/lockdown 2>/dev/null || echo unavailable)"
+}
+
+cmd_update() {
+    need_root
+    local esp
+    esp="$(esp_path)"
+    # Only maintain machines where enroll has set the chain up.
+    [ -f "$esp/EFI/dakota/shimx64.efi" ] || exit 0
+    install_files "$esp"
+}
+
+confirm() {
+    local reply
+    read -r -p "$1 [y/N] " reply
+    [[ "$reply" =~ ^[Yy]$ ]]
+}
+
+cmd_enroll() {
+    need_root
+    [ -d /sys/firmware/efi ] || die "this system did not boot with UEFI"
+    [ -t 0 ] || die "interactive terminal required"
+    for f in "$src/shimx64.efi" "$src/mmx64.efi" "$cert" "$sdboot"; do
+        [ -f "$f" ] || die "missing $f; this image is not signed for Secure Boot"
+    done
+    local esp
+    esp="$(esp_path)"
+
+    cat <<'EOF'
+This sets up Secure Boot for Dakota:
+
+  1. Installs Fedora's Microsoft-signed shim and Dakota's signed boot loader
+     on the EFI system partition and makes them the first boot entry.
+  2. Queues Dakota's signing key for enrollment.
+  3. On the next boot, a blue MokManager screen appears and waits for you.
+     Press a key, then choose "Enroll MOK", "Continue", "Yes", type the
+     password "dakota", and choose "Reboot".
+  4. Turn on Secure Boot in your firmware settings.
+
+Dakota's kernel already runs in lockdown mode: hibernation and kernel
+modules you build yourself do not work, with or without Secure Boot.
+EOF
+    if grep -q 'resume=' /proc/cmdline; then
+        echo
+        echo "Warning: this system has hibernation configured (resume=), which lockdown blocks."
+    fi
+    echo
+    confirm "Continue?" || exit 1
+
+    install_files "$esp"
+    add_boot_entry "$esp"
+
+    if key_enrolled; then
+        echo "Dakota's key is already enrolled."
+    else
+        # A fixed password is not weaker: whoever can run this as root can
+        # queue a key with any password. MokManager's confirmation at the
+        # console is what keeps malware from enrolling keys.
+        printf '%s\n%s\n' "$mok_password" "$mok_password" |
+            mokutil --ignore-keyring --import "$cert"
+        # MokManager otherwise continues the boot after 10 seconds without
+        # enrolling; wait for a keypress instead.
+        mokutil --timeout -1
+        echo "Queued Dakota's key. The MokManager password is: $mok_password"
+    fi
+
+    echo
+    if key_enrolled && sb_enabled; then
+        echo "Done: Secure Boot is on and Dakota's key is enrolled."
+    elif key_enrolled; then
+        echo "Done. Turn on Secure Boot in your firmware settings."
+    else
+        echo "Reboot now and finish the enrollment in MokManager with the password"
+        echo "\"$mok_password\", then turn on Secure Boot in your firmware settings."
+    fi
+}
+
+case "${1:-}" in
+    enroll) cmd_enroll ;;
+    update) cmd_update ;;
+    status) cmd_status ;;
+    *)
+        echo "usage: dakota-secure-boot enroll|update|status" >&2
+        exit 2
+        ;;
+esac

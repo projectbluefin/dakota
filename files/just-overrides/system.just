@@ -280,6 +280,21 @@ rebase-helper:
     sudo bootc switch "${TARGET}"
     reboot_prompt
 
+# Set up Secure Boot: install the signed boot chain and enroll Dakota's key
+[group('System')]
+enroll-secure-boot-key:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -x /usr/libexec/dakota-secure-boot ]; then
+        echo "This Dakota image is not signed for Secure Boot." >&2
+        exit 1
+    fi
+    if [ ! -t 0 ]; then
+        echo "Interactive terminal required" >&2
+        exit 1
+    fi
+    sudo /usr/libexec/dakota-secure-boot enroll
+
 # Show current kernel parameters and explain how to add persistent ones
 [group('System')]
 kargs:
