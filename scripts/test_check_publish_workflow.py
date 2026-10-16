@@ -86,7 +86,18 @@ class CheckPublishWorkflowTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_rejects_signing_key_in_pr_builds(self) -> None:
+    def test_rejects_signing_with_cas_pushes(self) -> None:
+        build = (REPOSITORY / ".github/workflows/build.yml").read_text()
+        pr_image = build[build.index("  pr-image:"):]
+        self.assertIn("enable-push: 'false'", pr_image)
+        result = self.mutate(
+            ".github/workflows/build.yml",
+            pr_image,
+            pr_image.replace("enable-push: 'false'", "enable-push: 'true'", 1),
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_signing_key_in_build_job(self) -> None:
         result = self.mutate(
             ".github/workflows/build.yml",
             "      max-parallel: 4\n",

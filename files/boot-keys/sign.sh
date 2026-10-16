@@ -11,7 +11,7 @@ key=private/secure-boot.key
 cert=modules/linux-module-cert.crt
 
 if [ ! -s "$key" ]; then
-    echo "FATAL: no signing key at $key; only publish CI provides it" >&2
+    echo "FATAL: no signing key at $key; CI writes it from DAKOTA_SECURE_BOOT_KEY" >&2
     exit 1
 fi
 if [ ! -s "$cert" ]; then

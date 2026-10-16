@@ -162,8 +162,8 @@ jobs:
           enable-remote-execution: 'false'
           enable-push: 'false'
 
-      # Secure Boot signing happens here and never in PR builds: PR code
-      # controls the build and could exfiltrate the key. The key is a
+      # Secure Boot signing happens here and in build.yml's pr-image job,
+      # never in a job that pushes to the CAS. The key is a
       # BuildStream local source, so this pass must stay local and push-free,
       # which the fetch-only config above guarantees. Everything except the
       # signing elements and the layers above them comes from the cache.

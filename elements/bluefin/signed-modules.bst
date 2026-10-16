@@ -7,8 +7,8 @@
 # The private key is a local source (files/boot-keys/private/secure-boot.key).
 # Build this only with no push remotes and no remote execution: pushed
 # sources, a failed build's cached buildtree, or remote execution inputs
-# would all upload the key to the CAS. Publish CI runs it as a local pass
-# after pulling everything else from the cache.
+# would all upload the key to the CAS. Publish and the pr-image job run it
+# as a local pass after pulling everything else from the cache.
 kind: manual
 
 build-depends:

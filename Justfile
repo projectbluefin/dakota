@@ -12,7 +12,7 @@ export image_tag := env("BUILD_IMAGE_TAG", "latest")
 # every bst invocation here; exported podman refs get a -gaming suffix
 # so builds don't collide.
 export gaming := env("BUILD_GAMING", "false")
-# Secure Boot signing: publish CI only, with the key in files/boot-keys/private/.
+# Secure Boot signing: CI (publish, PR images), with the key in files/boot-keys/private/.
 export secure_boot_signing := env("BUILD_SECURE_BOOT_SIGNING", "false")
 export base_dir := env("BUILD_BASE_DIR", ".")
 export filesystem := env("BUILD_FILESYSTEM", "btrfs")

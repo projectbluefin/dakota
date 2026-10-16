@@ -28,6 +28,6 @@ files/xattr-db/
 files/fakecap/fakecap-restore
 files/fakecap/fakecap.so
 
-# Secure Boot signing key, written by publish CI or just secure-boot-keygen
+# Secure Boot signing key, written by CI or just secure-boot-keygen
 files/boot-keys/private/*
 !files/boot-keys/private/.keep
