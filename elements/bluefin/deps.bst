@@ -89,6 +89,12 @@ depends:
   - gnome-build-meta.bst:gnomeos-deps/bpftop.bst
   - gnome-build-meta.bst:core/sysprof-app.bst
 
+  - bluefin/nicstat.bst
+  - bluefin/tiptop.bst
+  - bluefin/numactl.bst
+  - bluefin/sysstat.bst
+  - bluefin/trace-cmd.bst
+
   - bluefin/distrobox.bst
   - bluefin/nspawn.bst
   - gnome-build-meta.bst:gnomeos-deps/just.bst
