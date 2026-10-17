@@ -51,9 +51,18 @@ sign_modules() {
     echo "Signed $count kernel modules"
 }
 
+# Authenticode signatures carry a signing time. sbsign always stamps the
+# current time, so every CI run would produce a different vmlinuz and users
+# would download the kernel modules layer on every update. systemd-sbsign
+# takes the time from SOURCE_DATE_EPOCH instead. Pin it to the
+# certificate's notBefore rather than BuildStream's 2011 epoch: the
+# kernel's PKCS#7 verifier rejects signing times outside the certificate's
+# validity window.
 sign_efi() {
-    local input="$1" output="$2"
-    sbsign --key "$key" --cert "$cert" --output "$output" "$input"
+    local input="$1" output="$2" epoch
+    epoch="$(date -u -d "$(openssl x509 -in "$cert" -noout -startdate | cut -d= -f2)" +%s)"
+    SOURCE_DATE_EPOCH="$epoch" /usr/lib/systemd/systemd-sbsign sign \
+        --private-key="$key" --certificate="$cert" --output="$output" "$input"
     sbverify --cert "$cert" "$output"
 }
 
