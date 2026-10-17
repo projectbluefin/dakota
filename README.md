@@ -76,6 +76,20 @@ Assign yourself with `/assign`. See [docs/workflow.md](docs/workflow.md) for the
 sudo bootc switch ghcr.io/projectbluefin/dakota:testing
 ```
 
+## Secure Boot
+
+Dakota supports Secure Boot. It's optional and takes a few minutes to set up:
+
+1. Run `ujust enroll-secure-boot-key` and reboot.
+2. On the blue screen that appears, choose **Enroll MOK**, **Continue**, **Yes**, type the password `dakota`, then **Reboot**.
+3. Turn on Secure Boot in your firmware settings. Some laptops (Lenovo, Surface) also need an option like "Allow Microsoft 3rd party UEFI CA" turned on.
+
+Run `ujust secure-boot-status` to see what is set up, or `ujust check-anticheat` to see whether your system meets Easy Anti-Cheat's requirements.
+
+Whether or not you use Secure Boot, Dakota keeps the kernel locked down, so hibernation is not available (suspend works) and kernel modules you build yourself won't load.
+
+Secure Boot has always been on the roadmap, and the extra kernel protections also get Dakota ready for Epic's Easy Anti-Cheat for Linux v2 once it's available.
+
 ## ISO Download
 
 [dakota-live-latest.iso](https://projectbluefin.dev/dakota-live-latest.iso) · [Checksum](https://projectbluefin.dev/dakota-live-latest.iso-CHECKSUM)

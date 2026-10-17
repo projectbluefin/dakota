@@ -295,6 +295,28 @@ enroll-secure-boot-key:
     fi
     sudo /usr/libexec/dakota-secure-boot enroll
 
+# Show the Secure Boot setup: shim, boot entry, Dakota's key and lockdown
+[group('System')]
+secure-boot-status:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -x /usr/libexec/dakota-secure-boot ]; then
+        echo "This Dakota image is not signed for Secure Boot." >&2
+        exit 1
+    fi
+    sudo /usr/libexec/dakota-secure-boot status
+
+# Check whether this system meets Easy Anti-Cheat for Linux v2 requirements
+[group('System')]
+check-anticheat:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -x /usr/libexec/dakota-secure-boot ]; then
+        echo "This Dakota image is not signed for Secure Boot." >&2
+        exit 1
+    fi
+    /usr/libexec/dakota-secure-boot check
+
 # Show current kernel parameters and explain how to add persistent ones
 [group('System')]
 kargs:
