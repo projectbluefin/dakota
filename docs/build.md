@@ -207,20 +207,10 @@ modify the same Quick Settings controls.
 its icons/colors in tests. Common updates should carry presentation changes
 without a second sync step.
 
-The temporary `patches/common/0001-fastfetch-install-date.patch` changes only
-the date command to read the first-boot record. Drop it when common supports
-that record through a shared helper. `firstboot-date.bst` owns the runtime
-records, not the presentation; `nerd-fonts-symbols.bst` supplies icon fallback
-without changing the default text font. The existing booted-image helper patch
-in `common.bst` is separate and remains until common supports that record too.
-
-Run `just bst build bluefin/common.bst` to exercise the patch against the pinned
-source. A source rewrite that invalidates the patch must be reviewed, not
-worked around by restoring a local config. Check glyph rendering in a booted
-image.
-The common source import also does not supply `fastfetch-user-count` or
-`bazaar-install-count`; those weekly-statistics inputs remain a separate parity
-gap, not a reason to fork the config or invent counts.
+`firstboot-date.bst` owns the runtime records (install date, booted image ref)
+that common's config and `ublue-image-info.sh` read; `nerd-fonts-symbols.bst`
+supplies icon fallback without changing the default text font. Check glyph
+rendering in a booted image.
 
 ## Ghostty theme and configuration defaults
 
