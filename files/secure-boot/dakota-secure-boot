@@ -1,0 +1,488 @@
+#!/usr/bin/env bash
+# Dakota Secure Boot setup.
+#
+#   dakota-secure-boot enroll   Install the shim chain on the ESP, add a
+#                               firmware boot entry, and queue the Dakota key
+#                               for MOK enrollment. Interactive.
+#   dakota-secure-boot update   Refresh the ESP copies from /usr when they
+#                               differ. No-op until enroll has run. Runs at
+#                               boot from dakota-secure-boot-update.service.
+#   dakota-secure-boot status   Show what is set up.
+#   dakota-secure-boot check    Check Easy Anti-Cheat for Linux v2
+#                               requirements. Needs no root.
+#
+# Chain on the ESP: \EFI\dakota\shimx64.efi (Fedora, Microsoft-signed) ->
+# \EFI\dakota\grubx64.efi (our signed systemd-boot; shim launches that
+# name) -> the signed kernel. The same files go to \EFI\BOOT as the
+# removable-media fallback for firmware that loses its boot entries.
+#
+# fwupd also needs the shim: with Secure Boot on it starts its capsule
+# loader through \EFI\<dir>\shimx64.efi, where <dir> is fixed at build time
+# (gnome-build-meta builds fwupd with -Defi_os_dir=org.gnome.os). Normal
+# boots never use that copy.
+set -euo pipefail
+
+src=/usr/lib/dakota/secure-boot
+cert="$src/dakota-secure-boot.der"
+sdboot=/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed
+loader='\EFI\dakota\shimx64.efi'
+mok_password=dakota
+
+die() {
+    echo "error: $*" >&2
+    exit 1
+}
+
+need_root() {
+    [ "$(id -u)" -eq 0 ] || die "run as root"
+}
+
+loader_part_uuid_var=/sys/firmware/efi/efivars/LoaderDevicePartUUID-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f
+
+# Set esp to the mounted ESP. It is not always mounted:
+# systemd-gpt-auto-generator skips the automount on some installs (seen with
+# LUKS root), and bootc mounts it only while it writes boot entries. Then
+# mount the partition systemd-boot started from, for the rest of this run.
+esp=
+find_esp() {
+    if esp="$(bootctl --print-esp-path 2>/dev/null)"; then
+        return
+    fi
+    local uuid dev
+    [ -r "$loader_part_uuid_var" ] ||
+        die "no EFI system partition found: none is mounted and the boot loader did not report one"
+    # 4 bytes of attributes, then the UUID as UTF-16LE.
+    uuid="$(tail -c +5 "$loader_part_uuid_var" | tr -d '\0' | tr 'A-F' 'a-f')"
+    [[ $uuid =~ ^[0-9a-f-]{36}$ ]] || die "unexpected LoaderDevicePartUUID: $uuid"
+    dev="/dev/disk/by-partuuid/$uuid"
+    [ -b "$dev" ] || die "no EFI system partition found: $dev does not exist"
+    esp="$(mktemp -d /run/dakota-esp.XXXXXX)"
+    if ! mount -t vfat -o nodev,nosuid,noexec,umask=0077 "$dev" "$esp"; then
+        rmdir "$esp"
+        die "cannot mount the EFI system partition $dev"
+    fi
+    trap 'umount "$esp" && rmdir "$esp"' EXIT
+}
+
+# Copy a file onto the ESP only when it differs, via a temporary name so an
+# interrupted write never leaves a truncated bootloader.
+put() {
+    local from="$1" to="$2"
+    if [ -f "$to" ] && cmp -s "$from" "$to"; then
+        return 1
+    fi
+    install -D -m 0644 "$from" "$to.new"
+    mv -f "$to.new" "$to"
+    echo "updated $to"
+}
+
+install_files() {
+    local esp="$1" changed=0
+    put "$src/shimx64.efi" "$esp/EFI/dakota/shimx64.efi" && changed=1
+    put "$src/mmx64.efi" "$esp/EFI/dakota/mmx64.efi" && changed=1
+    put "$sdboot" "$esp/EFI/dakota/grubx64.efi" && changed=1
+    # bootctl update leaves \EFI\BOOT\BOOTX64.EFI alone once it is not
+    # systemd-boot, so the shim fallback survives systemd-boot updates.
+    put "$src/shimx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI" && changed=1
+    put "$src/mmx64.efi" "$esp/EFI/BOOT/mmx64.efi" && changed=1
+    put "$sdboot" "$esp/EFI/BOOT/grubx64.efi" && changed=1
+    put "$src/shimx64.efi" "$esp/EFI/org.gnome.os/shimx64.efi" && changed=1
+    if [ "$changed" -eq 1 ]; then
+        sync -f "$esp/EFI"
+    fi
+}
+
+# Print the number of the firmware boot entry for our shim, if any.
+boot_entry() {
+    local line
+    while IFS= read -r line; do
+        if [[ ${line,,} == *'\efi\dakota\shimx64.efi'* && $line =~ ^Boot([0-9A-Fa-f]{4}) ]]; then
+            echo "${BASH_REMATCH[1]}"
+            return
+        fi
+    done < <(efibootmgr -v 2>/dev/null)
+}
+
+add_boot_entry() {
+    local esp="$1" dev disk part num order
+    num="$(boot_entry)"
+    if [ -z "$num" ]; then
+        # The ESP is often an automount; skip the autofs entry.
+        dev="$(findmnt -nro SOURCE -t vfat --mountpoint "$esp")"
+        [ -b "$dev" ] || die "cannot find the block device of $esp"
+        dev="$(readlink -f "$dev")"
+        disk="/dev/$(lsblk -no PKNAME "$dev")"
+        part="$(cat "/sys/class/block/$(basename "$dev")/partition")"
+        efibootmgr --quiet --create --disk "$disk" --part "$part" \
+            --label "Dakota" --loader "$loader"
+        num="$(boot_entry)"
+        [ -n "$num" ] || die "could not create the firmware boot entry"
+        echo "created firmware boot entry Boot$num (Dakota)"
+    fi
+    order="$(efibootmgr | sed -n 's/^BootOrder: //p')"
+    if [ "${order%%,*}" != "$num" ]; then
+        order="$(echo "$order" | tr ',' '\n' | { grep -v -x -i "$num" || true; } | paste -sd, -)"
+        efibootmgr --quiet --bootorder "$num${order:+,$order}"
+        echo "Boot$num is now first in the boot order"
+    fi
+}
+
+# mokutil's exit codes vary by command, so match its messages instead.
+# --ignore-keyring: the kernel already has this certificate built in, and
+# without the flag mokutil treats that as enrolled and skips the import.
+key_enrolled() {
+    [[ $(mokutil --ignore-keyring --test-key "$cert" 2>&1 || true) == *"already enrolled"* ]]
+}
+
+key_pending() {
+    [[ -n $(mokutil --list-new 2>/dev/null || true) ]]
+}
+
+sb_enabled() {
+    [[ $(mokutil --sb-state 2>&1 || true) == *"SecureBoot enabled"* ]]
+}
+
+cmd_status() {
+    # The ESP is only readable by root; checking it unprivileged would
+    # report the shim as missing.
+    need_root
+    find_esp
+    echo "Secure Boot:     $(mokutil --sb-state 2>/dev/null | head -n1)"
+    if [ -f "$esp/EFI/dakota/shimx64.efi" ]; then
+        echo "Shim on ESP:     $esp/EFI/dakota"
+    else
+        echo "Shim on ESP:     not installed"
+    fi
+    if [ -n "$(boot_entry)" ]; then
+        echo "Boot entry:      Boot$(boot_entry)"
+    else
+        echo "Boot entry:      missing"
+    fi
+    if key_enrolled; then
+        echo "Dakota key:      enrolled"
+    elif key_pending; then
+        echo "Dakota key:      pending, confirm it in MokManager on the next boot"
+    else
+        echo "Dakota key:      not enrolled"
+    fi
+    echo "Kernel lockdown: $(cat /sys/kernel/security/lockdown 2>/dev/null || echo unavailable)"
+}
+
+cmd_update() {
+    need_root
+    find_esp
+    # Only maintain machines where enroll has set the chain up.
+    [ -f "$esp/EFI/dakota/shimx64.efi" ] || exit 0
+    install_files "$esp"
+}
+
+# Easy Anti-Cheat for Linux v2 requirements, checked the way Bazzite's
+# `ujust check-anticheat` does. EAC trusts kernels and MOKs signed by these
+# keys; Dakota's key is reported separately until Epic adds it.
+eac_requirements=https://onlineservices.epicgames.com/news/introducing-easy-anti-cheat-linux-v2
+well_known_keys='Canonical Ltd\. Master Certificate Authority|Fedora Secure Boot CA|Universal Blue|Debian Secure Boot CA|openSUSE Secure Boot CA|SUSE Linux Enterprise Secure Boot CA|Rocky Linux Secure Boot Root CA|Microsoft (Corporation )?UEFI CA|AlmaLinux Secure Boot CA'
+
+passed=0 failed=0 waiting=0
+if [ -t 1 ]; then
+    green=$'\e[1;32m' red=$'\e[1;31m' yellow=$'\e[1;33m' bold=$'\e[1m' normal=$'\e[0m'
+else
+    green='' red='' yellow='' bold='' normal=''
+fi
+report() {
+    local color="$1" label="$2" name="$3" detail="${4:-}"
+    printf '%s[%s]%s %s\n' "$color" "$label" "$normal" "$name"
+    [ -z "$detail" ] || printf '       %s\n' "$detail"
+}
+pass() { report "$green" PASS "$@"; passed=$((passed + 1)); }
+fail() { report "$red" FAIL "$@"; failed=$((failed + 1)); }
+wait_epic() { report "$yellow" WAIT "$@"; waiting=$((waiting + 1)); }
+
+sha256_of() {
+    openssl x509 -inform "$1" -in "$2" -noout -fingerprint -sha256 2>/dev/null
+}
+
+# Print the certificates of a PE binary's first Authenticode signature as
+# PEM. The signature is a WIN_CERTIFICATE (8-byte header, then PKCS#7)
+# that the optional header's security data directory points to.
+pe_signers() {
+    local f="$1" pe opt dir off len
+    u32() { od -An -tu4 -j "$1" -N4 "$f" | tr -d ' '; }
+    pe="$(u32 60)"
+    opt=$((pe + 24))
+    case "$(od -An -tu2 -j "$opt" -N2 "$f" | tr -d ' ')" in
+        523) dir=$((opt + 112)) ;; # PE32+
+        267) dir=$((opt + 96)) ;;  # PE32
+        *) return 1 ;;
+    esac
+    off="$(u32 $((dir + 32)))"
+    [ "$off" -gt 0 ] || return 0
+    len="$(u32 "$off")"
+    tail -c +$((off + 9)) "$f" | head -c $((len - 8)) |
+        openssl pkcs7 -inform DER -print_certs
+}
+
+check_kernel() {
+    local kernel signers subjects dakota=0 pem
+    kernel="/usr/lib/modules/$(uname -r)/vmlinuz"
+    if [ ! -r "$kernel" ]; then
+        fail "Signed kernel" "cannot read the running kernel at $kernel"
+        return
+    fi
+    if ! signers="$(pe_signers "$kernel" 2>/dev/null)"; then
+        fail "Signed kernel" "cannot read the signatures of $kernel"
+        return
+    fi
+    if [ -z "$signers" ]; then
+        fail "Signed kernel" "kernel $(uname -r) is not signed"
+        return
+    fi
+    subjects="$(grep -E '^(subject|issuer)=' <<<"$signers")"
+    pem="$(sed -n '/BEGIN CERT/,/END CERT/p' <<<"$signers" | sed '/END CERT/q')"
+    [ "$(sha256_of PEM /dev/stdin <<<"$pem")" = "$(sha256_of DER "$cert")" ] && dakota=1
+    if grep -Eq "$well_known_keys" <<<"$subjects"; then
+        pass "Signed kernel" "kernel $(uname -r) is signed by a well-known key"
+    elif [ "$dakota" -eq 1 ]; then
+        wait_epic "Signed kernel" "signed by Dakota's key, which Epic has not added to its well-known list yet"
+    else
+        fail "Signed kernel" "kernel $(uname -r) is signed by a key EAC does not know"
+    fi
+}
+
+check_modules() {
+    local mod unsigned=() count=0
+    while read -r mod _; do
+        count=$((count + 1))
+        [[ $(cat "/sys/module/$mod/taint" 2>/dev/null) == *E* ]] && unsigned+=("$mod")
+    done </proc/modules
+    if [ "${#unsigned[@]}" -gt 0 ]; then
+        fail "Signed kernel modules" "unsigned modules loaded: ${unsigned[*]}"
+    elif (($(cat /proc/sys/kernel/tainted) & 8192)); then
+        fail "Signed kernel modules" "an unsigned module was loaded during this boot; reboot to clear it"
+    else
+        pass "Signed kernel modules" "all $count loaded modules are signed"
+    fi
+}
+
+check_tpm() {
+    if [ "$(cat /sys/class/tpm/tpm0/tpm_version_major 2>/dev/null)" = 2 ]; then
+        pass "TPM 2.0"
+    elif [ -e /sys/class/tpm/tpm0 ]; then
+        fail "TPM 2.0" "this TPM is not version 2.0"
+    else
+        fail "TPM 2.0" "no TPM found; turn it on in your firmware settings (often called fTPM, PTT or Security Device)"
+    fi
+}
+
+check_secure_boot() {
+    local state
+    state="$(mokutil --sb-state 2>&1 || true)"
+    if [[ $state == *"SecureBoot enabled"* && $state != *"validation is disabled"* ]]; then
+        pass "Secure Boot enabled"
+    else
+        fail "Secure Boot enabled" "turn on Secure Boot in your firmware settings (mokutil says: ${state//$'\n'/ })"
+    fi
+}
+
+check_moks() {
+    local dir err der subject unknown=() dakota=0
+    dir="$(mktemp -d)"
+    # mokutil exits 0 when no keys are enrolled, and nonzero only when it
+    # cannot read them.
+    if ! err="$(cd "$dir" && mokutil --export 2>&1 >/dev/null)"; then
+        rm -rf "$dir"
+        fail "Only well-known Machine Owner Keys" "cannot read the enrolled keys (mokutil says: ${err//$'\n'/ })"
+        return
+    fi
+    for der in "$dir"/MOK-*.der; do
+        [ -e "$der" ] || continue
+        if cmp -s "$der" "$cert"; then
+            dakota=1
+            continue
+        fi
+        subject="$(openssl x509 -inform DER -in "$der" -noout -subject -issuer 2>/dev/null)"
+        grep -Eq "$well_known_keys" <<<"$subject" ||
+            unknown+=("'$(sed -n 's/^subject=.*CN *= *\([^,]*\).*/\1/p' <<<"$subject")'")
+    done
+    rm -rf "$dir"
+    if [ "${#unknown[@]}" -gt 0 ]; then
+        fail "Only well-known Machine Owner Keys" "not well-known: ${unknown[*]}; remove them with 'sudo mokutil --delete <file>' after 'mokutil --export'"
+    elif [ "$dakota" -eq 1 ]; then
+        wait_epic "Only well-known Machine Owner Keys" "Dakota's key is enrolled, and Epic has not added it to its well-known list yet"
+    else
+        pass "Only well-known Machine Owner Keys"
+    fi
+}
+
+# Boot managers measure into PCRs 8 and 9 (GRUB) or 11 and 12 (systemd-boot
+# and systemd-stub). These PCRs start at zero, so any other value means
+# something was measured into them.
+check_measured_boot() {
+    local pcrs=/sys/class/tpm/tpm0/pcr-sha256 pcr value
+    if [ ! -d "$pcrs" ]; then
+        fail "Measured boot" "no TPM boot measurements found"
+        return
+    fi
+    for pcr in 8 9 11 12; do
+        value="$(cat "$pcrs/$pcr" 2>/dev/null)" || continue
+        if [[ $value =~ [1-9A-Fa-f] ]]; then
+            pass "Measured boot" "the boot manager recorded its measurements"
+            return
+        fi
+    done
+    fail "Measured boot" "the firmware measured the boot, but the boot manager did not"
+}
+
+check_iommu() {
+    local arg passthrough='' cmdline handheld=0 vendor chassis
+    read -ra cmdline </proc/cmdline
+    for arg in "${cmdline[@]}"; do
+        case "$arg" in
+            iommu=pt | iommu=off | iommu.passthrough=1 | amd_iommu=pt | amd_iommu=off | intel_iommu=off) passthrough="$arg" ;;
+        esac
+    done
+    vendor="$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || true)"
+    chassis="$(cat /sys/class/dmi/id/chassis_type 2>/dev/null || true)"
+    # SMBIOS chassis types 30-32 (tablet, convertible, detachable) are how
+    # handhelds report themselves.
+    [[ $vendor == Valve || $chassis =~ ^3[012]$ ]] && handheld=1
+    if compgen -G '/sys/class/iommu/*' >/dev/null && [ -z "$passthrough" ]; then
+        pass "IOMMU enabled, passthrough disabled"
+    elif [ "$handheld" -eq 1 ]; then
+        pass "IOMMU enabled, passthrough disabled" "not required on handhelds"
+    elif [ -n "$passthrough" ]; then
+        fail "IOMMU enabled, passthrough disabled" "remove the $passthrough kernel argument (see 'ujust kargs')"
+    elif grep -q GenuineIntel /proc/cpuinfo; then
+        fail "IOMMU enabled, passthrough disabled" "turn on VT-d in your firmware settings"
+    else
+        fail "IOMMU enabled, passthrough disabled" "turn on IOMMU (AMD-Vi) in your firmware settings"
+    fi
+}
+
+check_lockdown() {
+    local mode
+    mode="$(sed -n 's/.*\[\(.*\)\].*/\1/p' /sys/kernel/security/lockdown 2>/dev/null || true)"
+    if [[ $mode == integrity || $mode == confidentiality ]]; then
+        pass "Kernel lockdown" "mode is '$mode'"
+    else
+        fail "Kernel lockdown" "mode is '${mode:-unavailable}'; Dakota sets lockdown=integrity, so check 'ujust kargs' for an override"
+    fi
+}
+
+check_kexec() {
+    # No sysctl means the kernel was built without kexec.
+    if [ "$(cat /proc/sys/kernel/kexec_load_disabled 2>/dev/null || echo 1)" = 1 ]; then
+        pass "Kexec disabled"
+    else
+        fail "Kexec disabled" "kernel.kexec_load_disabled is 0"
+    fi
+}
+
+check_bpf_lsm() {
+    local lsms
+    lsms="$(cat /sys/kernel/security/lsm 2>/dev/null || true)"
+    if [[ ,$lsms, == *,bpf,* ]]; then
+        pass "BPF LSM active"
+    else
+        fail "BPF LSM active" "active LSMs: ${lsms:-unknown}"
+    fi
+}
+
+cmd_check() {
+    echo "${bold}Easy Anti-Cheat for Linux v2 readiness${normal}"
+    echo "Requirements: $eac_requirements"
+    echo
+    check_kernel
+    check_modules
+    check_tpm
+    check_secure_boot
+    check_moks
+    check_measured_boot
+    check_iommu
+    check_lockdown
+    check_kexec
+    check_bpf_lsm
+    echo
+    local total=$((passed + failed + waiting))
+    if [ "$failed" -gt 0 ]; then
+        echo "${red}$failed of $total checks failed.${normal} Fix the items above, reboot, and run this again."
+    elif [ "$waiting" -gt 0 ]; then
+        echo "${yellow}$passed of $total checks passed.${normal} The rest wait on Epic adding Dakota's key."
+    else
+        echo "${green}All $total checks passed.${normal}"
+    fi
+}
+
+confirm() {
+    local reply
+    read -r -p "$1 [y/N] " reply
+    [[ "$reply" =~ ^[Yy]$ ]]
+}
+
+cmd_enroll() {
+    need_root
+    [ -d /sys/firmware/efi ] || die "this system did not boot with UEFI"
+    [ -t 0 ] || die "interactive terminal required"
+    for f in "$src/shimx64.efi" "$src/mmx64.efi" "$cert" "$sdboot"; do
+        [ -f "$f" ] || die "missing $f; this image is not signed for Secure Boot"
+    done
+    find_esp
+
+    cat <<'EOF'
+This sets up Secure Boot for Dakota:
+
+  1. Installs Fedora's Microsoft-signed shim and Dakota's signed boot loader
+     on the EFI system partition and makes them the first boot entry.
+  2. Queues Dakota's signing key for enrollment.
+  3. On the next boot, a blue MokManager screen appears and waits for you.
+     Press a key, then choose "Enroll MOK", "Continue", "Yes", type the
+     password "dakota", and choose "Reboot".
+  4. Turn on Secure Boot in your firmware settings.
+
+Dakota's kernel already runs in lockdown mode: hibernation and kernel
+modules you build yourself do not work, with or without Secure Boot.
+EOF
+    if grep -q 'resume=' /proc/cmdline; then
+        echo
+        echo "Warning: this system has hibernation configured (resume=), which lockdown blocks."
+    fi
+    echo
+    confirm "Continue?" || exit 1
+
+    install_files "$esp"
+    add_boot_entry "$esp"
+
+    if key_enrolled; then
+        echo "Dakota's key is already enrolled."
+    else
+        # A fixed password is not weaker: whoever can run this as root can
+        # queue a key with any password. MokManager's confirmation at the
+        # console is what keeps malware from enrolling keys.
+        printf '%s\n%s\n' "$mok_password" "$mok_password" |
+            mokutil --ignore-keyring --import "$cert"
+        # MokManager otherwise continues the boot after 10 seconds without
+        # enrolling; wait for a keypress instead.
+        mokutil --timeout -1
+        echo "Queued Dakota's key. The MokManager password is: $mok_password"
+    fi
+
+    echo
+    if key_enrolled && sb_enabled; then
+        echo "Done: Secure Boot is on and Dakota's key is enrolled."
+    elif key_enrolled; then
+        echo "Done. Turn on Secure Boot in your firmware settings."
+    else
+        echo "Reboot now and finish the enrollment in MokManager with the password"
+        echo "\"$mok_password\", then turn on Secure Boot in your firmware settings."
+    fi
+}
+
+case "${1:-}" in
+    enroll) cmd_enroll ;;
+    update) cmd_update ;;
+    status) cmd_status ;;
+    check) cmd_check ;;
+    *)
+        echo "usage: dakota-secure-boot enroll|update|status|check" >&2
+        exit 2
+        ;;
+esac

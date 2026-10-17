@@ -266,15 +266,52 @@ jobs:
           enable-remote-execution: 'false'
           enable-push: 'false'
 
+      # PR images are Secure Boot signed so testers keep Secure Boot on.
+      # Only same-repo branches with the build label reach this job. The key
+      # is a BuildStream local source, so this pass must stay local and
+      # push-free like publish's: the fetch config above disables remote
+      # execution and pushes. Never sign in the build job, which pushes.
+      - name: Write Secure Boot signing key
+        env:
+          DAKOTA_SECURE_BOOT_KEY: ${{ secrets.DAKOTA_SECURE_BOOT_KEY }}
+        run: |
+          if [ -z "$DAKOTA_SECURE_BOOT_KEY" ]; then
+            echo "::error::DAKOTA_SECURE_BOOT_KEY is not configured"
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$DAKOTA_SECURE_BOOT_KEY" > files/boot-keys/private/secure-boot.key
+
+      - name: Sign boot chain and compose image
+        env:
+          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
+          BUILD_GAMING: ${{ matrix.gaming || 'false' }}
+          BUILD_SECURE_BOOT_SIGNING: 'true'
+          VARIANT: ${{ matrix.export_variant || matrix.variant }}
+        run: |
+          case "$VARIANT" in
+            default) element=oci/bluefin.bst ;;
+            nvidia) element=oci/bluefin-nvidia.bst ;;
+            *) echo "::error::unknown variant $VARIANT"; exit 1 ;;
+          esac
+          just bst build "$element"
+
+      # The key stays until export: the signed elements' cache keys include
+      # it, so checkout cannot find their artifacts without it.
       - name: Export OCI image from BuildStream
         env:
           BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
           BUILD_GAMING: ${{ matrix.gaming || 'false' }}
+          BUILD_SECURE_BOOT_SIGNING: 'true'
           OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}
           OCI_IMAGE_REVISION: ${{ github.event.pull_request.head.sha }}
           OCI_IMAGE_VERSION: ${{ env.PR_TAG }}
         run: just export ${{ matrix.export_variant || matrix.variant }}
+
+      - name: Remove Secure Boot signing key
+        if: always()
+        run: rm -f files/boot-keys/private/secure-boot.key
 
       - name: Chunkify image layers
         env:

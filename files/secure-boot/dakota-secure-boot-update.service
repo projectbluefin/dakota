@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh the Dakota Secure Boot chain on the EFI system partition
+Documentation=man:bootctl(1)
+After=local-fs.target
+ConditionFirmware=uefi
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/dakota-secure-boot update
+
+[Install]
+WantedBy=multi-user.target

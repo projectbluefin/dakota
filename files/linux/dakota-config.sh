@@ -31,6 +31,13 @@ module USB_UAS
 # Allow cgroup disk-rate limits without imposing any limits by default.
 enable BLK_DEV_THROTTLING
 
+# Turn the Intel IOMMU on by default; AMD's already is. DMA stays
+# translated (no IOMMU_DEFAULT_PASSTHROUGH), which Epic's Easy Anti-Cheat
+# requires alongside an active IOMMU.
+if has INTEL_IOMMU; then
+  enable INTEL_IOMMU_DEFAULT_ON
+fi
+
 # The OGC fragment requests the timer trigger, but olddefconfig drops it
 # unless IIO_SW_TRIGGER is enabled. Register both as expected capabilities
 # on both kernels; these modules do not create or activate a sensor trigger.

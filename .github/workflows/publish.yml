@@ -86,7 +86,8 @@ jobs:
           fi
 
   # ── Export, sign, attest ─────────────────────────────────────────────────
-  # Pulls artifact from remote CAS, pushes :$sha, signs and attests.
+  # Pulls artifacts from remote CAS, signs the boot chain locally, pushes
+  # :$sha, signs and attests.
   # SBOM generation is split to a separate job (publish-sbom) so it runs
   # in parallel with promote rather than blocking it.
   publish-image:
@@ -151,7 +152,7 @@ jobs:
           native-overlay: true
           install-tools: '["just"]'
 
-      # Fetch-only BST config — pull artifact from remote CAS, no build/push
+      # Read-only BST config: pull from remote CAS, build locally, never push
       - name: Generate BST fetch config
         env:
           CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
@@ -161,16 +162,46 @@ jobs:
           enable-remote-execution: 'false'
           enable-push: 'false'
 
+      # Secure Boot signing happens here and in build.yml's pr-image job,
+      # never in a job that pushes to the CAS. The key is a
+      # BuildStream local source, so this pass must stay local and push-free,
+      # which the fetch-only config above guarantees. Everything except the
+      # signing elements and the layers above them comes from the cache.
+      - name: Write Secure Boot signing key
+        env:
+          DAKOTA_SECURE_BOOT_KEY: ${{ secrets.DAKOTA_SECURE_BOOT_KEY }}
+        run: |
+          if [ -z "$DAKOTA_SECURE_BOOT_KEY" ]; then
+            echo "::error::DAKOTA_SECURE_BOOT_KEY is not configured"
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$DAKOTA_SECURE_BOOT_KEY" > files/boot-keys/private/secure-boot.key
+
+      - name: Sign boot chain and compose image
+        env:
+          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
+          BUILD_GAMING: ${{ matrix.gaming || 'false' }}
+          BUILD_SECURE_BOOT_SIGNING: 'true'
+        run: just bst build ${{ matrix.element }}
+
+      # The key stays until export: the signed elements' cache keys include
+      # it, so checkout cannot find their artifacts without it.
       - name: Export OCI image from BuildStream
         id: export
         env:
           BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
           BUILD_GAMING: ${{ matrix.gaming || 'false' }}
+          BUILD_SECURE_BOOT_SIGNING: 'true'
           OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}
           OCI_IMAGE_REVISION: ${{ needs.setup.outputs.sha }}
           OCI_IMAGE_VERSION: latest
         run: just export ${{ matrix.export_variant || matrix.variant }}
+
+      - name: Remove Secure Boot signing key
+        if: always()
+        run: rm -f files/boot-keys/private/secure-boot.key
 
       - name: Chunkify image layers
         # Use the repository's compiled fakecap helper. The shared chunka action

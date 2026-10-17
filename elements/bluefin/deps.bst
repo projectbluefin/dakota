@@ -33,6 +33,7 @@ depends:
   - bluefin/user-avatars.bst
   - bluefin/just-overrides.bst
   - bluefin/zswap-config.bst
+  - bluefin/kexec-disable.bst
   - bluefin/swapfile.bst
   - bluefin/firstboot-date.bst
   - bluefin/firstboot-services.bst
@@ -104,3 +105,7 @@ depends:
     depends:
       (>):
       - bluefin/intel-media-driver.bst
+- secure_boot_signing == true:
+    depends:
+      (>):
+      - bluefin/secure-boot.bst
