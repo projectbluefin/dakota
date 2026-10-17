@@ -35,8 +35,31 @@ need_root() {
     [ "$(id -u)" -eq 0 ] || die "run as root"
 }
 
-esp_path() {
-    bootctl --print-esp-path 2>/dev/null || die "no EFI system partition found"
+loader_part_uuid_var=/sys/firmware/efi/efivars/LoaderDevicePartUUID-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f
+
+# Set esp to the mounted ESP. It is not always mounted:
+# systemd-gpt-auto-generator skips the automount on some installs (seen with
+# LUKS root), and bootc mounts it only while it writes boot entries. Then
+# mount the partition systemd-boot started from, for the rest of this run.
+esp=
+find_esp() {
+    if esp="$(bootctl --print-esp-path 2>/dev/null)"; then
+        return
+    fi
+    local uuid dev
+    [ -r "$loader_part_uuid_var" ] ||
+        die "no EFI system partition found: none is mounted and the boot loader did not report one"
+    # 4 bytes of attributes, then the UUID as UTF-16LE.
+    uuid="$(tail -c +5 "$loader_part_uuid_var" | tr -d '\0' | tr 'A-F' 'a-f')"
+    [[ $uuid =~ ^[0-9a-f-]{36}$ ]] || die "unexpected LoaderDevicePartUUID: $uuid"
+    dev="/dev/disk/by-partuuid/$uuid"
+    [ -b "$dev" ] || die "no EFI system partition found: $dev does not exist"
+    esp="$(mktemp -d /run/dakota-esp.XXXXXX)"
+    if ! mount -t vfat -o nodev,nosuid,noexec,umask=0077 "$dev" "$esp"; then
+        rmdir "$esp"
+        die "cannot mount the EFI system partition $dev"
+    fi
+    trap 'umount "$esp" && rmdir "$esp"' EXIT
 }
 
 # Copy a file onto the ESP only when it differs, via a temporary name so an
@@ -121,8 +144,7 @@ cmd_status() {
     # The ESP is only readable by root; checking it unprivileged would
     # report the shim as missing.
     need_root
-    local esp
-    esp="$(esp_path)"
+    find_esp
     echo "Secure Boot:     $(mokutil --sb-state 2>/dev/null | head -n1)"
     if [ -f "$esp/EFI/dakota/shimx64.efi" ]; then
         echo "Shim on ESP:     $esp/EFI/dakota"
@@ -146,8 +168,7 @@ cmd_status() {
 
 cmd_update() {
     need_root
-    local esp
-    esp="$(esp_path)"
+    find_esp
     # Only maintain machines where enroll has set the chain up.
     [ -f "$esp/EFI/dakota/shimx64.efi" ] || exit 0
     install_files "$esp"
@@ -166,8 +187,7 @@ cmd_enroll() {
     for f in "$src/shimx64.efi" "$src/mmx64.efi" "$cert" "$sdboot"; do
         [ -f "$f" ] || die "missing $f; this image is not signed for Secure Boot"
     done
-    local esp
-    esp="$(esp_path)"
+    find_esp
 
     cat <<'EOF'
 This sets up Secure Boot for Dakota:
