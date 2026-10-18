@@ -317,6 +317,17 @@ check-anticheat:
     fi
     /usr/libexec/dakota-secure-boot check
 
+# Seal TPM disk unlock to the current boot state, after firmware or Secure Boot changes
+[group('System')]
+reseal-tpm-unlock:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -x /usr/libexec/dakota-secure-boot ]; then
+        echo "This Dakota image is not signed for Secure Boot." >&2
+        exit 1
+    fi
+    sudo /usr/libexec/dakota-secure-boot reseal
+
 # Show current kernel parameters and explain how to add persistent ones
 [group('System')]
 kargs:

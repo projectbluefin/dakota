@@ -10,6 +10,9 @@
 #   dakota-secure-boot status   Show what is set up.
 #   dakota-secure-boot check    Check Easy Anti-Cheat for Linux v2
 #                               requirements. Needs no root.
+#   dakota-secure-boot reseal   Seal TPM disk unlock to the current boot
+#                               state. Interactive when the TPM no longer
+#                               unlocks the disk.
 #
 # Chain on the ESP: \EFI\dakota\shimx64.efi (Fedora, Microsoft-signed) ->
 # \EFI\dakota\grubx64.efi (our signed systemd-boot; shim launches that
@@ -142,6 +145,139 @@ sb_enabled() {
     [[ $(mokutil --sb-state 2>&1 || true) == *"SecureBoot enabled"* ]]
 }
 
+# TPM disk unlock. The installer seals the LUKS key to PCR 7, which records
+# the Secure Boot state and the keys that verified the boot, so turning on
+# Secure Boot makes the disk ask for its passphrase. Like suspending
+# BitLocker, enroll adds a TPM2 key bound to no PCRs for the switch-over;
+# the boot service seals to the new state on the first boot with Secure
+# Boot on and removes it. With Secure Boot off, PCR 7 is the same whatever
+# boots, so the unbound key gives little away.
+tpm_state=/var/lib/dakota-secure-boot/tpm-reseal
+# Boots to wait for Secure Boot before removing the unbound key again.
+tpm_grace_boots=5
+
+# The PCRs of a LUKS2 volume's only TPM2 key, joined with "+", when that
+# key is sealed to plain PCR values. Keys with a PIN, a signed PCR policy
+# or a pcrlock policy are left alone.
+tpm_plain_pcrs() {
+    cryptsetup luksDump --dump-json-metadata "$1" 2>/dev/null | jq -r '
+        [.tokens[] | select(.type == "systemd-tpm2")]
+        | select(length == 1) | .[0]
+        | select((.["tpm2-pcrs"] | length) > 0
+            and (.["tpm2-pin"] // false) == false
+            and .tpm2_pubkey == null
+            and (.tpm2_pcrlock // false) == false)
+        | .["tpm2-pcrs"] | map(tostring) | join("+")' 2>/dev/null
+}
+
+# Comma-separated key slots of a volume's TPM2 keys bound to nothing (no
+# PCRs, PIN or policy): the kind tpm_suspend adds.
+tpm_unbound_slots() {
+    cryptsetup luksDump --dump-json-metadata "$1" 2>/dev/null | jq -r '
+        [.tokens[] | select(.type == "systemd-tpm2"
+            and (.["tpm2-pcrs"] | length) == 0
+            and (.["tpm2-pin"] // false) == false
+            and .tpm2_pubkey == null
+            and (.tpm2_pcrlock // false) == false)
+            | .keyslots[]] | join(",")' 2>/dev/null
+}
+
+luks_volumes() {
+    lsblk -nrpo PATH,FSTYPE | while read -r dev fstype; do
+        [ "$fstype" = crypto_LUKS ] && echo "$dev"
+    done
+}
+
+has_tpm_unlock() {
+    local dev
+    while read -r dev; do
+        [ -n "$(tpm_plain_pcrs "$dev")" ] && return 0
+    done < <(luks_volumes)
+    return 1
+}
+
+# Seal a TPM2 key to the current values of the given PCRs and remove every
+# other TPM2 key. Unlocks with whichever TPM2 key still matches; an
+# existing key with the same seal is kept instead of a new one.
+tpm_seal() {
+    systemd-cryptenroll --unlock-tpm2-device=auto --tpm2-device=auto \
+        --tpm2-pcrs="$2" --tpm2-pcrlock= --wipe-slot=tpm2 "$1"
+}
+
+tpm_suspend() {
+    local dev pcrs uuid
+    # Read volumes on fd 3, keeping stdin for systemd-cryptenroll.
+    while read -r dev <&3; do
+        pcrs="$(tpm_plain_pcrs "$dev")"
+        [ -n "$pcrs" ] || continue
+        uuid="$(cryptsetup luksUUID "$dev")"
+        mkdir -p "$tpm_state"
+        # Record the volume first, so the boot service removes the unbound
+        # key even if this run is interrupted.
+        echo "$pcrs 0" >"$tpm_state/$uuid"
+        if systemd-cryptenroll --unlock-tpm2-device=auto --tpm2-device=auto \
+            --tpm2-pcrs= --tpm2-pcrlock= "$dev" >/dev/null 2>&1; then
+            echo "TPM disk unlock for $dev keeps working while you switch"
+        else
+            rm -f "$tpm_state/$uuid"
+            echo "Warning: could not keep TPM disk unlock working for $dev. Once Secure Boot"
+            echo "is on, unlock it with its passphrase and run 'ujust reseal-tpm-unlock'."
+        fi
+    done 3< <(luks_volumes)
+}
+
+# Runs every boot from the update service.
+tpm_resume() {
+    local f uuid dev pcrs boots slots
+    for f in "$tpm_state"/*; do
+        [ -f "$f" ] || continue
+        uuid="${f##*/}"
+        dev="/dev/disk/by-uuid/$uuid"
+        # A detached drive keeps its unbound key until it is back.
+        [ -b "$dev" ] || continue
+        read -r pcrs boots <"$f"
+        boots=$((boots + 1))
+        if sb_enabled && key_enrolled && tpm_seal "$dev" "$pcrs"; then
+            rm -f "$f"
+            echo "sealed TPM disk unlock for $dev to Secure Boot"
+        elif [ "$boots" -ge "$tpm_grace_boots" ]; then
+            # Secure Boot never came on, so the original key still
+            # unlocks, or sealing kept failing and the disk will ask for
+            # its passphrase. Either way, stop leaving it unbound.
+            slots="$(tpm_unbound_slots "$dev")"
+            if [ -z "$slots" ] || systemd-cryptenroll --wipe-slot="$slots" "$dev"; then
+                rm -f "$f"
+                echo "removed the temporary TPM key from $dev after $boots boots" >&2
+            fi
+        else
+            echo "$pcrs $boots" >"$f"
+        fi
+    done
+}
+
+cmd_reseal() {
+    need_root
+    local dev pcrs found=0
+    # Read volumes on fd 3, keeping stdin for systemd-cryptenroll.
+    while read -r dev <&3; do
+        [ -n "$(tpm_unbound_slots "$dev")" ] ||
+            [ -n "$(tpm_plain_pcrs "$dev")" ] || continue
+        found=1
+        pcrs="$(cryptsetup luksDump --dump-json-metadata "$dev" | jq -r '
+            [.tokens[] | select(.type == "systemd-tpm2") | .["tpm2-pcrs"]
+                | select(length > 0)] | (.[0] // [7]) | map(tostring) | join("+")')"
+        if ! tpm_seal "$dev" "$pcrs" 2>/dev/null; then
+            [ -t 0 ] || die "the TPM no longer unlocks $dev; run this in a terminal"
+            echo "The TPM no longer unlocks $dev. Enter its passphrase or recovery key."
+            systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs="$pcrs" \
+                --tpm2-pcrlock= --wipe-slot=tpm2 "$dev"
+        fi
+        rm -f "$tpm_state/$(cryptsetup luksUUID "$dev")"
+        echo "sealed TPM disk unlock for $dev to the current boot state"
+    done 3< <(luks_volumes)
+    [ "$found" -eq 1 ] || echo "No disk unlocks with the TPM."
+}
+
 cmd_status() {
     # The ESP is only readable by root; checking it unprivileged would
     # report the shim as missing.
@@ -166,10 +302,14 @@ cmd_status() {
         echo "Dakota key:      not enrolled"
     fi
     echo "Kernel lockdown: $(cat /sys/kernel/security/lockdown 2>/dev/null || echo unavailable)"
+    if compgen -G "$tpm_state/*" >/dev/null; then
+        echo "TPM disk unlock: switching, seals on the first boot with Secure Boot on"
+    fi
 }
 
 cmd_update() {
     need_root
+    tpm_resume
     find_esp
     # Only maintain machines where enroll has set the chain up.
     [ -f "$esp/EFI/dakota/shimx64.efi" ] || exit 0
@@ -441,6 +581,12 @@ This sets up Secure Boot for Dakota:
 Dakota's kernel already runs in lockdown mode: hibernation and kernel
 modules you build yourself do not work, with or without Secure Boot.
 EOF
+    if has_tpm_unlock; then
+        echo
+        echo "Your disk unlocks with the TPM. Dakota keeps that working while you switch,"
+        echo "but make sure you know your disk passphrase before you continue: you need it"
+        echo "if anything goes wrong."
+    fi
     if grep -q 'resume=' /proc/cmdline; then
         echo
         echo "Warning: this system has hibernation configured (resume=), which lockdown blocks."
@@ -465,6 +611,10 @@ EOF
         echo "Queued Dakota's key. The MokManager password is: $mok_password"
     fi
 
+    if ! { key_enrolled && sb_enabled; }; then
+        tpm_suspend
+    fi
+
     echo
     if key_enrolled && sb_enabled; then
         echo "Done: Secure Boot is on and Dakota's key is enrolled."
@@ -481,8 +631,9 @@ case "${1:-}" in
     update) cmd_update ;;
     status) cmd_status ;;
     check) cmd_check ;;
+    reseal) cmd_reseal ;;
     *)
-        echo "usage: dakota-secure-boot enroll|update|status|check" >&2
+        echo "usage: dakota-secure-boot enroll|update|status|check|reseal" >&2
         exit 2
         ;;
 esac

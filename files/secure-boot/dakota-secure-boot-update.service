@@ -1,7 +1,8 @@
 [Unit]
 Description=Refresh the Dakota Secure Boot chain on the EFI system partition
 Documentation=man:bootctl(1)
-After=local-fs.target
+# tpm2.target: the update also re-seals TPM disk unlock after enrollment.
+After=local-fs.target tpm2.target
 ConditionFirmware=uefi
 
 [Service]

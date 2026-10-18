@@ -86,6 +86,8 @@ Dakota supports Secure Boot. It's optional and takes a few minutes to set up:
 
 Run `ujust secure-boot-status` to see what is set up, or `ujust check-anticheat` to see whether your system meets Easy Anti-Cheat's requirements.
 
+If your disk unlocks with the TPM, it keeps doing so through these steps. If a firmware update or a change to your Secure Boot settings later makes it ask for your disk passphrase, enter it and run `ujust reseal-tpm-unlock`.
+
 Whether or not you use Secure Boot, Dakota keeps the kernel locked down, so hibernation is not available (suspend works) and kernel modules you build yourself won't load.
 
 Secure Boot has always been on the roadmap, and the extra kernel protections also get Dakota ready for Epic's Easy Anti-Cheat for Linux v2 once it's available.
