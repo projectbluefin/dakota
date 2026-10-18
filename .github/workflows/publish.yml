@@ -93,7 +93,9 @@ jobs:
   publish-image:
     needs: setup
     runs-on: ubuntu-26.04
-    timeout-minutes: 90
+    # The signing pass rebuilds the image layers on the runner; nvidia-gaming
+    # needs about 95 minutes.
+    timeout-minutes: 180
     # Variant matrix: default and NVIDIA publish in parallel from the shared
     # BST artifact cache. NVIDIA is `continue-on-error: true` so its failure
     # does not block default publication.
