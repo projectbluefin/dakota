@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/common.git
   track: main
-  ref: v2026.08-308-gcb54fb9dfec1edad542d54ef7430a1dec8452435
+  ref: v2026.08-318-ga7088074382c18a788fd378363b41589835c01cc
 # Consume common's fastfetch layout directly; only adapt the install-date input.
 # Drop this patch once common provides a shared install-date helper.
 - kind: patch
@@ -36,7 +36,7 @@ sources:
 
 build-depends:
 - core/sandbox-tools.bst
-- gnome-build-meta.bst:gnomeos-deps/just.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/just.bst
 
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst

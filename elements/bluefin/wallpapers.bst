@@ -5,8 +5,8 @@ sources:
   #   url: github:ublue-os/artwork.git
   #   track: main
 - kind: tar
-  url: github_files:ublue-os/artwork/releases/download/bluefin-v2026-08-21/bluefin-wallpapers-gnome.tar.zstd
-  ref: b3c5332f28c06265aa39284c0e1fad5ec970860d06737ebae24072a17cb52bf4
+  url: github_files:ublue-os/artwork/releases/download/bluefin-v2026-10-12/bluefin-wallpapers-gnome.tar.zstd
+  ref: c6cd3fb5c6f14472b0ced070d2d9f5ac374197305feb81ab4026cae22d2d1eb5
   base-dir: ""
 
 build-depends:

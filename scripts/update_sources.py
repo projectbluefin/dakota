@@ -34,6 +34,7 @@ TRACKED = [
     ("bluefin/xdg-terminal-exec.bst", "xdg-terminal-exec", ""),
     ("bluefin/nautilus-python.bst", "nautilus-python", ""),
     ("gnomeos-deps/bootc.bst", "bootc", "review: core system component"),
+    ("core/dnsmasq.bst", "dnsmasq", "review: core system component"),
     ("bluefin/sudo-rs.bst", "sudo-rs", "review: core system component"),
     ("bluefin/uutils-coreutils.bst", "uutils-coreutils", "review: core system component"),
     # No release tags: every update is unreleased code.

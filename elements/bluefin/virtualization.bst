@@ -3,7 +3,7 @@ kind: stack
 depends:
 - bluefin/libvirt.bst
 - bluefin/virtiofsd.bst
-- gnome-build-meta.bst:core-deps/qemu.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/qemu.bst
 # sdl2-compat only build-depends on SDL3, but dlopens it when QEMU starts.
 # Keep this runtime dependency until the junction fixes sdl2-compat's closure.
 - freedesktop-sdk.bst:components/sdl3.bst

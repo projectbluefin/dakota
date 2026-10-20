@@ -73,7 +73,7 @@ class SelectionTests(unittest.TestCase):
 
     def test_matrix_preserves_review_notes_and_adds_oci_source(self):
         items = {x["element"]: x for x in updater.matrix()["include"]}
-        self.assertEqual(len(items), 20)
+        self.assertEqual(len(items), 21)
         for kernel, _, _ in updater.KERNELS:
             self.assertIn("NVIDIA build", items[kernel]["note"])
         self.assertIn("bluefin/brew-tarball.bst", items)

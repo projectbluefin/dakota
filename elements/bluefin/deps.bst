@@ -92,8 +92,8 @@ depends:
 
   - bluefin/distrobox.bst
   - bluefin/nspawn.bst
-  - gnome-build-meta.bst:gnomeos-deps/just.bst
-  - gnome-build-meta.bst:gnomeos-deps/wl-clipboard.bst
+  - gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/just.bst
+  - gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/wl-clipboard.bst
 
   - bluefin/bindmounts.bst
   - bluefin/migrate-var-home-passwd.bst

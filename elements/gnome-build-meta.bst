@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: gnome:gnome-build-meta.git
   track: gnome-51
-  ref: 51.0-10-g1808f094d469291bdd85cc92a1a08f07aac6f6a6
+  ref: 51.1-3-g24bd9e3394437b85fc204bf58ecd3d867d815f66
 - kind: patch_queue
   path: patches/gnome-build-meta
 
@@ -25,6 +25,9 @@ config:
     # Override to track bootc ahead of gnome-build-meta upstream (gnome-50 is at v1.12.1)
     # Remove when gnome-50 ships bootc >= v1.15.1 and files are identical
     gnomeos-deps/bootc.bst: gnomeos-deps/bootc.bst
+
+    # Install dnsmasq under %{prefix}; see the element for the exit condition
+    freedesktop-sdk-extra.bst:components/dnsmasq.bst: core/dnsmasq.bst
 
     gnomeos-deps/plymouth-gnome-theme.bst: bluefin/plymouth-bluefin-theme.bst
 
