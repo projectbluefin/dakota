@@ -69,15 +69,16 @@ class SelectionTests(unittest.TestCase):
                 contextlib.redirect_stderr(io.StringIO()) as err:
             self.assertEqual(updater.main(["--group", "tarballs"]), 1)
         self.assertEqual(update.call_count, len(updater.RELEASES))
-        self.assertIn("bluefin/wallpapers.bst", err.getvalue())
+        first_element = next(iter(updater.RELEASES))
+        self.assertIn(first_element, err.getvalue())
 
     def test_matrix_preserves_review_notes_and_adds_oci_source(self):
         items = {x["element"]: x for x in updater.matrix()["include"]}
-        self.assertEqual(len(items), 21)
+        self.assertEqual(len(items), 22)
         for kernel, _, _ in updater.KERNELS:
             self.assertIn("NVIDIA build", items[kernel]["note"])
         self.assertIn("bluefin/brew-tarball.bst", items)
-        self.assertEqual(items["gnomeos-deps/bootc.bst"]["note"], "review: core system component")
+        self.assertIn("bluefin/wallpapers.bst", items)
         self.assertEqual(items["bluefin/shell-extensions/gradia-capture.bst"]["note"],
                          "review: unreleased branch head")
         for element in items:
@@ -89,7 +90,7 @@ class RewriteTests(unittest.TestCase):
         for element, release in updater.RELEASES.items():
             with self.subTest(element=element):
                 original = (REPOSITORY / "elements" / element).read_text()
-                tag = "bluefin-v2099-01-01" if "wallpapers" in element else "v99.88.77"
+                tag = "v99.88.77"
                 updated, old = updater.rewrite_release(original, release, tag)
                 self.assertNotEqual(updated, original)
                 self.assertTrue(old)

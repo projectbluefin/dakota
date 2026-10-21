@@ -1,13 +1,16 @@
 kind: manual
 
 sources:
-  # - kind: git_repo
-  #   url: github:ublue-os/artwork.git
-  #   track: main
-- kind: tar
-  url: github_files:ublue-os/artwork/releases/download/bluefin-v2026-10-12/bluefin-wallpapers-gnome.tar.zstd
-  ref: c6cd3fb5c6f14472b0ced070d2d9f5ac374197305feb81ab4026cae22d2d1eb5
-  base-dir: ""
+# Docker source pins the per-architecture manifest digest from projectbluefin/artwork.
+# Multi-arch index: ghcr.io/projectbluefin/bluefin-wallpapers-gnome:v20261020
+- kind: docker
+  url: ghcr:projectbluefin/bluefin-wallpapers-gnome
+  track: latest
+  (?):
+  - arch == "x86_64":
+      ref: 4b5fae18598c79e9284dddc5f498234cbedf69db611cd6cdbc0867d9f92570be
+  - arch == "aarch64":
+      ref: 18637092c7c955a5d3fe58084ef0b7658a9a4903e03f2a944e6478f4825694a9
 
 build-depends:
 - core/sandbox-tools.bst
@@ -22,6 +25,6 @@ config:
   - |
     sed -i 's|~\/\.local\/share|\/usr\/share|' *.xml gnome-background-properties/*.xml
     mkdir -p "%{install-root}%{datadir}/backgrounds/bluefin"
-    cp -r *.jxl *.xml "%{install-root}%{datadir}/backgrounds/bluefin"
+    cp -r *.jxl *.svg *.xml "%{install-root}%{datadir}/backgrounds/bluefin"
     cp -r gnome-background-properties "%{install-root}%{datadir}/gnome-background-properties"
   - "%{install-extra}"

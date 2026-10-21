@@ -42,6 +42,7 @@ TRACKED = [
      "review: unreleased branch head"),
     # Despite its name this is a docker source, not a release tarball.
     ("bluefin/brew-tarball.bst", "brew-tarball", ""),
+    ("bluefin/wallpapers.bst", "wallpapers", ""),
 ]
 
 
@@ -67,10 +68,6 @@ class Release:
 
 
 RELEASES = {
-    "bluefin/wallpapers.bst": Release(
-        "ublue-os/artwork", r"download/(?P<version>[^/]+)/", "download/{tag}/",
-        query='[.[] | select(.tag_name | startswith("bluefin-"))][0].tag_name // empty',
-        endpoint="releases", tag_pattern=r"bluefin-[A-Za-z0-9._-]+"),
     "bluefin/gum.bst": Release(
         "charmbracelet/gum", r"download/(?P<version>v[0-9.]+)/gum_[0-9.]+_",
         "download/{tag}/gum_{version}_", x86_asset_suffix="_Linux_x86_64.tar.gz"),
@@ -180,9 +177,6 @@ def update_release(element: str, out: Path | None) -> None:
     else:
         tag = run("gh", "api", f"repos/{release.repo}/{release.endpoint}",
                   "--jq", release.query, capture=True)
-    if not tag and element == "bluefin/wallpapers.bst":
-        print("No bluefin wallpaper releases found, skipping.")
-        return
     path = ROOT / "elements" / element
     original = path.read_text()
     updated, old = rewrite_release(original, release, tag)
@@ -195,7 +189,7 @@ def update_release(element: str, out: Path | None) -> None:
         slug = Path(element).stem
         new = tag.removeprefix("v") if element == "bluefin/tailscale.bst" else tag
         links = f"[release](https://github.com/{release.repo}/releases/tag/{tag})"
-        if element != "bluefin/wallpapers.bst" and ", " not in old:
+        if ", " not in old:
             old_tag = f"v{old}" if element == "bluefin/tailscale.bst" else old
             links += f" · [compare](https://github.com/{release.repo}/compare/{old_tag}...{tag})"
         run(sys.executable, ".github/scripts/track_bundle.py", "record",
