@@ -6,15 +6,21 @@ config:
 
   install-commands:
   - install -Dm755 target/release/coreutils "%{install-root}/usr/bin/uutils-coreutils"
+  - install -Dm755 target/release/coreutils "%{install-root}/usr/lib/cargo/bin/coreutils/env"
   - |
     for prog in $(target/release/coreutils --list); do
-      ln -sr "%{install-root}/usr/bin/uutils-coreutils" "%{install-root}/usr/bin/uutils-${prog}"
+      binary="%{install-root}/usr/bin/uutils-coreutils"
+      # pkexec resolves symlinks; env must keep its applet name after resolution.
+      if [ "${prog}" = env ]; then
+        binary="%{install-root}/usr/lib/cargo/bin/coreutils/env"
+      fi
+      ln -sr "${binary}" "%{install-root}/usr/bin/uutils-${prog}"
       # kill and uptime belong to procps-ng, not coreutils; GNU coreutils
       # does not install them either. Leave procps as their only provider.
       case "${prog}" in
         kill|uptime) continue ;;
       esac
-      ln -sr "%{install-root}/usr/bin/uutils-coreutils" "%{install-root}/usr/bin/${prog}"
+      ln -sr "${binary}" "%{install-root}/usr/bin/${prog}"
     done
 
 public:

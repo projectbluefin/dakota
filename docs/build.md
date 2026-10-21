@@ -200,6 +200,25 @@ Shell version validation as proof of compatibility. Packaging checks do not
 replace a graphical-session test, particularly when multiple audio extensions
 modify the same Quick Settings controls.
 
+## Coreutils user-command launching
+
+`bluefin/uutils-coreutils.bst` installs a command-named `env` entry at
+`/usr/lib/cargo/bin/coreutils/env`. Both `/usr/bin/env` and `/usr/bin/uutils-env`
+must resolve there, not to the generic multicall name. `pkexec` canonicalizes
+the executable path, and Linux uutils uses the kernel-reported executable name
+for dispatch even when the original `argv[0]` is preserved. See
+[uutils executable-name selection](https://github.com/uutils/coreutils/blob/0.12.0/src/common/validation.rs#L112-L144).
+
+Run `UUTILS_COREUTILS=/path/to/uutils-coreutils python3 -m unittest scripts.test_uutils_env`
+to exercise the actual install commands and canonicalized execution of both
+entry points. The module skips when no real uutils binary is available.
+The command-named entry is a separate installed copy: the standard FDSDK
+stripper rejects multiply linked binaries. Do not disable stripping to retain
+hardlinks. After image export, inspect canonical paths and file representation;
+content deduplication is not assumed. Verify ordinary-user and actual `pkexec`
+execution under the deployed image's active security policy before treating
+the fix as booted-image proof.
+
 ## Fastfetch ownership
 
 `bluefin/common.bst` installs the fastfetch config and wrapper from its pinned
