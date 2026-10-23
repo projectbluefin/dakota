@@ -19,12 +19,11 @@
 
   "packageRules": [
     {
-      "description": "Automerge digest/pin/patch/minor when CI passes",
-      "matchUpdateTypes": ["digest", "pin", "patch", "minor"],
-      "automerge": true,
-      "automergeType": "pr",
-      "automergeStrategy": "squash",
-      "labels": ["chore/deps", "automerge"]
+      // Overrides the org preset's automerge rules (local rules apply last).
+      "description": "All updates wait for maintainer review; never automerge",
+      "matchPackageNames": ["*"],
+      "automerge": false,
+      "labels": ["chore/deps"]
     },
     {
       "description": "Pin all GitHub Actions to full SHA digests",
