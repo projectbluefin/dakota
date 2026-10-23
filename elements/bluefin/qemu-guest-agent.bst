@@ -1,14 +1,14 @@
 kind: manual
 description: |
   Systemd service, udev rules, and preset for QEMU Guest Agent (qemu-ga).
-  The binary is built and supplied by gnome-build-meta.bst:core-deps/qemu.bst.
+  The binary is built and supplied by gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/qemu.bst.
 
 build-depends:
 - core/sandbox-tools.bst
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 
 runtime-depends:
-- gnome-build-meta.bst:core-deps/qemu.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/qemu.bst
 
 variables:
   strip-binaries: ""

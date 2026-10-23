@@ -14,7 +14,7 @@ sources:
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-autotools.bst
-- gnome-build-meta.bst:core-deps/rpcsvc-proto.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/rpcsvc-proto.bst
 
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
