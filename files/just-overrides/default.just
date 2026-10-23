@@ -309,67 +309,6 @@ verify issue_number:
         echo "Or authenticate gh first: gh auth login"
     fi
 
-# Start an AI-assisted debug session backed by your live system.
-# Installs linux-mcp-server and configures Goose automatically.
-# Usage: ujust probe
-probe:
-    #!/usr/bin/bash
-    set -euo pipefail
-
-    echo ""
-    gum style \
-        --border rounded --border-foreground 99 \
-        --padding "1 3" --margin "0 1" \
-        --bold --foreground 212 \
-        "Bluespeed — AI Debug Session"
-    echo ""
-    gum style --foreground 245 --margin "0 2" \
-        "Your system is the context. Ask about logs, services, network, anything."
-    echo ""
-
-    # 1. Check goose is installed
-    if ! command -v goose &>/dev/null; then
-        gum style --foreground 214 --margin "0 2" \
-            "Goose is not installed."
-        gum style --foreground 245 --margin "0 4" \
-            "Install it first:  brew bundle --file=/usr/share/ublue-os/homebrew/ai-tools.Brewfile"
-        exit 1
-    fi
-
-    # 2. Install linux-mcp-server if missing
-    if ! command -v linux-mcp-server &>/dev/null; then
-        gum style --foreground 245 --margin "0 2" \
-            "Installing linux-mcp-server..."
-        brew install ublue-os/tap/linux-mcp-server
-    fi
-
-    # 3. Wire linux-tools into Goose config if not already present
-    GOOSE_CFG="${HOME}/.config/goose/config.yaml"
-    if ! grep -q "linux-tools" "$GOOSE_CFG" 2>/dev/null; then
-        gum style --foreground 245 --margin "0 2" \
-            "Configuring linux-mcp-server in Goose..."
-        goose-mcp-setup
-    fi
-
-    # 4. If no provider is configured, tell the user how to set one up
-    if ! grep -qE "^GOOSE_PROVIDER:|^GOOSE_MODEL:" "$GOOSE_CFG" 2>/dev/null; then
-        echo ""
-        gum style --foreground 214 --margin "0 2" \
-            "No LLM provider configured."
-        gum style --foreground 245 --margin "0 2" \
-            "Run  goose configure  to set one up, then re-run ujust probe."
-        gum style --foreground 245 --margin "0 2" \
-            "See docs.projectbluefin.io/troubleshooting for options."
-        exit 1
-    fi
-
-    # 5. Launch the session
-    echo ""
-    gum style --foreground 82 --margin "0 2" \
-        "Starting session..."
-    echo ""
-    goose session
-
 # Run a one minute system benchmark
 [group('System')]
 benchmark:
