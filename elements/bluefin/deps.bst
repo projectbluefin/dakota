@@ -65,6 +65,7 @@ depends:
   - bluefin/wireplumber-pcsp.bst
   - bluefin/alsa-utils.bst
   - bluefin/brlaser.bst
+  - bluefin/powertop.bst
   # - bluefin/lsp-plugins-lv2.bst
 
   # Include things missing from the gnomeos base image
