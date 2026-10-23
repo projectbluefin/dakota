@@ -100,6 +100,9 @@ depends:
   - bluefin/migrate-var-home-passwd.bst
 
   - gnome-build-meta.bst:gnomeos-deps/snapd.bst
+  - bluefin/open-vm-tools.bst
+  - bluefin/qemu-guest-agent.bst
+  - bluefin/hyperv-daemons.bst
 
 (?):
 - arch == "x86_64":
