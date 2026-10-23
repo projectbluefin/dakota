@@ -86,6 +86,27 @@ class CheckPublishWorkflowTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_rejects_signing_with_cas_pushes(self) -> None:
+        build = (REPOSITORY / ".github/workflows/build.yml").read_text()
+        pr_image = build[build.index("  pr-image:"):]
+        self.assertIn("enable-push: 'false'", pr_image)
+        result = self.mutate(
+            ".github/workflows/build.yml",
+            pr_image,
+            pr_image.replace("enable-push: 'false'", "enable-push: 'true'", 1),
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_signing_key_in_build_job(self) -> None:
+        result = self.mutate(
+            ".github/workflows/build.yml",
+            "      max-parallel: 4\n",
+            "      max-parallel: 4\n"
+            "    env:\n"
+            "      DAKOTA_SECURE_BOOT_KEY: ${{ secrets.DAKOTA_SECURE_BOOT_KEY }}\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_rejects_inline_variant_matrix_drift(self) -> None:
         result = self.mutate(
             ".github/workflows/publish.yml",

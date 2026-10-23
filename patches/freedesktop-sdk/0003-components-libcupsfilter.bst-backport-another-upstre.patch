@@ -1,0 +1,57 @@
+From 9237dacf37dd4276ff7e6884ed1dcd00afab3d7d Mon Sep 17 00:00:00 2001
+From: Valentin David <me@valentindavid.com>
+Date: Wed, 14 Oct 2026 21:53:34 +0200
+Subject: [PATCH 3/3] components/libcupsfilter.bst: backport another upstream
+ patch
+
+---
+ elements/components/libcupsfilters.bst        |  2 ++
+ .../libcupsfilters/close-output-stream.patch  | 26 +++++++++++++++++++
+ 2 files changed, 28 insertions(+)
+ create mode 100644 patches/libcupsfilters/close-output-stream.patch
+
+diff --git a/elements/components/libcupsfilters.bst b/elements/components/libcupsfilters.bst
+index 57952fced..38226dd8e 100644
+--- a/elements/components/libcupsfilters.bst
++++ b/elements/components/libcupsfilters.bst
+@@ -36,3 +36,5 @@ sources:
+   ref: 2.2.1-0-g2a00cf6aa4234e2e0ac91b9844ab8990d04c7089
+ - kind: patch
+   path: patches/libcupsfilters/missing-root-object.patch
++- kind: patch
++  path: patches/libcupsfilters/close-output-stream.patch
+diff --git a/patches/libcupsfilters/close-output-stream.patch b/patches/libcupsfilters/close-output-stream.patch
+new file mode 100644
+index 000000000..acd4d0ea4
+--- /dev/null
++++ b/patches/libcupsfilters/close-output-stream.patch
+@@ -0,0 +1,26 @@
++commit 1e66af63a81a188b9d4bce688d75f3a9df681165
++Author: Marshall Taplits <mtaplits@mailforce.net>
++Date:   Mon Sep 14 16:58:40 2026 -0400
++
++    bannertopdf: Close output stream so the generated PDF is not truncated (#249)
++
++diff --git a/cupsfilters/bannertopdf.c b/cupsfilters/bannertopdf.c
++index 60769e7b..9b2ce9aa 100644
++--- a/cupsfilters/bannertopdf.c
+++++ b/cupsfilters/bannertopdf.c
++@@ -1021,6 +1021,14 @@ cfFilterBannerToPDF(int inputfd,         // I - File descriptor input stream
++   unlink(tempfile);
++   if (inputfp)
++     fclose(inputfp);
++-  
+++  // The output stream has to be flushed and closed here. When this filter
+++  // function is called from cfFilterChain() (as the "universal" filter does),
+++  // the parent closes the raw output file descriptor and exits right after
+++  // this function returns, so a still buffered tail of the generated PDF
+++  // (cross-reference table and "%%EOF") would be lost and the following
+++  // filter in the chain would fail to parse the file.
+++  if (outputfp)
+++    fclose(outputfp);
+++
++   return (ret);
++ }
+-- 
+2.55.0
+
