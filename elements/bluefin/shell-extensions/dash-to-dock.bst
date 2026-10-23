@@ -3,11 +3,8 @@ kind: make
 sources:
 - kind: git_repo
   url: github:micheleg/dash-to-dock.git
-  # GNOME 51 fixes (PointerWatcher and St.vertical removals) are on master
-  # but unreleased; restore `track: extensions.gnome.org-v*` once a tag
-  # lists "51" in metadata.json, so the tracker stops rolling back to v106.
-  track: master
-  ref: extensions.gnome.org-v109-18-g4846ec267d8dce66e432c85049dca5dcbe863fb5
+  track: extensions.gnome.org-v*
+  ref: extensions.gnome.org-v110-0-g2dfae3474d6984b566ef0c3dab1524a675bbba48
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-make.bst
@@ -16,7 +13,7 @@ build-depends:
 depends:
 - freedesktop-sdk.bst:components/gettext.bst
 - gnome-build-meta.bst:sdk/glib.bst
-- gnome-build-meta.bst:sdk-deps/sassc.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/sassc.bst
 - gnome-build-meta.bst:core/gnome-shell.bst
 
 variables:

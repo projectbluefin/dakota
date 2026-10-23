@@ -1,7 +1,9 @@
 {
   "comment": "Written by `just patch-sync`; verified offline by `just patch-drift-check`.",
   "files": {
-    "0001-project.conf-Add-GNOME-CAS-servers.patch": "2a79bad1e6159c0b31a9cd5b914a7eb34f0431c406b27974fe12dbe5990d49e7"
+    "0001-project.conf-Add-GNOME-CAS-servers.patch": "8b0dac43ca885809818e97c6764eb8b06c33aeb84ef0f31a2122aba065b1fcdd",
+    "0002-components-libcupsfilter.bst-backport-upstream-patch.patch": "63ad8dade718e8a115dd8d3435f7c3eca34473587535a654526720823fe4ebed",
+    "0003-components-libcupsfilter.bst-backport-another-upstre.patch": "9a030567d02fb1b2dbf94468fae32f7f41d2d021145482833b4607d9fce76285"
   },
-  "gnome-build-meta-sha": "5ec987b6b074a9b871ef01e479bbbb91f4463efb"
+  "gnome-build-meta-sha": "24bd9e3394437b85fc204bf58ecd3d867d815f66"
 }

@@ -1,6 +1,6 @@
 name: "Feature request"
 description: "Propose something new. Specific proposals ship. Vague ones wait."
-labels: ["kind/enhancement", "status/discussing"]
+labels: ["kind/feature"]
 type: "Feature"
 body:
   - type: markdown
@@ -27,12 +27,10 @@ body:
       value: |
         > **How this gets built:**
         > ```
-        > filed ──▶ discussing ──▶ approved ──▶ queued ──▶ claimed ──▶ done
-        >        [status/         [status/     [status/   [status/
-        >         discussing]      approved]    queued]    claimed]
+        > filed ──▶ needs-triage ──▶ triage accepted ──▶ done
         > ```
-        > Your proposal enters discussion. A maintainer approves it when the spec is clear.
-        > Then a contributor or agent `/claim`s it and builds it.
+        > Categorize with `/area <area>` or `/kind <kind>`.
+        > A triager or maintainer accepts it with `/triage accepted` when the spec is clear.
 
   - type: textarea
     id: problem

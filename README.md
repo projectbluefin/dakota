@@ -51,15 +51,15 @@ Dakota's feedback loop model is grounded in Andy Anderson's work on autonomous A
 
 **Architects and designers** — these features and epics need your input before any code is written. Design decisions, tradeoffs, and priorities:
 
-### [Open features and epics for discussion &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fdiscussing+label%3Atype%2Ffeature%2Ckind%2Fepic)
+### [Open issues needing triage &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Aneeds-triage)
 
-Leave a comment, challenge the design, propose alternatives. When a discussion reaches consensus a maintainer marks it `status/approved` and it enters the build queue.
+Leave a comment, challenge the design, propose alternatives. When an issue reaches consensus a maintainer marks it with `/triage accepted`.
 
 **Engineers** — these issues have clear acceptance criteria and no open design questions. Pick one up and build it:
 
-### [Agent-ready build queue &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Astatus%2Fqueued+no%3Aassignee)
+### [Triage-accepted queue &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Atriage%2Faccepted+no%3Aassignee)
 
-Comment `/claim` to take an issue. See [AGENTS.md](AGENTS.md) for the full contributor workflow.
+Assign yourself with `/assign`. See [docs/workflow.md](docs/workflow.md) for the contributor workflow.
 
 ## Image streams
 
@@ -67,17 +67,30 @@ Comment `/claim` to take an issue. See [AGENTS.md](AGENTS.md) for the full contr
 | ---------: | ------: | ------------------------------------------------------------------------------------------------------------: |
 |  `:stable` |  Stable |                        GNOME 50 — production. On-demand promotion from `:testing` via `just release --apply`. |
 | `:testing` |     Dev |                                              GNOME 50 — daily builds from `testing` branch. Boot-check gated. |
-|    `:next` | Rolling | **GNOME master — the bleeding edge.** Tracks gnome-build-meta `master` daily. Auto-updates, zero maintenance. |
-|     `:btw` | Rolling |                                                                                            Alias for `:next`. |
+|    `:next` |  Paused |                                     GNOME master. Paused until the next GNOME beta; receives no updates. |
+|     `:btw` |  Paused |                                                                                            Alias for `:next`. |
 
-`:next` / `:btw` is the arch competitor stream — latest GNOME the moment it lands upstream, built from source with memory-safe defaults (sudo-rs, uutils-coreutils). If you want to run GNOME before everyone else and help find regressions before they reach stable, this is your image.
+`:next` / `:btw` is paused until the next GNOME beta and no longer receives updates, including security fixes. If you are on it, switch to `:testing`. Moving from GNOME master back to the current release is a downgrade, so some settings or app data written by the newer GNOME may not carry over.
 
 ```bash
-# Switch to the rolling stream
-sudo bootc switch ghcr.io/projectbluefin/dakota:next
-# or
-sudo bootc switch ghcr.io/projectbluefin/dakota:btw
+sudo bootc switch ghcr.io/projectbluefin/dakota:testing
 ```
+
+## Secure Boot
+
+Dakota supports Secure Boot. It's optional and takes a few minutes to set up:
+
+1. Run `ujust enroll-secure-boot-key` and reboot.
+2. On the blue screen that appears, choose **Enroll MOK**, **Continue**, **Yes**, type the password `dakota`, then **Reboot**.
+3. Turn on Secure Boot in your firmware settings. Some laptops (Lenovo, Surface) also need an option like "Allow Microsoft 3rd party UEFI CA" turned on.
+
+Run `ujust secure-boot-status` to see what is set up, or `ujust check-anticheat` to see whether your system meets Easy Anti-Cheat's requirements.
+
+If your disk unlocks with the TPM, it keeps doing so through these steps. If a firmware update or a change to your Secure Boot settings later makes it ask for your disk passphrase, enter it and run `ujust reseal-tpm-unlock`.
+
+Whether or not you use Secure Boot, Dakota keeps the kernel locked down, so hibernation is not available (suspend works) and kernel modules you build yourself won't load.
+
+Secure Boot has always been on the roadmap, and the extra kernel protections also get Dakota ready for Epic's Easy Anti-Cheat for Linux v2 once it's available.
 
 ## ISO Download
 

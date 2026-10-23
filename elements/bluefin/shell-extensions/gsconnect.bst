@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:gsconnect/gnome-shell-extension-gsconnect.git
   track: v*
-  ref: v73-0-gf68c95cb2985ba273129e9d4d9017f5b028c96d7
+  ref: v74-0-g61cc76b966f95a19d396fe0fc42a755fcb902bd4
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-meson.bst

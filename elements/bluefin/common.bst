@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/common.git
   track: main
-  ref: v2026.08-207-g725dbf68ccff8ae2ad74300430f984ee9ea8206c
+  ref: v2026.08-318-ga7088074382c18a788fd378363b41589835c01cc
 # Consume common's fastfetch layout directly; only adapt the install-date input.
 # Drop this patch once common provides a shared install-date helper.
 - kind: patch
@@ -19,16 +19,32 @@ sources:
   path: patches/common/0003-uwelcome-interactive-only.patch
 - kind: patch
   path: patches/common/0004-policy-drop-redhat-gpg-entries.patch
+# Dakota has no rpm-ostree: drop the signed-status glyph from the image line.
+# Drop once common guards or removes the rpm-ostree call.
+- kind: patch
+  path: patches/common/0005-image-info-drop-rpm-ostree.patch
+# The weekly stats are fetched at build time elsewhere; Dakota builds have no
+# network, so drop the two lines rather than print missing-file errors.
+- kind: patch
+  path: patches/common/0006-fastfetch-drop-weekly-stats.patch
 - kind: git_module
   url: github:projectbluefin/branding/
   path: bluefin-branding
   ref: f5213ca61615bb79a8315fc4c5378a80ca93922e
 - kind: local
   path: files/wallpaper-month
+- kind: remote
+  url: github-raw:projectbluefin/artwork/de74de65647f9109594345fd30966136d70fa458/assets/vector/logos/bluefin/bluefin-logo-light.svg
+  ref: d336d743082bded58c561c2c53baf1896dae87d7346224d9d06512e6c247cf74
+  filename: bluefin-logo-light.svg
+- kind: remote
+  url: github-raw:projectbluefin/artwork/de74de65647f9109594345fd30966136d70fa458/assets/vector/logos/bluefin/bluefin-logo-dark.svg
+  ref: 4ae1d486e6e73743fad1e1ef625615c4a28e72bbcc0a966ba3c5294303e4e380
+  filename: bluefin-logo-dark.svg
 
 build-depends:
 - core/sandbox-tools.bst
-- gnome-build-meta.bst:gnomeos-deps/just.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/just.bst
 
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
@@ -114,8 +130,10 @@ config:
     # Map Bluefin icons to GNOME OS expected names
     # About dialog (gnome-control-center reads LOGO=img-logo-icon from os-release,
     # then looks for img-logo-icon-text-dark, img-logo-icon-text, img-logo-icon-dark, img-logo-icon)
-    cp "%{install-root}%{datadir}/pixmaps/fedora-logo-icon.png" "%{install-root}%{datadir}/pixmaps/img-logo-icon.png"
-    cp "%{install-root}%{datadir}/pixmaps/fedora-logo-icon.png" "%{install-root}%{datadir}/pixmaps/img-logo-icon-dark.png"
+    install -Dm644 bluefin-logo-light.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon-text.svg"
+    install -Dm644 bluefin-logo-dark.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon-text-dark.svg"
+    install -Dm644 bluefin-logo-light.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon.svg"
+    install -Dm644 bluefin-logo-dark.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon-dark.svg"
     # Override GNOME OS boot logo with Bluefin branding
     cp "%{install-root}%{datadir}/pixmaps/fedora-gdm-logo.png" "%{install-root}%{datadir}/pixmaps/gnome-boot-logo.png"
     install -Dm755 bluefin-wallpaper-month-sync "%{install-root}%{prefix}/libexec/bluefin-wallpaper-month-sync"

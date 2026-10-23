@@ -33,6 +33,7 @@ depends:
   - bluefin/user-avatars.bst
   - bluefin/just-overrides.bst
   - bluefin/zswap-config.bst
+  - bluefin/kexec-disable.bst
   - bluefin/swapfile.bst
   - bluefin/firstboot-date.bst
   - bluefin/firstboot-services.bst
@@ -50,6 +51,7 @@ depends:
 
   - bluefin/uutils-coreutils.bst
   - bluefin/sudo-rs.bst
+  - bluefin/sudo-linuxbrew-path.bst
   - bluefin/fprintd-system-auth.bst
   - bluefin/fprintd-fingerprint-auth.bst
   - bluefin/efibootmgr.bst
@@ -59,6 +61,7 @@ depends:
   # Restores the VTE typelibs the app-drop strips out (dakota#1022)
   - bluefin/vte.bst
   - bluefin/network.bst
+  - bluefin/networkmanager-polkit.bst
   - bluefin/wireplumber-pcsp.bst
   - bluefin/alsa-utils.bst
   - bluefin/brlaser.bst
@@ -89,8 +92,8 @@ depends:
 
   - bluefin/distrobox.bst
   - bluefin/nspawn.bst
-  - gnome-build-meta.bst:gnomeos-deps/just.bst
-  - gnome-build-meta.bst:gnomeos-deps/wl-clipboard.bst
+  - gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/just.bst
+  - gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/wl-clipboard.bst
 
   - bluefin/bindmounts.bst
   - bluefin/migrate-var-home-passwd.bst
@@ -106,3 +109,7 @@ depends:
     depends:
       (>):
       - bluefin/intel-media-driver.bst
+- secure_boot_signing == true:
+    depends:
+      (>):
+      - bluefin/secure-boot.bst
