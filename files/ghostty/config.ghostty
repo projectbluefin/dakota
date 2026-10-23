@@ -1,0 +1,47 @@
+# Bluefin GNOME profile for Ghostty
+# Managed by projectbluefin/dakota
+# To override settings, edit ~/.config/ghostty/config.ghostty
+# Run `ghostty +list-themes` to see all available themes.
+
+theme = light:Catppuccin Latte,dark:Catppuccin Mocha
+
+# Run as a single GTK instance, consistent with GNOME app conventions
+gtk-single-instance = true
+
+# Style the header bar with Ghostty's theme colors so the top bar
+# blends with the terminal window
+window-theme = ghostty
+
+# Show current working directory in the window subtitle
+window-subtitle = working-directory
+
+# Extend the terminal background color into the window padding for a seamless look
+window-padding-color = extend
+window-padding-balance = true
+
+# Disable the resize overlay — GNOME apps don't show these
+resize-overlay = never
+
+# F11 is the GNOME standard for fullscreen (overrides Ghostty's Ctrl+Enter default)
+keybind = f11=toggle_fullscreen
+
+# Hide the mouse pointer while typing, matching GNOME Terminal and Ptyxis behavior
+mouse-hide-while-typing = true
+
+# Send a desktop notification when a command finishes in an unfocused window —
+# useful for long distrobox builds
+notify-on-command-finish = unfocused
+notify-on-command-finish-action = no-bell,notify
+
+# More comfortable padding — default of 2pt is very tight
+window-padding-x = 8
+window-padding-y = 4
+
+# Modern default window size — ensures the MOTD renders at the correct width
+# on first open instead of the legacy 80x24 default
+window-width = 132
+window-height = 36
+
+# Send TERM=xterm-256color over SSH to ensure compatibility with remote hosts
+# (Ubuntu, Fedora, Debian) that lack the xterm-ghostty terminfo entry
+shell-integration-features = ssh-env
