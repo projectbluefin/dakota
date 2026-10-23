@@ -61,11 +61,11 @@ depends:
   # Restores the VTE typelibs the app-drop strips out (dakota#1022)
   - bluefin/vte.bst
   - bluefin/network.bst
+  - bluefin/nfs-utils.bst
   - bluefin/networkmanager-polkit.bst
   - bluefin/wireplumber-pcsp.bst
   - bluefin/alsa-utils.bst
   - bluefin/brlaser.bst
-  - bluefin/nfs-utils.bst
   # - bluefin/lsp-plugins-lv2.bst
 
   # Include things missing from the gnomeos base image
