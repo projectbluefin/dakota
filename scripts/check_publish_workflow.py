@@ -144,6 +144,41 @@ def check_build_workflow(build: str, errors: list[str]) -> None:
         if token in build:
             errors.append(f"build workflow still contains {description}")
 
+    check_signing_scope(build, errors)
+
+
+def job_body(workflow: str, job: str) -> str | None:
+    match = re.search(
+        rf"^  {re.escape(job)}:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)",
+        workflow,
+        re.M | re.S,
+    )
+    return match.group("body") if match else None
+
+
+def check_signing_scope(build: str, errors: list[str]) -> None:
+    """Secure Boot signing may only run in pr-image's local, push-free pass.
+
+    The key is a BuildStream local source: a job with remote execution or
+    pushes enabled would upload it to the shared CAS.
+    """
+    tokens = ("DAKOTA_SECURE_BOOT_KEY", "BUILD_SECURE_BOOT_SIGNING")
+    pr_image = job_body(build, "pr-image")
+    if pr_image is None:
+        errors.append("build workflow is missing the pr-image job")
+        return
+    outside = build.replace(pr_image, "")
+    for token in tokens:
+        if token in outside:
+            errors.append(f"build workflow uses {token} outside the pr-image job")
+    if any(token in pr_image for token in tokens):
+        if "enable-remote-execution: 'false'" not in pr_image:
+            errors.append("pr-image signs images, so it must disable remote execution")
+        if "enable-push: 'false'" not in pr_image:
+            errors.append("pr-image signs images, so it must disable CAS pushes")
+        if "rm -f files/boot-keys/private/secure-boot.key" not in pr_image:
+            errors.append("pr-image must remove the signing key when it finishes")
+
 
 def check_image_variants(publish: str, errors: list[str]) -> None:
     """The published variant set must agree with its declaration (#1434)."""

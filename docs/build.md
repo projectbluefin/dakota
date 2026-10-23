@@ -214,13 +214,17 @@ records, not the presentation; `nerd-fonts-symbols.bst` supplies icon fallback
 without changing the default text font. The existing booted-image helper patch
 in `common.bst` is separate and remains until common supports that record too.
 
-Run `just bst build bluefin/common.bst` to exercise the patch against the pinned
-source. A source rewrite that invalidates the patch must be reviewed, not
+Two more patches remove inputs Dakota cannot provide. `0005` drops the
+`rpm-ostree` signed-status glyph from `ublue-image-info.sh`, because Dakota has
+no `rpm-ostree`. `0006` drops the weekly user and Bazaar install count lines,
+because other images fill `fastfetch-user-count` and `bazaar-install-count`
+with a build-time network fetch that Dakota's sandboxed builds cannot make. Do
+not ship placeholder or invented counts in their place.
+
+Run `just bst build bluefin/common.bst` to exercise the patches against the
+pinned source. A source rewrite that invalidates a patch must be reviewed, not
 worked around by restoring a local config. Check glyph rendering in a booted
 image.
-The common source import also does not supply `fastfetch-user-count` or
-`bazaar-install-count`; those weekly-statistics inputs remain a separate parity
-gap, not a reason to fork the config or invent counts.
 
 ## Ghostty theme and configuration defaults
 
