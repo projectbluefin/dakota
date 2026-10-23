@@ -1,0 +1,19 @@
+Upstream-Status: Pending
+
+Dakota has no rpm-ostree, so the signed-status check prints
+"rpm-ostree: command not found" and a blinking unlocked glyph on every
+fastfetch run, wrongly suggesting the image is unsigned.
+Exit: Drop once common guards or removes the rpm-ostree call.
+
+--- a/system_files/shared/usr/bin/ublue-image-info.sh
++++ b/system_files/shared/usr/bin/ublue-image-info.sh
+@@ -16,9 +16,3 @@ case "${BOOTED_REF}" in
+ esac
+ 
+ echo -n "${IMAGE_NAME}:${IMAGE_TAG}"
+-
+-if [[ "$(rpm-ostree status --booted)" =~ "signed" ]]; then
+-	echo -n " 🔐"
+-else
+-	echo -n -e " \033[5m🔓\033[0m"
+-fi
