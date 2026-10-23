@@ -27,6 +27,10 @@ sources:
   - kind: patch
     path: patches/ghostty/0001-disable-resize-overlay-by-default.patch
 
+  # Remote compatibility: enable ssh-env by default to set TERM=xterm-256color over SSH
+  - kind: patch
+    path: patches/ghostty/0003-enable-ssh-env-by-default.patch
+
   # Top-level Zig dependencies
   - kind: remote
     url: ghostty_deps:libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e.tar.gz
