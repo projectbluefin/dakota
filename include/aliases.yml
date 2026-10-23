@@ -18,6 +18,7 @@ aliases:
   crates: https://static.crates.io/
   dbmx: https://dbmx.net/
   dotat: https://dotat.at/prog/
+  fedora_koji: https://kojipkgs.fedoraproject.org/packages/
   fedora_rpms: https://src.fedoraproject.org/rpms/
   ghostty_deps: https://deps.files.ghostty.org/
   ghostty_releases: https://release.files.ghostty.org/
@@ -60,7 +61,7 @@ aliases:
   tailscale_pkgs: https://pkgs.tailscale.com/stable/
   tcpdump: https://www.tcpdump.org/
   tecnocode: https://tecnocode.co.uk/downloads/
-  thekelleys: http://www.thekelleys.org.uk/
+  thekelleys: http://thekelleys.org.uk/git/
   videolan_pub: https://download.videolan.org/pub/
   webkitgtk: https://webkitgtk.org/releases/
   ziglang: https://ziglang.org/
