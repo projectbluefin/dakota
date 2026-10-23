@@ -11,12 +11,12 @@ sources:
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-meson.bst
 - freedesktop-sdk.bst:components/pkg-config.bst
-- gnome-build-meta.bst:core-deps/libpcap.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/libpcap.bst
 - freedesktop-sdk.bst:bootstrap/ncurses.bst
 
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
-- gnome-build-meta.bst:core-deps/libpcap.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/libpcap.bst
 - freedesktop-sdk.bst:bootstrap/ncurses.bst
 
 variables:
