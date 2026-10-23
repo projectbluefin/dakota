@@ -15,6 +15,14 @@ sources:
   path: patches/common/0003-uwelcome-interactive-only.patch
 - kind: patch
   path: patches/common/0004-policy-drop-redhat-gpg-entries.patch
+# Dakota has no rpm-ostree: drop the signed-status glyph from the image line.
+# Drop once common guards or removes the rpm-ostree call.
+- kind: patch
+  path: patches/common/0005-image-info-drop-rpm-ostree.patch
+# The weekly stats are fetched at build time elsewhere; Dakota builds have no
+# network, so drop the two lines rather than print missing-file errors.
+- kind: patch
+  path: patches/common/0006-fastfetch-drop-weekly-stats.patch
 - kind: git_module
   url: github:projectbluefin/branding/
   path: bluefin-branding
