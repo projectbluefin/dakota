@@ -9,10 +9,6 @@ sources:
 # Drop this patch once common provides a shared install-date helper.
 - kind: patch
   path: patches/common/0001-fastfetch-install-date.patch
-# Dakota uses Ghostty as primary terminal: enable dual-theme to track GNOME Dark/Light style.
-# Drop this patch once common ships dual-theme by default.
-- kind: patch
-  path: patches/common/0002-ghostty-dual-theme.patch
 # Avoid activating the desktop portal from GDM's non-interactive login shell.
 # Drop once common ships an interactive-shell guard.
 - kind: patch
@@ -31,6 +27,8 @@ sources:
   url: github:projectbluefin/branding/
   path: bluefin-branding
   ref: f5213ca61615bb79a8315fc4c5378a80ca93922e
+- kind: local
+  path: files/ghostty/config.ghostty
 - kind: local
   path: files/wallpaper-month
 - kind: remote
@@ -157,4 +155,7 @@ config:
 
     # Add BudsLink to default system flatpaks
     echo 'flatpak "io.github.maniacx.BudsLink"' >> "%{install-root}%{datadir}/ublue-os/homebrew/system-flatpaks.Brewfile"
+
+    # Install Dakota-managed Ghostty configuration into /etc/skel
+    install -Dm644 config.ghostty "%{install-root}%{sysconfdir}/skel/.config/ghostty/config.ghostty"
   - "%{install-extra}"

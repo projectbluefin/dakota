@@ -1,0 +1,22 @@
+Upstream-Status: Inappropriate [configuration]
+
+Enable ssh-env shell integration feature by default in Ghostty.
+When operating across mixed Linux environments (e.g. SSHing to Ubuntu or
+Fedora hosts), remote hosts lack Ghostty's terminfo entry for TERM=xterm-ghostty,
+causing curses applications such as htop and top to fail.
+Defaulting ssh-env to true automatically propagates TERM=xterm-256color and
+preserves truecolor capabilities via COLORTERM without requiring manual
+per-user config changes. Users can override with `shell-integration-features = no-ssh-env`.
+Fixes: projectbluefin/dakota#1800
+
+--- a/src/config/Config.zig
++++ b/src/config/Config.zig
+@@ -8610,7 +8610,7 @@ pub const ShellIntegrationFeatures = packed struct {
+     cursor: bool = true,
+     sudo: bool = false,
+     title: bool = true,
+-    @"ssh-env": bool = false,
++    @"ssh-env": bool = true,
+     @"ssh-terminfo": bool = false,
+     path: bool = true,
+ };
