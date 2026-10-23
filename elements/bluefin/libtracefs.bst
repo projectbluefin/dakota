@@ -1,4 +1,7 @@
 kind: meson
+description: |
+  Library for accessing the kernel tracefs filesystem. Required by powertop
+  (>= 2.16) and trace-cmd; freedesktop-sdk ships libtraceevent but not libtracefs.
 
 sources:
 - kind: git_repo
