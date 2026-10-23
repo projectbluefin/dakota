@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: gitlab:freedesktop-sdk/freedesktop-sdk.git
   track: freedesktop-sdk-26.08*
-  ref: freedesktop-sdk-26.08.1-0-gb02b59ffe19a49a402f357fd5fcb1d552ebc50d7
+  ref: freedesktop-sdk-26.08.3-0-gd0c0b597d58f8cc14ee26c427aec1be13c6a313e
 - kind: patch_queue
   path: patches/freedesktop-sdk
 # Dakota patches are separate from the GBM queue overwritten by `just patch-sync`.
@@ -40,6 +40,7 @@ config:
     components/graphene.bst: gnome-build-meta.bst:sdk/graphene.bst
     components/gsettings-desktop-schemas.bst: gnome-build-meta.bst:sdk/gsettings-desktop-schemas.bst
     components/gtk3.bst: gnome-build-meta.bst:sdk/gtk+-3.bst
+    components/krb5.bst: gnome-build-meta.bst:sdk/krb5.bst
     components/libibus.bst: gnome-build-meta.bst:sdk/libibus.bst
     components/json-glib.bst: gnome-build-meta.bst:sdk/json-glib.bst
     components/libglycin.bst: gnome-build-meta.bst:sdk/libglycin.bst
@@ -59,7 +60,7 @@ config:
     # not the Flatpak runtime, as its easy to bundle when needed.
     components/zenity.bst: gnome-build-meta.bst:void/zenity.bst
 
-    components/linux-module-cert.bst: gnome-build-meta.bst:gnomeos/linux-module-cert.bst
+    components/linux-module-cert.bst: core/linux-module-cert.bst
     components/_private/systemd-base.bst: gnome-build-meta.bst:core-deps/systemd-base.bst
     components/systemd.bst: gnome-build-meta.bst:core-deps/systemd.bst
     components/systemd-ukify.bst: gnome-build-meta.bst:core-deps/systemd-ukify.bst

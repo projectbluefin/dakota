@@ -23,7 +23,7 @@ sources:
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-meson.bst
-- gnome-build-meta.bst:core-deps/rpcsvc-proto.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/rpcsvc-proto.bst
 - freedesktop-sdk.bst:components/bash-completion.bst
 - freedesktop-sdk.bst:components/libxslt.bst
 - freedesktop-sdk.bst:components/python3.bst
@@ -38,11 +38,11 @@ runtime-depends:
 
 depends:
 - gnome-build-meta.bst:sdk/glib.bst
-- gnome-build-meta.bst:core-deps/dnsmasq.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/dnsmasq.bst
 - gnome-build-meta.bst:core-deps/ebtables.bst
-- gnome-build-meta.bst:core-deps/qemu.bst
-- gnome-build-meta.bst:core-deps/libpcap.bst
-- gnome-build-meta.bst:core-deps/libssh2.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/qemu.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/libpcap.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/libssh2.bst
 - gnome-build-meta.bst:core-deps/slirp-helper.bst
 - freedesktop-sdk.bst:components/audit.bst
 - freedesktop-sdk.bst:components/curl.bst

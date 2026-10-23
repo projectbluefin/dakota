@@ -4,8 +4,8 @@ sources:
 - kind: tar
   (?):
   - arch == "x86_64":
-      url: github_files:ublue-os/uupd/releases/download/v1.4.0/uupd_Linux_x86_64.tar.gz
-      ref: c7463f193cd35b92cde2ee05496501d6ac13808899bd26e17e027b7ee9ee1acc
+      url: github_files:ublue-os/uupd/releases/download/v1.5.1/uupd_Linux_x86_64.tar.gz
+      ref: f9337ef247e03a101adac573d338474eef3ad1536c17862f7a21fbe840d864ae
   - arch == "aarch64":
       url: github_files:ublue-os/uupd/releases/download/v1.4.0/uupd_Linux_arm64.tar.gz
       ref: 90f493aceadc3ef1a5a5fecff6ce21873dfed13bdca5d5d684e7f97c077a6855
