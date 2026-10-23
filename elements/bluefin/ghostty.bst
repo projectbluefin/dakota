@@ -27,6 +27,10 @@ sources:
   - kind: patch
     path: patches/ghostty/0001-disable-resize-overlay-by-default.patch
 
+  # systemd 262: install the SIGUSR2 handler before notifying systemd (drop at 1.4.0)
+  - kind: patch
+    path: patches/ghostty/0002-notify-systemd-ready-after-sigusr2-handler.patch
+
   # Top-level Zig dependencies
   - kind: remote
     url: ghostty_deps:libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e.tar.gz
