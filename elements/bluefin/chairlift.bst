@@ -5,7 +5,7 @@ kind: manual
 # fixed-path privileged helper, its PolicyKit policy, and the GSettings
 # schemas from the same checksummed release archive the cask installs.
 # The helper path is pinned by the policy's exec.path annotation. Keep this
-# release in step with the cask's version (ublue-os/homebrew-tap
+# release in step with the cask's version (projectbluefin/homebrew-tap
 # Casks/chairlift.rb). The bootc policy and /usr/share/chairlift/config.yml
 # come from common.bst.
 sources:
