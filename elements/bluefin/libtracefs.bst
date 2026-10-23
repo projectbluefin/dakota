@@ -1,7 +1,13 @@
 kind: meson
 description: |
   Library for accessing the kernel tracefs filesystem. Required by powertop
-  (>= 2.16); freedesktop-sdk ships libtraceevent but not libtracefs.
+  (>= 2.16) and trace-cmd; freedesktop-sdk ships libtraceevent but not libtracefs.
+
+sources:
+- kind: git_repo
+  url: kernel:libs/libtrace/libtracefs.git
+  track: libtracefs-*
+  ref: libtracefs-1.8.3-0-g6fad6a14ba0d4c4b437d9e4eed7098d4bb07b4fc
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-meson.bst
@@ -25,8 +31,7 @@ public:
         (>):
         - '%{libdir}/libtracefs.so'
 
-sources:
-- kind: git_repo
-  url: kernel:libs/libtrace/libtracefs.git
-  track: 'libtracefs-*'
-  ref: libtracefs-1.8.3-0-g6fad6a14ba0d4c4b437d9e4eed7098d4bb07b4fc
+config:
+  install-commands:
+    (>):
+    - install -Dm644 LICENSES/LGPL-2.1 "%{install-root}%{datadir}/licenses/libtracefs/LGPL-2.1"
