@@ -213,8 +213,8 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # PR images: export from the shared cache and push :pr-N. Never signed or
-  # promoted; publish.yml ignores pull_request runs.
+  # PR images: export from the shared cache, sign the boot chain, and push
+  # :pr-N. Never promoted; publish.yml ignores pull_request runs.
   pr-image:
     needs: build
     if: (!cancelled()) && needs.build.result == 'success' && (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build') && github.event.pull_request.head.repo.full_name == github.repository)

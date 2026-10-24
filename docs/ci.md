@@ -59,9 +59,15 @@ superseded. Fork PRs cannot build: they have no cache credentials and a
 runner-local build does not finish.
 
 A successful PR build exports each variant and pushes
-`ghcr.io/projectbluefin/dakota<suffix>:pr-N`. PR images are unsigned and never
+`ghcr.io/projectbluefin/dakota<suffix>:pr-N`. PR images are Secure Boot signed
+with the release key, so the label is maintainer-only, and they are never
 promoted; `bootc switch` to one to try it. `pr-cleanup.yml` deletes the tags
 when the PR closes.
+
+There is no automated x86 boot gate. Before merging a change to a signing
+input (the kernel, modules, shim, systemd-boot, fwupd, or a junction bump), a
+maintainer boots the `:pr-N` image on real hardware with Secure Boot on and
+checks `dakota-secure-boot status` and `ujust verify`.
 
 ## Next synchronization
 
@@ -125,9 +131,9 @@ if testing advances between runs.
 
 Stable promotion neither updates `main` nor requires it to match the promoted
 SHA. Post-release verification compares all four `:stable` image digests with
-their SHA-tagged candidates, checks `:stable-multiarch`, and retains the existing
-stale-branch scan and untagged GHCR cleanup. These checks depend on image
-promotion, not a Git branch update; no branch-protection bypass is needed.
+their SHA-tagged candidates and retains the existing stale-branch scan and
+untagged GHCR cleanup. These checks depend on image promotion, not a Git branch
+update; no branch-protection bypass is needed.
 
 `just test-release` runs offline Python tests with a mocked `gh`, including the
 real Justfile argument path. It is registered in `check-publish-workflow` so CI

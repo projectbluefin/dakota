@@ -198,7 +198,6 @@ jobs:
           BUILD_SECURE_BOOT_SIGNING: 'true'
           OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}
           OCI_IMAGE_REVISION: ${{ needs.setup.outputs.sha }}
-          OCI_IMAGE_VERSION: latest
         run: just export ${{ matrix.export_variant || matrix.variant }}
 
       - name: Remove Secure Boot signing key

@@ -28,7 +28,8 @@ export vm_cpus := env("VM_CPUS", "4")
 # OCI metadata (dynamic labels)
 export OCI_IMAGE_CREATED := env("OCI_IMAGE_CREATED", "")
 export OCI_IMAGE_REVISION := env("OCI_IMAGE_REVISION", "")
-export OCI_IMAGE_VERSION := env("OCI_IMAGE_VERSION", "latest")
+# Empty means the export date, the same value written to os-release.
+export OCI_IMAGE_VERSION := env("OCI_IMAGE_VERSION", "")
 
 # ── BuildStream wrapper ──────────────────────────────────────────────
 # Runs any bst command inside the bst2 container via podman.
@@ -377,6 +378,10 @@ export variant="default":
     mv .build-ownership-source/ownership-final.json ".build-ownership-source/${IMAGE_ID}.json"
     rm -rf .build-out .build-ownership-source/ownership-final.json
 
+    # One build date for both the version label and os-release, so
+    # `bootc status` and /usr/lib/os-release always agree.
+    DATE_TAG="$(date -u +%Y%m%d)"
+
     # Build label arguments for dynamic OCI metadata
     LABEL_ARGS=""
     if [ -n "${OCI_IMAGE_CREATED}" ]; then
@@ -385,9 +390,7 @@ export variant="default":
     if [ -n "${OCI_IMAGE_REVISION}" ]; then
         LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.revision=${OCI_IMAGE_REVISION}"
     fi
-    if [ -n "${OCI_IMAGE_VERSION}" ]; then
-        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.version=${OCI_IMAGE_VERSION}"
-    fi
+    LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.version=${OCI_IMAGE_VERSION:-$DATE_TAG}"
 
     # Squash, inject build-date VERSION_ID, and apply dynamic labels.
     # BST has no string option type, so VERSION_ID is set to "0" in os-release.bst
@@ -396,7 +399,6 @@ export variant="default":
     # available in quay.io/podman/stable (breaks local builds and Argo pipeline)
     # and the multi-layer output breaks composefs xattr injection in chunka.
     # Fixes: projectbluefin/dakota#841 (boot failure on :testing 2026-06-13)
-    DATE_TAG="$(date -u +%Y%m%d)"
     # Preserve the deterministic source mtimes. sed -i changes the parent
     # directory mtime, which otherwise invalidates every Chunkah layer that
     # carries /usr/lib metadata even when its component files are unchanged.
@@ -967,6 +969,13 @@ chunkify image_ref:
     echo "==> Applying user.component xattrs via fakecap-restore..."
     $SUDO_CMD "$FAKECAP_RESTORE" "$MANIFEST" "$MERGED"
 
+    # Podman's squash RUN creates /sys with the build time as its mtime, which
+    # would change the unclaimed layer on every export. Pin it to /usr's
+    # deterministic BuildStream mtime; the write lands in the overlay upper.
+    if [ -d "$MERGED/sys" ]; then
+        $SUDO_CMD touch -r "$MERGED/usr" "$MERGED/sys"
+    fi
+
     # Run chunkah against the overlay (bind-mounted read-only).
     # --max-layers 120 balances layer granularity with registry storage space.
     # CHUNKAH_CONFIG_STR preserves OCI labels (containers.bootc=1).
@@ -1325,9 +1334,12 @@ sbom variant="default":
         -v "${HOME}/.config/buildstream-generate:/root/.config/buildstream-generate:rw" \
         -w /src \
         "{{bst2_image}}" \
-        bash -c "bst --no-colors show --deps none --format '%{name}' ${ELEMENT}" \
+        bash -c "bst --no-colors -o secure_boot_signing true show --deps none --format '%{name}' ${ELEMENT}" \
         2>/dev/null || true
 
+    # Published images are always signed, so the SBOM resolves the signed
+    # graph. The private key is a local source; `show` only needs its absence
+    # to change cache keys, so this works without the key present.
     echo "==> Generating BST-native SBOM with buildstream-sbom (${ELEMENT} → ${OUTFILE})..."
     # Ensure pip cache directory exists before podman bind-mount.
     # actions/cache does not create the path on a cold cache miss; podman
@@ -1365,6 +1377,7 @@ sbom variant="default":
                 --spdx-creator "Tool: buildstream-sbom" \
                 --spdx-creator "Organization: projectbluefin" \
                 --deps all \
+                --option secure_boot_signing true \
                 --output "/src/${OUTFILE}"
         '
     echo ""
