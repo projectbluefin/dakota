@@ -70,10 +70,10 @@ jobs:
           fi
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
           # Derive the :testing tag from the branch name.
-          # Only trunk branches (direct pushes / schedule) advance stream tags.
+          # Only trunk branches (direct pushes / dispatch) advance stream tags.
           # Merge-queue builds (gh-readonly-queue/**) publish an immutable :SHA
           # tag only — they must NOT move public stream tags before the commit lands.
-          # testing  → :testing  (published daily on schedule)
+          # testing  → :testing  (published on every testing build)
           # next     → :next     (rolling GNOME master / bleeding edge)
           # queue/** → (empty)   :SHA only, no stream tag
           if [[ "$BRANCH" == "next" ]]; then
@@ -92,7 +92,7 @@ jobs:
   # in parallel with promote rather than blocking it.
   publish-image:
     needs: setup
-    runs-on: ubuntu-26.04
+    runs-on: ${{ vars.DAKOTA_SIGN_RUNNER || 'ubuntu-26.04' }}
     # The signing pass rebuilds the image layers on the runner; nvidia-gaming
     # needs about 95 minutes.
     timeout-minutes: 180

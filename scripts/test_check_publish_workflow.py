@@ -63,10 +63,47 @@ class CheckPublishWorkflowTests(unittest.TestCase):
     def test_rejects_serial_build_matrix(self) -> None:
         result = self.mutate(
             ".github/workflows/build.yml",
-            "      max-parallel: 4\n",
+            "      max-parallel: 2\n",
             "      max-parallel: 1\n",
         )
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_optional_default_image(self) -> None:
+        result = self.mutate(
+            ".github/workflows/build.yml",
+            "            required: oci/bluefin.bst\n",
+            "            required: \"\"\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_signing_job_on_build_pool(self) -> None:
+        sign = "runs-on: ${{ vars.DAKOTA_SIGN_RUNNER || 'ubuntu-26.04' }}"
+        cas = "runs-on: ${{ vars.DAKOTA_BUILD_RUNNER || 'ubuntu-26.04' }}"
+        for workflow in (".github/workflows/build.yml", ".github/workflows/publish.yml"):
+            with self.subTest(workflow=workflow):
+                text = (REPOSITORY / workflow).read_text()
+                self.assertEqual(text.count(sign), 1)
+                result = self.mutate(workflow, sign, cas)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("signing pool", result.stderr)
+
+    def test_rejects_signing_pool_outside_signing_jobs(self) -> None:
+        result = self.mutate(
+            ".github/workflows/build.yml",
+            "    runs-on: ${{ vars.DAKOTA_BUILD_RUNNER || 'ubuntu-26.04' }}",
+            "    runs-on: ${{ vars.DAKOTA_SIGN_RUNNER || 'ubuntu-26.04' }}",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("outside a signing job", result.stderr)
+
+    def test_rejects_conditional_key_removal(self) -> None:
+        result = self.mutate(
+            ".github/workflows/publish.yml",
+            "        if: always()\n        run: rm -f files/boot-keys/private/secure-boot.key",
+            "        run: rm -f files/boot-keys/private/secure-boot.key",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("if: always()", result.stderr)
 
     def test_rejects_explicit_artifact_pull(self) -> None:
         result = self.mutate(
@@ -100,8 +137,8 @@ class CheckPublishWorkflowTests(unittest.TestCase):
     def test_rejects_signing_key_in_build_job(self) -> None:
         result = self.mutate(
             ".github/workflows/build.yml",
-            "      max-parallel: 4\n",
-            "      max-parallel: 4\n"
+            "      max-parallel: 2\n",
+            "      max-parallel: 2\n"
             "    env:\n"
             "      DAKOTA_SECURE_BOOT_KEY: ${{ secrets.DAKOTA_SECURE_BOOT_KEY }}\n",
         )

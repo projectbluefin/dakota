@@ -14,12 +14,9 @@ on:
       - "Justfile"
       - "project.conf"
       - "include/**"
-  # Fires daily at 13:00 UTC — 5 hours after the gnome-build-meta nightly
-  # (~08:00 UTC) to absorb nightly deltas before building.
-  # NOTE: schedule triggers run on the default branch; set testing as the
-  # default branch in repo settings for this to target testing.
-  schedule:
-    - cron: "0 13 * * *"
+  # No schedule: junctions are pinned, so a timed run rebuilds identical
+  # inputs and republishes them under a new date. Every relevant push to
+  # testing already builds; dispatch manually to rerun.
   workflow_dispatch:
   # Label a same-repo PR `build` to build it; adding the label starts a run.
   pull_request:
@@ -42,22 +39,6 @@ concurrency:
   queue: max
 
 jobs:
-  verify-default-branch:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-    steps:
-      - name: Verify repository default branch is "testing"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          db=$(gh api "repos/${GITHUB_REPOSITORY}" --jq .default_branch)
-          if [ "$db" != "testing" ]; then
-            echo "::error::default branch is '$db', expected 'testing'. Daily schedule will silently target wrong branch. Fix repo settings."
-            exit 1
-          fi
-
   # With queue: max every push queues its own run instead of superseding the
   # previous pending one. A run that waited in the queue may be stale by the
   # time it starts: a newer push run for the same branch is already queued
@@ -98,37 +79,28 @@ jobs:
           fi
 
   build:
-    needs: [verify-default-branch, stale-check]
-    if: (!cancelled()) && needs.stale-check.outputs.stale != 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build') && github.event.pull_request.head.repo.full_name == github.repository))
-    runs-on: ubuntu-26.04
+    needs: [stale-check]
+    if: (!cancelled()) && needs.stale-check.outputs.stale != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build') && github.event.pull_request.head.repo.full_name == github.repository))
+    # Runner pools are repo variables so switching back to GitHub-hosted
+    # runners is one settings change. Only signing jobs may use the signing pool.
+    runs-on: ${{ vars.DAKOTA_BUILD_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 350
-    # The BuildBox backend has four action slots. Start every image variant
-    # together; the backend remains the global execution-capacity limit.
+    # One job per gaming value. Each builds the default and NVIDIA images in
+    # a single BuildStream session, so the shared base is scheduled once
+    # instead of once per variant job. The NVIDIA image stays allowed to
+    # fail: only `required` must end up built for the job to pass.
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         include:
-          - variant: default
-            element: oci/bluefin.bst
-            image_suffix: ""
-            publish: true
+          - group: standard
+            elements: oci/bluefin.bst oci/bluefin-nvidia.bst
+            required: oci/bluefin.bst
             continue: false
-          - variant: nvidia
-            element: oci/bluefin-nvidia.bst
-            image_suffix: "-nvidia"
-            publish: true
-            continue: true
-          - variant: gaming
-            element: oci/bluefin.bst
-            image_suffix: "-gaming"
-            publish: true
-            continue: true
-            gaming: "true"
-          - variant: nvidia-gaming
-            element: oci/bluefin-nvidia.bst
-            image_suffix: "-nvidia-gaming"
-            publish: true
+          - group: gaming
+            elements: oci/bluefin.bst oci/bluefin-nvidia.bst
+            required: ""
             continue: true
             gaming: "true"
     continue-on-error: ${{ matrix.continue }}
@@ -171,7 +143,7 @@ jobs:
         run: |
           set +e
           BST_SHOW_OUT=$(just bst show --deps all --format "%{name}" \
-            ${{ matrix.element }} 2>&1)
+            ${{ matrix.elements }} 2>&1)
           rc=$?
           set -e
           if [ "$rc" -eq 0 ]; then
@@ -184,16 +156,20 @@ jobs:
             echo "total=0" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build OCI image with BuildStream
+      - name: Build OCI images with BuildStream
         env:
           BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
           ELEMENT_TOTAL: ${{ steps.count.outputs.total }}
+          REQUIRED: ${{ matrix.required }}
         run: |
           set -o pipefail
-          CONSOLE_LOG="logs/bst-console-${{ matrix.variant }}.log"
-          just bst build --deps none ${{ matrix.element }} 2>&1 \
+          CONSOLE_LOG="logs/bst-console-${{ matrix.group }}.log"
+          # on-error: continue builds every target it can, then fails if any
+          # target failed.
+          status=0
+          just bst build --deps none ${{ matrix.elements }} 2>&1 \
             | tee "$CONSOLE_LOG" \
-            | python3 files/scripts/bst-progress.py
+            | python3 files/scripts/bst-progress.py || status=$?
 
           # Fail closed: a green cache hit is not proof that BuildStream loaded
           # the remote executor. The startup banner is emitted whenever the
@@ -202,13 +178,24 @@ jobs:
             echo "::error::BuildStream did not load the remote execution configuration"
             exit 1
           fi
+
+          if [ "$status" -ne 0 ]; then
+            if [ -z "$REQUIRED" ]; then
+              exit "$status"
+            fi
+            # A failure among the optional targets must not fail the job, so
+            # rerun only the required target. It is a cache query when that
+            # target already built, and a retry of its failure otherwise.
+            echo "::warning::an optional target failed to build; checking ${REQUIRED}"
+            just bst build --deps none "$REQUIRED"
+          fi
         timeout-minutes: 330
 
       - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: buildstream-logs-x86_64-${{ matrix.variant }}
+          name: buildstream-logs-x86_64-${{ matrix.group }}
           path: logs/
           retention-days: 7
           if-no-files-found: ignore
@@ -218,7 +205,7 @@ jobs:
   pr-image:
     needs: build
     if: (!cancelled()) && needs.build.result == 'success' && (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build') && github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-26.04
+    runs-on: ${{ vars.DAKOTA_SIGN_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 90
     strategy:
       fail-fast: false

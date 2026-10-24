@@ -127,8 +127,10 @@ BUILD_GAMING=true just bst build core/linux-ogc.bst bluefin-nvidia/nvidia-driver
 
 The `build` label is for maintainers only. Contributors should ask a maintainer
 to apply it when CI image builds are needed. Maintainers should inspect each
-relevant variant's result: NVIDIA and gaming jobs currently allow failure, so a
-green aggregate is not proof that those kernels/drivers built. Boot verification
+relevant variant's result: the build runs a `standard` and a `gaming` job, each
+building the default and NVIDIA images, and only the default image in the
+standard job must succeed. A green aggregate is not proof that the NVIDIA or
+gaming kernels and drivers built; check the job logs. Boot verification
 is still needed before release.
 When the FDSDK junction advances, also compare its kernel recipe, `patches/linux/`,
 `files/linux/config-utils.sh`, and `files/linux/fdsdk-config.sh` with our vendored

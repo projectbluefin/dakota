@@ -50,17 +50,22 @@ runs:
         EOF
         )
 
+        # Remote builds spend most of their time integrating sandboxes and
+        # uploading input roots, so more concurrent builders overlap that
+        # waiting. Local builds (the signing pass) stay at 2 on 4-core runners.
         if [[ "${ENABLE_REMOTE_EXECUTION:-false}" == "true" ]]; then
           MAX_JOBS=8
+          BUILDERS=8
         else
           MAX_JOBS=1
+          BUILDERS=2
         fi
 
-        cat > "$WORKSPACE_ROOT/buildstream-ci.conf" <<'BSTCONF'
+        cat > "$WORKSPACE_ROOT/buildstream-ci.conf" <<BSTCONF
         scheduler:
           on-error: continue
           fetchers: 32
-          builders: 2
+          builders: ${BUILDERS}
           network-retries: 3
 
         logging:

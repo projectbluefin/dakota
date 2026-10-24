@@ -126,7 +126,8 @@ def check_generated_configs(shell: str, errors: list[str]) -> None:
 
 def check_build_workflow(build: str, errors: list[str]) -> None:
     required = {
-        "max-parallel: 4": "four-way variant concurrency",
+        "max-parallel: 2": "concurrent standard and gaming build jobs",
+        "required: oci/bluefin.bst": "a required default image in the standard build job",
         'enable-remote-execution: "true"': "fail-closed remote execution",
         'enable-push: "true"': "automatic artifact publication",
         'grep -Fq "Remote Execution Configuration"': "runtime RE evidence check",
@@ -178,6 +179,36 @@ def check_signing_scope(build: str, errors: list[str]) -> None:
             errors.append("pr-image signs images, so it must disable CAS pushes")
         if "rm -f files/boot-keys/private/secure-boot.key" not in pr_image:
             errors.append("pr-image must remove the signing key when it finishes")
+    check_runner_pools(build, ("pr-image",), "build", errors)
+
+
+SIGN_RUNNER = "runs-on: ${{ vars.DAKOTA_SIGN_RUNNER || 'ubuntu-26.04' }}"
+BUILD_POOL_TOKENS = ("DAKOTA_BUILD_RUNNER", "dakota-cas", "casd.sock")
+
+
+def check_runner_pools(workflow: str, signing_jobs: tuple[str, ...], name: str,
+                       errors: list[str]) -> None:
+    """The signing key may only reach the signing pool or a GitHub-hosted runner.
+
+    Build-pool runners share casd's socket, so a signing job there would store
+    the key in the production CAS. Only signing jobs may use the signing pool.
+    """
+    remaining = workflow
+    for job in signing_jobs:
+        body = job_body(workflow, job)
+        if body is None:
+            errors.append(f"{name} workflow is missing the {job} job")
+            continue
+        remaining = remaining.replace(body, "")
+        if SIGN_RUNNER not in body:
+            errors.append(f"{job} must run on the signing pool or a GitHub-hosted runner")
+        for token in BUILD_POOL_TOKENS:
+            if token in body:
+                errors.append(f"{job} signs images, so it must not reference {token}")
+        if "if: always()\n        run: rm -f files/boot-keys/private/secure-boot.key" not in body:
+            errors.append(f"{job} must remove the signing key in an if: always() step")
+    if "DAKOTA_SIGN_RUNNER" in remaining:
+        errors.append(f"{name} workflow uses DAKOTA_SIGN_RUNNER outside a signing job")
 
 
 def check_image_variants(publish: str, errors: list[str]) -> None:
@@ -231,6 +262,7 @@ def check_publish_workflow(publish: str, errors: list[str]) -> None:
         errors.append("publish export and SBOM jobs must remain local/fetch-only")
     if publish.count("enable-push: 'false'") < 2:
         errors.append("publish export and SBOM jobs must keep remote caches read-only")
+    check_runner_pools(publish, ("publish-image",), "publish", errors)
 
 
 def main() -> int:

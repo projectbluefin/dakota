@@ -8,12 +8,21 @@ disagrees with this page.
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `validate.yml` | PR and merge queue targeting `testing`, `next`, or `main` | Workflow checks, patch drift, and default/NVIDIA BST graphs |
-| `build.yml` | Relevant pushes to `testing`, daily 13:00 UTC, manual | Build four x86 variants through remote execution |
+| `build.yml` | Relevant pushes to `testing`, labelled same-repo PRs, manual | Build the four x86 variants through remote execution, in a standard and a gaming job |
 | `publish.yml` | Successful build workflow on `testing`/`next`, manual recovery | Export CAS artifacts, publish immutable and stream tags, sign, attest, and attach SBOMs |
 | `e2e.yml` | Manual only | Run testsuite suites against an explicitly published image |
 | `build-aarch64.yml` | Manual only; automatic ARM CI paused | Build the decoupled aarch64 image on explicit request |
 | `boot-test-aarch64.yml` | Manual only; automatic ARM CI paused | Experimental ARM boot validation; requires KVM |
 | `execute-release.yml` | Manual dispatch (maintainer-initiated) | Verify and promote the tested x86 variants to `stable` |
+
+The `build` job runs on the `DAKOTA_BUILD_RUNNER` repository variable and the
+signing jobs (`pr-image` and `publish-image`) on `DAKOTA_SIGN_RUNNER`. Both
+default to GitHub-hosted `ubuntu-26.04` when unset. The two pools must stay
+separate: build-pool runners may share the cache server's casd socket, and a
+signing job there would store the Secure Boot key in the production CAS.
+`just check-publish-workflow` rejects a signing job on any other runner, the
+signing pool outside signing jobs, and a key removal step without
+`if: always()`.
 
 PRs do not publish their image, so `e2e.yml` does not run on pull requests: it
 would test a stale public tag rather than the PR. Run it manually only after the
