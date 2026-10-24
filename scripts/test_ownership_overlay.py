@@ -145,6 +145,16 @@ class FinalizeOverlayTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.run_merge(overlay)
 
+    def test_requires_runtime_paths_in_base(self):
+        layout = layout_at(self.tmp / "image", [base_layer(), boot_layer()])
+        args = (layout, self.base_layout, self.base_sidecar, self.basis(boot_layer()), PREFIX,
+                "amd64", "default", self.output)
+        metadata.finalize_overlay(*args, ["/usr/bin/tool", "/usr/bin/link"])
+        with self.assertRaisesRegex(ValueError, "lacks paths the overlay needs"):
+            metadata.finalize_overlay(*args, ["/usr/bin/mokutil"])
+        with self.assertRaisesRegex(ValueError, "lacks paths"):
+            metadata.finalize_overlay(*args, ["/usr/bin"])
+
     def test_cli_requires_and_accepts_prefixes(self):
         layout = layout_at(self.tmp / "image", [base_layer(), boot_layer()])
         command = [sys.executable, ROOT / "scripts/ownership_metadata.py", "finalize-overlay",
@@ -153,7 +163,8 @@ class FinalizeOverlayTests(unittest.TestCase):
                    "--arch", "amd64", "--variant", "default", "--output", self.output]
         missing = subprocess.run(command, capture_output=True, text=True, check=False)
         self.assertNotEqual(missing.returncode, 0)
-        result = subprocess.run(command + ["--allow-prefix", PREFIX[0]], capture_output=True, text=True, check=False)
+        result = subprocess.run(command + ["--allow-prefix", PREFIX[0], "--require-base-path", "/usr/bin/tool"],
+                                capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         metadata._load_final(self.output)
 

@@ -6,8 +6,8 @@ depends:
 
   - freedesktop-sdk.bst:components/linux-firmware.bst
   - core/ntsync-modules-load.bst
-  - gnome-build-meta.bst:gnomeos/initramfs/signed-modules.bst
-  - gnome-build-meta.bst:oci/initramfs/image.bst
+  # The kernel, modules and initramfs ship in the boot layer
+  # (oci/layers/boot.bst), so this stack never depends on secure_boot_signing.
 
   - gnome-build-meta.bst:gnomeos-deps/bootc.bst
   - gnome-build-meta.bst:oci/integration/bootc-config.bst

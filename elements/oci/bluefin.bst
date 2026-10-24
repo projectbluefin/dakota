@@ -1,114 +1,69 @@
+# The default image: the cached base (oci/bluefin-base.bst) plus the boot
+# layer (oci/layers/boot.bst) as one additive top layer. Only
+# the boot layer depends on secure_boot_signing, so the signing pass rebuilds
+# it and this element while the base comes from the cache. See
+# scripts/oci_append_layer.py for why build-oci's parent mode is not used.
 kind: script
 
 build-depends:
-  - gnome-build-meta.bst:freedesktop-sdk.bst:components/fakecap.bst
   - gnome-build-meta.bst:freedesktop-sdk.bst:components/oci-builder.bst
-  - freedesktop-sdk.bst:components/glib.bst
-  - gnome-build-meta.bst:core-deps/dconf.bst
-  - gnome-build-meta.bst:freedesktop-sdk.bst:vm/prepare-image.bst
-  - oci/layers/bluefin-init-scripts.bst
-  - filename: oci/layers/bluefin.bst
+  - filename: oci/bluefin-base.bst
     config:
-      location: /layer
-  - filename: oci/chunkah/bluefin.bst
+      location: /base
+  - filename: oci/layers/boot.bst
+    config:
+      location: /boot-layer
+  - filename: oci/chunkah/boot.bst
     config:
       location: /ownership
   - filename: oci/chunkah-metadata-tool.bst
     config:
       location: /ownership-tool
-
-environment:
-  LD_PRELOAD: /usr/libexec/fakecap/fakecap.so
-  FAKECAP_DB: /fakecap
+  - filename: oci/oci-append-layer-tool.bst
+    config:
+      location: /append-tool
 
 variables:
-  sysroot-seed: b57666f6-0fe5-4310-adff-f256936d164d
-  # Baked into org.opencontainers.image.ref.name: the `bootc upgrade`
-  # origin. Gaming gets its own repo since tags are release channels.
-  image-repo: dakota
   ownership-variant: default
+  efi-arch: x64
   (?):
   - gaming == true:
-      image-repo: dakota-gaming
       ownership-variant: gaming
+  - arch == "aarch64":
+      efi-arch: aa64
 
 config:
   commands:
-    - mkdir /fakecap
     - |
-      python3 /ownership-tool/ownership-tool/ownership_metadata.py verify-basis \
-        --root /layer --basis /ownership/ownership/basis.json
+      python3 /append-tool/oci-append-tool/oci_append_layer.py \
+        --base /base --upper /boot-layer --output "%{install-root}" \
+        --comment "Import Bluefin boot layer"
 
+    # The boot layer may only add the paths below (plus their parent
+    # directories). Keep the list exact: anything that needs a base setup
+    # step (sysusers, ldconfig, schemas, presets) must stay in the base,
+    # because those steps never see this layer. The required base paths
+    # are what dakota-secure-boot runs, since the boot layer carries no
+    # runtime dependencies.
     - |
-      prepare-image.sh \
-         --sysroot /layer \
-         --initscripts /initial_scripts \
-         --seed "%{sysroot-seed}" \
-         --noroot --noboot >/dev/null
-
-    - |
-      systemd-sysusers --root /layer
-
-    - |
-      glib-compile-schemas /layer/usr/share/glib-2.0/schemas
-
-    # bootc images must not have both /etc and /usr/etc.
-    # /usr/etc is an ostree implementation detail generated client-side;
-    # the image should only ship /etc.
-    - |
-      if [ -d /layer/usr/etc ]; then
-        mkdir -p /layer/etc
-        cp -a /layer/usr/etc/. /layer/etc/
-        rm -rf /layer/usr/etc
-      fi
-
-    - |
-      dconf update /layer/etc/dconf/db
-
-    - |
-      # Rebuild the shared library linker cache for the sysroot.
-      # Without this, any SO version bump (e.g. Mesa libgallium, Pipewire)
-      # leaves /etc/ld.so.cache stale after a `bootc switch`. The stale
-      # cache causes dlopen() failures for the new SO name — silently
-      # breaking the component on first boot with no obvious error.
-      #
-      # Reproducer: PR #497 junction bump Mesa 26.0.5 → 26.0.6 caused
-      # GNOME Shell "No GPUs found" boot loop (GDM never started).
-      # Root cause: dri_gbm.so has no RPATH and relied on the linker
-      # cache to find libgallium-26.0.6.so, which was not yet in
-      # /etc/ld.so.cache on the deployed system.
-      ldconfig -r /layer -f /layer/etc/ld.so.conf
-
-    - |
-      cd "%{install-root}"
-      build-oci <<EOF
-      mode: oci
-      gzip: disabled
-      images:
-      - os: linux
-        architecture: "%{go-arch}"
-        layer: /layer
-        comment: "Import Bluefin layer"
-        config:
-          Labels:
-            'com.github.containers.toolbox': 'true'
-            'org.opencontainers.image.title': 'Bluefin'
-            'org.opencontainers.image.description': 'A custom GNOME-based desktop image'
-            'org.opencontainers.image.vendor': 'Project Bluefin'
-            'org.opencontainers.image.licenses': 'Apache-2.0'
-            'org.opencontainers.image.url': 'https://projectbluefin.io'
-            'org.opencontainers.image.source': 'https://github.com/projectbluefin/dakota'
-            'containers.bootc': '1'
-        index-annotations:
-          'org.opencontainers.image.ref.name': 'ghcr.io/projectbluefin/%{image-repo}:latest'
-      EOF
-
-    # build-oci normalizes generated metadata. Bind ownership to the completed
-    # archive, not its pre-packaging source tree.
-    - |
-      python3 /ownership-tool/ownership-tool/ownership_metadata.py finalize-oci \
-        --layout "%{install-root}" --root /layer \
-        --basis /ownership/ownership/basis.json \
+      python3 /ownership-tool/ownership-tool/ownership_metadata.py finalize-overlay \
+        --layout "%{install-root}" --base-layout /base \
+        --base-sidecar /base/.dakota/ownership-final.json \
+        --overlay-basis /ownership/ownership/basis.json \
+        --allow-prefix /usr/lib/modules \
+        --allow-prefix /usr/lib/dakota/secure-boot \
+        --allow-prefix "%{indep-libdir}/systemd/boot/efi/systemd-boot%{efi-arch}.efi.signed" \
+        --allow-prefix "%{libexecdir}/fwupd/efi/fwupd%{efi-arch}.efi.signed" \
+        --allow-prefix /usr/lib/bootc/kargs.d/20-lockdown.toml \
+        --allow-prefix /usr/libexec/dakota-secure-boot \
+        --allow-prefix /usr/lib/systemd/system/dakota-secure-boot-update.service \
+        --allow-prefix /usr/lib/systemd/system/multi-user.target.wants/dakota-secure-boot-update.service \
+        --require-base-path /usr/bin/mokutil \
+        --require-base-path /usr/bin/openssl \
+        --require-base-path /usr/bin/efibootmgr \
+        --require-base-path /usr/bin/bootctl \
+        --require-base-path /usr/bin/systemd-cryptenroll \
+        --require-base-path /usr/bin/od \
         --arch "%{go-arch}" --variant "%{ownership-variant}" \
         --output /ownership/final.json
       mkdir -p "%{install-root}/.dakota"

@@ -487,7 +487,8 @@ def _owner(entry: Any, label: str) -> tuple[str, dict[str, str]]:
 
 
 def finalize_overlay(layout: Path, base_layout: Path, base_sidecar: Path, overlay_basis: Path,
-                     allow_prefixes: list[str], arch: str, variant: str, output: Path) -> None:
+                     allow_prefixes: list[str], arch: str, variant: str, output: Path,
+                     require_base_paths: list[str] = ()) -> None:
     """Bind ownership for a cached base image plus one additive boot layer.
 
     The base sidecar keeps its owners for every path the overlay leaves alone.
@@ -495,7 +496,8 @@ def finalize_overlay(layout: Path, base_layout: Path, base_sidecar: Path, overla
     overlay may only add or replace paths under the declared prefixes (plus
     metadata-identical ancestor directories). Any other difference between the
     base snapshot and the combined image fails, so a boot set can never change
-    or hide base content.
+    or hide base content. require_base_paths names base files the overlay's
+    programs need at runtime but cannot carry themselves.
     """
     base = _load_final(base_sidecar)
     if base["binding"] != "oci-layout":
@@ -522,6 +524,10 @@ def finalize_overlay(layout: Path, base_layout: Path, base_sidecar: Path, overla
     if not prefixes:
         _fail("overlay requires at least one allowed prefix")
     previous = base["snapshot"]
+    missing = [path for path in map(_relative, require_base_paths)
+               if previous.get(path, {}).get("type") not in ("file", "symlink")]
+    if missing:
+        _fail(f"base image lacks paths the overlay needs: {['/' + path for path in missing]}")
     for path, kind in overlay.items():
         if any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes):
             continue
@@ -751,14 +757,14 @@ def main() -> int:
     final_oci = commands.add_parser("finalize-oci"); final_oci.add_argument("--layout", type=Path, required=True); final_oci.add_argument("--root", type=Path, required=True); final_oci.add_argument("--basis", type=Path, required=True); final_oci.add_argument("--arch", required=True); final_oci.add_argument("--variant", required=True); final_oci.add_argument("--output", type=Path, required=True)
     rebind = commands.add_parser("rebind-exported"); rebind.add_argument("--root", type=Path, required=True); rebind.add_argument("--sidecar", type=Path, required=True); rebind.add_argument("--image-id", required=True); rebind.add_argument("--arch"); rebind.add_argument("--variant"); rebind.add_argument("--output", type=Path, required=True); rebind.add_argument("--manifest", type=Path)
     validate = commands.add_parser("validate-exported"); validate.add_argument("--root", type=Path, required=True); validate.add_argument("--sidecar", type=Path, required=True); validate.add_argument("--arch"); validate.add_argument("--variant"); validate.add_argument("--manifest", type=Path)
-    overlay = commands.add_parser("finalize-overlay"); overlay.add_argument("--layout", type=Path, required=True); overlay.add_argument("--base-layout", type=Path, required=True); overlay.add_argument("--base-sidecar", type=Path, required=True); overlay.add_argument("--overlay-basis", type=Path, required=True); overlay.add_argument("--allow-prefix", action="append", default=[], required=True); overlay.add_argument("--arch", required=True); overlay.add_argument("--variant", required=True); overlay.add_argument("--output", type=Path, required=True)
+    overlay = commands.add_parser("finalize-overlay"); overlay.add_argument("--layout", type=Path, required=True); overlay.add_argument("--base-layout", type=Path, required=True); overlay.add_argument("--base-sidecar", type=Path, required=True); overlay.add_argument("--overlay-basis", type=Path, required=True); overlay.add_argument("--allow-prefix", action="append", default=[], required=True); overlay.add_argument("--require-base-path", action="append", default=[]); overlay.add_argument("--arch", required=True); overlay.add_argument("--variant", required=True); overlay.add_argument("--output", type=Path, required=True)
     prepare = commands.add_parser("prepare-chunkify"); prepare.add_argument("--sidecar", type=Path, required=True); prepare.add_argument("--image-id", required=True); prepare.add_argument("--manifest", type=Path, required=True); prepare.add_argument("--output", type=Path, required=True)
     comparison = commands.add_parser("compare"); comparison.add_argument("--legacy", type=Path, required=True); comparison.add_argument("--manifest", type=Path, required=True); comparison.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
         if args.command == "verify-basis": verify_basis(args.root, args.basis)
         elif args.command == "finalize-oci": finalize_oci(args.layout, args.root, args.basis, args.arch, args.variant, args.output)
-        elif args.command == "finalize-overlay": finalize_overlay(args.layout, args.base_layout, args.base_sidecar, args.overlay_basis, args.allow_prefix, args.arch, args.variant, args.output)
+        elif args.command == "finalize-overlay": finalize_overlay(args.layout, args.base_layout, args.base_sidecar, args.overlay_basis, args.allow_prefix, args.arch, args.variant, args.output, args.require_base_path)
         elif args.command == "rebind-exported": rebind_exported(args.root, args.sidecar, args.image_id, args.arch, args.variant, args.output, args.manifest)
         elif args.command == "validate-exported": validate_exported(args.root, args.sidecar, args.arch, args.variant, args.manifest)
         elif args.command == "prepare-chunkify": prepare_chunkify_manifest(args.sidecar, args.image_id, args.manifest, args.output)
