@@ -230,10 +230,17 @@ jobs:
         if: always()
         run: rm -f files/boot-keys/private/secure-boot.key
 
+      # Both images are exported, so BuildStream's local cache (both images'
+      # artifacts, tens of GB) is no longer needed. Two images per job do not
+      # fit on one runner disk alongside chunkify otherwise.
+      - name: Free the BuildStream cache
+        run: sudo rm -rf "${HOME}/.cache/buildstream"
+
       # Chunkify runs both images in parallel (each run has its own scratch
-      # directories). It uses the repository's compiled fakecap helper: the
-      # shared chunka action injects nearly one million manifest entries
-      # through Python, which takes hours for Dakota's 8–9 GiB images.
+      # directories), so a runner needs about 95 GB free at the peak. It uses
+      # the repository's compiled fakecap helper: the shared chunka action
+      # injects nearly one million manifest entries through Python, which
+      # takes hours for Dakota's 8–9 GiB images.
       - name: Chunkify, lint and audit images
         id: verify
         env:
@@ -254,10 +261,18 @@ jobs:
             just chunkify "localhost/$(image_of "$slot"):latest" > "${RUNNER_TEMP}/chunkify-${slot}.log" 2>&1 &
             pids[$slot]=$!
           done
+          declare -A chunk_status
+          for slot in $SLOTS; do
+            chunk_status[$slot]=0
+            wait "${pids[$slot]}" || chunk_status[$slot]=$?
+          done
+          # Prune only after both runs finish: a run's freshly imported image
+          # is untagged until it retags it. This drops the pre-chunk images
+          # that the retags leave dangling.
+          sudo podman image prune -f >/dev/null || true
           passed=""
           for slot in $SLOTS; do
-            status=0
-            wait "${pids[$slot]}" || status=$?
+            status=${chunk_status[$slot]}
             echo "::group::chunkify $(image_of "$slot")"
             cat "${RUNNER_TEMP}/chunkify-${slot}.log"
             echo "::endgroup::"

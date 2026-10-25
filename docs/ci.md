@@ -72,8 +72,11 @@ limit.
 `publish-image` and `pr-image` use the same shape: a standard and a gaming job,
 each signing its default and NVIDIA image in one BuildStream session, so the
 shared boot set is built once. `-o gaming` is project-wide, so each value needs
-its own job. Exports run one at a time (they share `.build-out`); chunkify and
-push run both images in parallel. In publish, only the default image is
+its own job. Exports run one at a time (they share `.build-out`), then BuildStream's
+local cache is deleted and chunkify and push run both images in parallel.
+Each chunkify holds an overlay copy-up, output and import of an 11 GB image,
+so a signing runner needs about 95 GB free at the peak; the cache-box
+signing VMs have 200 GB disks. In publish, only the default image is
 required: an optional image that fails drops out with a warning and is listed
 as not published in the job summary, and the gaming job is continue-on-error.
 `.github/image-variants.json` declares the `publish` role with one slot per OCI
