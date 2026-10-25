@@ -1,17 +1,10 @@
 name: "Help this project"
 description: "Donate agent time — point at a repo, issue, or PR and get a high-signal report back."
-labels: ["flow/agent-donation"]
 body:
   - type: markdown
     attributes:
       value: |
-        ## Point an agent at something. Get a report back.
-
-        This template is for donating agent compute to the project. You name a target — a repo, an issue, a PR, a roadmap — and a Hive agent investigates and files findings here.
-
-        **This is still human-driven.** You decide what to investigate. The agent does the reading, cross-referencing, and summarizing. A maintainer reviews the report and decides what to act on.
-
-        Be specific about what you want the agent to focus on. "Look at this repo" produces a shallow overview. "Check whether the PR review checklist catches the reproducibility class of bugs we've been seeing" produces something actionable.
+        Point an agent at a repo, issue, or PR and get a report back. Be specific — "look at this repo" produces a shallow overview, a focused question produces something actionable.
 
   - type: input
     id: target-url
@@ -59,4 +52,4 @@ body:
     attributes:
       value: |
         ---
-        Hive will route this to the right agent based on the flow type above. The agent files its report as a comment on this issue. A maintainer reviews the report and decides what to action.
+        Hive will route this to the right agent based on the flow type above. The agent files its report as a comment on this issue.
