@@ -4,11 +4,7 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/common.git
   track: main
-  ref: v2026.08-318-ga7088074382c18a788fd378363b41589835c01cc
-# Consume common's fastfetch layout directly; only adapt the install-date input.
-# Drop this patch once common provides a shared install-date helper.
-- kind: patch
-  path: patches/common/0001-fastfetch-install-date.patch
+  ref: v2026.08-353-gc95a85be0d28805b9e5d3a4833ac91bdec5263af
 # Dakota uses Ghostty as primary terminal: enable dual-theme to track GNOME Dark/Light style.
 # Drop this patch once common ships dual-theme by default.
 - kind: patch
@@ -19,10 +15,6 @@ sources:
   path: patches/common/0003-uwelcome-interactive-only.patch
 - kind: patch
   path: patches/common/0004-policy-drop-redhat-gpg-entries.patch
-# Dakota has no rpm-ostree: drop the signed-status glyph from the image line.
-# Drop once common guards or removes the rpm-ostree call.
-- kind: patch
-  path: patches/common/0005-image-info-drop-rpm-ostree.patch
 # The weekly stats are fetched at build time elsewhere; Dakota builds have no
 # network, so drop the two lines rather than print missing-file errors.
 - kind: patch
@@ -89,31 +81,6 @@ config:
       echo "ERROR: /var/home/linuxbrew references above break brew bottle-prefix detection — fix them in projectbluefin/common" >&2
       exit 1
     fi
-
-    # Dakota-only: make fastfetch's image line show the real stream tag.
-    # Unprivileged `bootc status` requires root on bootc >= 1.14, so the
-    # script's bootc fallback is dead in user sessions — and Dakota's baked
-    # image-tag is always "latest" because promotion retags the same digest
-    # (unlike Bluefin/LTS/Aurora, which bake the tag per-stream build).
-    # ublue-booted-image.service (bluefin/firstboot-date.bst) records the
-    # booted ref in /run/ublue-os/booted-image at boot; teach the script to
-    # prefer it. Guard so an upstream rewrite of the script fails loudly
-    # here instead of silently shipping an unpatched fastfetch.
-    # NB: the build sandbox has only bash + coreutils + sed (no grep/awk) —
-    # see core/sandbox-tools.bst — so guard and patch are sed/wc based.
-    IMG_INFO="system_files/shared/usr/bin/ublue-image-info.sh"
-    if [ "$(sed -n '/\.status\.booted\.image\.image\.image/p' "$IMG_INFO" | wc -l)" != 1 ]; then
-      echo "ERROR: ublue-image-info.sh changed upstream — re-fit the booted-image patch (see ublue-booted-image.service)" >&2
-      exit 1
-    fi
-    sed -i '/\.status\.booted\.image\.image\.image/a \
-    \
-    # Dakota: prefer the boot-time snapshot written by ublue-booted-image.service.\
-    # Unprivileged bootc status fails on bootc >= 1.14, so the query above is dead\
-    # in user sessions, and the baked Dakota tag is always "latest".\
-    if [[ -r /run/ublue-os/booted-image ]]; then\
-    \tread -r BOOTED_REF < /run/ublue-os/booted-image\
-    fi' "$IMG_INFO"
 
     cp -r system_files/bluefin/usr/./ "%{install-root}%{prefix}/"
     cp -r system_files/shared/usr/./ "%{install-root}%{prefix}/"

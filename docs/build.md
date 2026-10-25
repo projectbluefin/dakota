@@ -209,16 +209,13 @@ modify the same Quick Settings controls.
 its icons/colors in tests. Common updates should carry presentation changes
 without a second sync step.
 
-The temporary `patches/common/0001-fastfetch-install-date.patch` changes only
-the date command to read the first-boot record. Drop it when common supports
-that record through a shared helper. `firstboot-date.bst` owns the runtime
-records, not the presentation; `nerd-fonts-symbols.bst` supplies icon fallback
-without changing the default text font. The existing booted-image helper patch
-in `common.bst` is separate and remains until common supports that record too.
+Common's install-date line reads `/var/lib/ublue-os/install-date` first and
+falls back to `/var/log` only when that record is missing. `firstboot-date.bst`
+owns that runtime record, not the presentation; `nerd-fonts-symbols.bst`
+supplies icon fallback without changing the default text font.
 
-Two more patches remove inputs Dakota cannot provide. `0005` drops the
-`rpm-ostree` signed-status glyph from `ublue-image-info.sh`, because Dakota has
-no `rpm-ostree`. `0006` drops the weekly user and Bazaar install count lines,
+`patches/common/0006-fastfetch-drop-weekly-stats.patch` removes an input Dakota
+cannot provide. It drops the weekly user and Bazaar install count lines,
 because other images fill `fastfetch-user-count` and `bazaar-install-count`
 with a build-time network fetch that Dakota's sandboxed builds cannot make. Do
 not ship placeholder or invented counts in their place.
