@@ -75,7 +75,17 @@ config:
     # detection on Dakota's real /home; common respelled everything to
     # /home/linuxbrew in projectbluefin/common#997. Guard against the bad
     # spelling regressing upstream (.agents/skills/dakota-workstation/references/host-homebrew.md).
-    if grep -rl "/var/home/linuxbrew" system_files/shared system_files/bluefin; then
+    # The sandbox has bash, coreutils and sed but no grep or find
+    # (core/sandbox-tools.bst), so walk the tree with globstar and print
+    # matching files with sed's F command.
+    linuxbrew_refs="$(bash -O globstar -O dotglob -O nullglob -c '
+      for f in system_files/shared/** system_files/bluefin/**; do
+        if [ -f "$f" ] && [ ! -L "$f" ]; then
+          sed -n "\#/var/home/linuxbrew#{F;q}" "$f"
+        fi
+      done')"
+    if [ -n "$linuxbrew_refs" ]; then
+      printf '%s\n' "$linuxbrew_refs" >&2
       echo "ERROR: /var/home/linuxbrew references above break brew bottle-prefix detection — fix them in projectbluefin/common" >&2
       exit 1
     fi
