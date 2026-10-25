@@ -15,7 +15,6 @@ import argparse
 import copy
 import hashlib
 import json
-import os
 import re
 import shutil
 import sys
@@ -62,15 +61,6 @@ def _write_blob(output: Path, data: bytes, media_type: str) -> dict[str, Any]:
     return {"mediaType": media_type, "digest": "sha256:" + digest, "size": len(data)}
 
 
-def _place(source: Path, destination: Path) -> None:
-    # Base layers are gigabytes; a hard link avoids copying them when the
-    # staged base and the install root share a filesystem.
-    try:
-        os.link(source, destination)
-    except OSError:
-        shutil.copyfile(source, destination)
-
-
 def append_layer(base: Path, layer_tar: Path, output: Path, comment: str) -> dict[str, Any]:
     """Write base + layer_tar to output; return the new manifest descriptor."""
     index = json.loads((base / "index.json").read_text(encoding="utf-8"))
@@ -91,7 +81,9 @@ def append_layer(base: Path, layer_tar: Path, output: Path, comment: str) -> dic
         source = _blob(base, layer["digest"])
         if _sha256(source) != layer["digest"].removeprefix("sha256:"):
             _fail(f"base layer does not match its digest: {layer['digest']}")
-        _place(source, _blob(output, layer["digest"]))
+        # Copy, never hard-link: under remote execution the staged base is
+        # casd's own object store, and casd captures this install root.
+        shutil.copyfile(source, _blob(output, layer["digest"]))
 
     layer_digest = _sha256(layer_tar)
     destination = output / "blobs/sha256" / layer_digest

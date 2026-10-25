@@ -163,6 +163,9 @@ def check_socket_configs(shell: str, errors: list[str]) -> None:
             errors.append("socket config must route artifacts, sources, storage and RE through the socket")
         if "cache.projectbluefin.io" in config or "client-key:" in config:
             errors.append("socket config must not mix in the mTLS endpoint or client identity")
+        pings = [int(value) for value in re.findall(r"keepalive-time: (\d+)", config)]
+        if not pings or min(pings) < 300:
+            errors.append("socket config must ping casd at most every 300 seconds (gRPC's server minimum)")
         socket_dir = str(Path(result.socket).parent)
         if f"-v {socket_dir}:{socket_dir}:rw" not in result.github_env:
             errors.append("socket config must mount the socket into the bst container")

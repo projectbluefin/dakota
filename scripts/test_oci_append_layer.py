@@ -152,6 +152,9 @@ class RealLayerWriterTests(unittest.TestCase):
     """Run the layer writer the sandbox uses when the junction is staged locally."""
 
     def test_layer_has_no_whiteouts_and_keeps_every_file(self):
+        # The staged junction is a BuildStream local source: bytecode written
+        # into it would change oci-builder's cache key.
+        sys.dont_write_bytecode = True
         sys.path.insert(0, str(_staged_oci_builder()))
         with tempfile.TemporaryDirectory() as temporary:
             tmp = Path(temporary)

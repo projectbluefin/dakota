@@ -79,6 +79,12 @@ runs:
         if [[ "$USE_SOCKET" == "true" ]]; then
           CAS_URL="unix:${CASD_SOCKET}"
           CAS_AUTH=""
+          # Over the socket, keepalive pings reach casd itself rather than
+          # Traefik. casd sets no --permit-keepalive-time, so gRPC's server
+          # default applies: pings under five minutes apart are strikes and
+          # the second closes the connection (too_many_pings), which kills
+          # long Execute streams around twelve minutes in.
+          CONNECTION_CONFIG="${CONNECTION_CONFIG/keepalive-time: 180/keepalive-time: 360}"
           SOCKET_DIR="$(dirname "$CASD_SOCKET")"
           if [[ -n "${GITHUB_ENV:-}" ]]; then
             echo "BST_PODMAN_EXTRA_ARGS=${BST_PODMAN_EXTRA_ARGS:-} -v ${SOCKET_DIR}:${SOCKET_DIR}:rw" >> "$GITHUB_ENV"

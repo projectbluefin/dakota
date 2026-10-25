@@ -78,6 +78,15 @@ class CheckPublishWorkflowTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("through the socket", result.stderr)
 
+    def test_rejects_socket_keepalive_below_server_minimum(self) -> None:
+        result = self.mutate(
+            ".github/actions/generate-bst-ci-config/action.yml",
+            "keepalive-time: 180/keepalive-time: 360}",
+            "keepalive-time: 180/keepalive-time: 180}",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("at most every 300 seconds", result.stderr)
+
     def test_rejects_serial_build_matrix(self) -> None:
         result = self.mutate(
             ".github/workflows/build.yml",

@@ -8,6 +8,10 @@ kind: script
   - include/boot-layer.yml
 
 build-depends:
+  # Shell, coreutils and sed for the commands in include/boot-layer.yml;
+  # runtime-minimal carries no shell since freedesktop-sdk 26.08.
+  - core/sandbox-tools.bst
+  - freedesktop-sdk.bst:components/sed.bst
   - freedesktop-sdk.bst:components/kmod.bst
   - freedesktop-sdk.bst:components/openssl.bst
   - freedesktop-sdk.bst:components/findutils.bst
