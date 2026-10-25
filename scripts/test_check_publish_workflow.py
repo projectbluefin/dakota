@@ -60,6 +60,24 @@ class CheckPublishWorkflowTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_rejects_socket_without_push_guard(self) -> None:
+        result = self.mutate(
+            ".github/actions/generate-bst-ci-config/action.yml",
+            '           [[ "${ENABLE_PUSH:-true}" == "true" ]] &&\n',
+            "",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("must ignore the casd socket", result.stderr)
+
+    def test_rejects_socket_config_with_mtls_endpoint(self) -> None:
+        result = self.mutate(
+            ".github/actions/generate-bst-ci-config/action.yml",
+            '          CAS_URL="unix:${CASD_SOCKET}"\n',
+            '          CAS_URL="https://cache.projectbluefin.io:11002"\n',
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("through the socket", result.stderr)
+
     def test_rejects_serial_build_matrix(self) -> None:
         result = self.mutate(
             ".github/workflows/build.yml",
@@ -104,6 +122,24 @@ class CheckPublishWorkflowTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("if: always()", result.stderr)
+
+    def test_rejects_grouped_matrix_drift(self) -> None:
+        result = self.mutate(
+            ".github/workflows/publish.yml",
+            "            base_continue: false\n",
+            "            base_continue: true\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("drifted", result.stderr)
+
+    def test_rejects_unwired_optional_image_flag(self) -> None:
+        result = self.mutate(
+            ".github/workflows/publish.yml",
+            "        continue-on-error: ${{ matrix.nvidia_continue }}\n",
+            "",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("must wire", result.stderr)
 
     def test_rejects_explicit_artifact_pull(self) -> None:
         result = self.mutate(
@@ -218,9 +254,10 @@ class ImageVariantsMatrixTests(unittest.TestCase):
 
     def test_publish_matrix_covers_all_four_variants(self) -> None:
         matrix = self.image_variants.matrix_for(self.declaration, "publish")
+        self.assertEqual([entry["group"] for entry in matrix], ["standard", "gaming"])
         self.assertEqual(
-            [entry["variant"] for entry in matrix],
-            ["default", "nvidia", "gaming", "nvidia-gaming"],
+            [(entry["base_variant"], entry["nvidia_variant"]) for entry in matrix],
+            [("default", "nvidia"), ("gaming", "nvidia-gaming")],
         )
 
     def test_sbom_matrix_excludes_gaming_variants(self) -> None:
@@ -228,14 +265,18 @@ class ImageVariantsMatrixTests(unittest.TestCase):
         self.assertEqual([entry["variant"] for entry in matrix], ["default", "nvidia"])
 
     def test_gaming_variants_carry_the_build_gaming_flag(self) -> None:
-        matrix = {
-            entry["variant"]: entry
-            for entry in self.image_variants.matrix_for(self.declaration, "publish")
-        }
-        self.assertEqual(matrix["gaming"]["gaming"], "true")
-        self.assertEqual(matrix["gaming"]["export_variant"], "default")
-        self.assertEqual(matrix["nvidia-gaming"]["export_variant"], "nvidia")
-        self.assertNotIn("gaming", matrix["default"])
+        standard, gaming = self.image_variants.matrix_for(self.declaration, "publish")
+        self.assertEqual(standard["gaming"], "false")
+        self.assertEqual(gaming["gaming"], "true")
+        self.assertEqual(gaming["base_image_suffix"], "-gaming")
+        self.assertEqual(gaming["nvidia_image_suffix"], "-nvidia-gaming")
+
+    def test_only_the_default_image_is_required(self) -> None:
+        standard, gaming = self.image_variants.matrix_for(self.declaration, "publish")
+        self.assertIs(standard["continue"], False)
+        self.assertIs(standard["base_continue"], False)
+        self.assertIs(standard["nvidia_continue"], True)
+        self.assertIs(gaming["continue"], True)
 
     def test_role_projection_omits_undeclared_fields(self) -> None:
         matrix = self.image_variants.matrix_for(self.declaration, "tag_testing")
@@ -245,7 +286,7 @@ class ImageVariantsMatrixTests(unittest.TestCase):
     def test_parser_preserves_scalar_types(self) -> None:
         workflow = (REPOSITORY / ".github/workflows/publish.yml").read_text()
         matrix = {
-            entry["variant"]: entry
+            entry["group"]: entry
             for entry in self.image_variants.parse_workflow_matrix(
                 workflow, "publish-image"
             )
@@ -253,9 +294,9 @@ class ImageVariantsMatrixTests(unittest.TestCase):
         # Quoting is significant: `gaming: 'true'` is the string consumed by
         # BUILD_GAMING, while `continue: false` is a real boolean.
         self.assertEqual(matrix["gaming"]["gaming"], "true")
-        self.assertIs(matrix["default"]["continue"], False)
-        self.assertIs(matrix["nvidia"]["continue"], True)
-        self.assertEqual(matrix["default"]["image_suffix"], "")
+        self.assertIs(matrix["standard"]["continue"], False)
+        self.assertIs(matrix["standard"]["nvidia_continue"], True)
+        self.assertEqual(matrix["standard"]["base_image_suffix"], "")
 
     def test_every_workflow_matrix_matches_the_declaration(self) -> None:
         workflow = (REPOSITORY / ".github/workflows/publish.yml").read_text()

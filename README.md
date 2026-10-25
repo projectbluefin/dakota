@@ -66,7 +66,7 @@ Assign yourself with `/assign`. See [docs/workflow.md](docs/workflow.md) for the
 |        Tag |  Stream |                                                                                                    What it is |
 | ---------: | ------: | ------------------------------------------------------------------------------------------------------------: |
 |  `:stable` |  Stable |                        GNOME 50 — production. On-demand promotion from `:testing` via `just release --apply`. |
-| `:testing` |     Dev |                 GNOME 50 — daily builds from `testing` branch. Boot-chain changes are maintainer boot-tested. |
+| `:testing` |     Dev |    GNOME 50, built from every change to the `testing` branch. Boot-chain changes are maintainer boot-tested. |
 |    `:next` |  Paused |                                     GNOME master. Paused until the next GNOME beta; receives no updates. |
 |     `:btw` |  Paused |                                                                                            Alias for `:next`. |
 

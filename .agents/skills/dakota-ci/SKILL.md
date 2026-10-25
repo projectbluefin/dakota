@@ -40,7 +40,7 @@ Workflow YAML in `.github/workflows/` is the current source of truth. Do not rel
 - **Third-Party Actions**: Pin all third-party actions to full 40-character commit SHAs with an inline version comment. `projectbluefin/actions@v1` is an intentional managed-tag exception.
 - **Build vs Publish Separation**: `build.yml` writes artifacts to the remote CAS; `publish.yml` only exports artifacts already present in the CAS for that exact resolved SHA.
 - **e2e Workflow Gate**: `e2e.yml` runs only via `workflow_dispatch` against an already-published tag. It does **not** gate PRs.
-- **Atomic Matrices**: Do not cancel or serialize matrix siblings (the `standard` and `gaming` build jobs, or the four publish variants) without explicit human approval. Each build job covers two variants, so a job's result alone does not show which of its images built.
+- **Atomic Matrices**: Do not cancel or serialize matrix siblings (the `standard` and `gaming` jobs in `build`, `pr-image` and `publish-image`) without explicit human approval. Each job covers two variants, so a job's result alone does not show which of its images built or published; read the step logs and the publish job summary.
 - **Truth in Reporting**: Never report CI as green while workflows are pending, queued, or skipped.
 
 ## Common Rationalizations
