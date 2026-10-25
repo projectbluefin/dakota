@@ -70,10 +70,10 @@ jobs:
           fi
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
           # Derive the :testing tag from the branch name.
-          # Only trunk branches (direct pushes / schedule) advance stream tags.
+          # Only trunk branches (direct pushes / dispatch) advance stream tags.
           # Merge-queue builds (gh-readonly-queue/**) publish an immutable :SHA
           # tag only — they must NOT move public stream tags before the commit lands.
-          # testing  → :testing  (published daily on schedule)
+          # testing  → :testing  (published on every testing build)
           # next     → :next     (rolling GNOME master / bleeding edge)
           # queue/** → (empty)   :SHA only, no stream tag
           if [[ "$BRANCH" == "next" ]]; then
@@ -86,47 +86,41 @@ jobs:
           fi
 
   # ── Export, sign, attest ─────────────────────────────────────────────────
-  # Pulls artifacts from remote CAS, signs the boot chain locally, pushes
-  # :$sha, signs and attests.
+  # Pulls the base images from remote CAS, signs the boot layer locally,
+  # pushes :$sha, signs and attests.
   # SBOM generation is split to a separate job (publish-sbom) so it runs
   # in parallel with promote rather than blocking it.
   publish-image:
     needs: setup
-    runs-on: ubuntu-26.04
-    # The signing pass rebuilds the image layers on the runner; nvidia-gaming
-    # needs about 95 minutes.
+    runs-on: ${{ vars.DAKOTA_SIGN_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 180
-    # Variant matrix: default and NVIDIA publish in parallel from the shared
-    # BST artifact cache. NVIDIA is `continue-on-error: true` so its failure
-    # does not block default publication.
+    # One job per gaming value, each publishing a base and an NVIDIA image.
+    # BuildStream signs both in one session, so the boot set they share (the
+    # signed kernel, modules and initramfs) is built once. The default image
+    # is required; every other image may fail without blocking it, and the
+    # gaming job as a whole is continue-on-error.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - variant: default
-            element: oci/bluefin.bst
-            image_suffix: ''
-            sbom_filename: dakota.spdx.json
+          - group: standard
+            gaming: 'false'
             continue: false
-          - variant: nvidia
-            element: oci/bluefin-nvidia.bst
-            image_suffix: '-nvidia'
-            sbom_filename: dakota-nvidia.spdx.json
-            continue: true
-          # Gaming variants: same elements built with `-o gaming true`
-          # (BUILD_GAMING). No SBOM entries yet; publish-sbom stays two-variant.
-          - variant: gaming
-            export_variant: default
-            element: oci/bluefin.bst
-            image_suffix: '-gaming'
+            base_variant: default
+            base_image_suffix: ''
+            base_continue: false
+            nvidia_variant: nvidia
+            nvidia_image_suffix: '-nvidia'
+            nvidia_continue: true
+          - group: gaming
             gaming: 'true'
             continue: true
-          - variant: nvidia-gaming
-            export_variant: nvidia
-            element: oci/bluefin-nvidia.bst
-            image_suffix: '-nvidia-gaming'
-            gaming: 'true'
-            continue: true
+            base_variant: gaming
+            base_image_suffix: '-gaming'
+            base_continue: true
+            nvidia_variant: nvidia-gaming
+            nvidia_image_suffix: '-nvidia-gaming'
+            nvidia_continue: true
     continue-on-error: ${{ matrix.continue }}
     permissions:
       contents: read
@@ -134,6 +128,14 @@ jobs:
       id-token: write
       attestations: write
       actions: read
+    # Image names are IMAGE_NAME plus these suffixes; the env context is not
+    # available at job level, so steps join them.
+    env:
+      BUILD_GAMING: ${{ matrix.gaming }}
+      BASE_SUFFIX: ${{ matrix.base_image_suffix }}
+      NVIDIA_SUFFIX: ${{ matrix.nvidia_image_suffix }}
+      BASE_CONTINUE: ${{ matrix.base_continue }}
+      NVIDIA_CONTINUE: ${{ matrix.nvidia_continue }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -168,7 +170,7 @@ jobs:
       # never in a job that pushes to the CAS. The key is a
       # BuildStream local source, so this pass must stay local and push-free,
       # which the fetch-only config above guarantees. Everything except the
-      # signing elements and the layers above them comes from the cache.
+      # boot layer and the final OCI elements comes from the cache.
       - name: Write Secure Boot signing key
         env:
           DAKOTA_SECURE_BOOT_KEY: ${{ secrets.DAKOTA_SECURE_BOOT_KEY }}
@@ -180,53 +182,109 @@ jobs:
           umask 077
           printf '%s\n' "$DAKOTA_SECURE_BOOT_KEY" > files/boot-keys/private/secure-boot.key
 
-      - name: Sign boot chain and compose image
+      # If the session fails, retry the base image alone: a quick cache check
+      # when it already built, a real retry when the NVIDIA failure stopped
+      # it. Images that never built fail their export below.
+      - name: Sign boot chain and compose images
         env:
           BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
-          BUILD_GAMING: ${{ matrix.gaming || 'false' }}
           BUILD_SECURE_BOOT_SIGNING: 'true'
-        run: just bst build ${{ matrix.element }}
+        run: |
+          status=0
+          just bst build oci/bluefin.bst oci/bluefin-nvidia.bst || status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::warning::signing pass failed (exit $status); retrying the base image alone"
+            if ! just bst build oci/bluefin.bst && [ "$BASE_CONTINUE" != true ]; then
+              exit 1
+            fi
+          fi
 
       # The key stays until export: the signed elements' cache keys include
-      # it, so checkout cannot find their artifacts without it.
-      - name: Export OCI image from BuildStream
+      # it, so checkout cannot find their artifacts without it. Exports share
+      # .build-out, so they run one at a time.
+      - name: Export OCI images from BuildStream
         id: export
         env:
           BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          BUILD_GAMING: ${{ matrix.gaming || 'false' }}
           BUILD_SECURE_BOOT_SIGNING: 'true'
           OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}
           OCI_IMAGE_REVISION: ${{ needs.setup.outputs.sha }}
-          OCI_IMAGE_VERSION: latest
-        run: just export ${{ matrix.export_variant || matrix.variant }}
+        run: |
+          slots=""
+          for slot in base nvidia; do
+            if [ "$slot" = base ]; then source=default optional=$BASE_CONTINUE image=$IMAGE_NAME$BASE_SUFFIX
+            else source=nvidia optional=$NVIDIA_CONTINUE image=$IMAGE_NAME$NVIDIA_SUFFIX; fi
+            if just export "$source"; then
+              slots="$slots $slot"
+            elif [ "$optional" = true ]; then
+              echo "::warning::export failed for $image; it will not be published"
+            else
+              echo "::error::export failed for $image"
+              exit 1
+            fi
+          done
+          echo "slots=${slots# }" >> "$GITHUB_OUTPUT"
 
       - name: Remove Secure Boot signing key
         if: always()
         run: rm -f files/boot-keys/private/secure-boot.key
 
-      - name: Chunkify image layers
-        # Use the repository's compiled fakecap helper. The shared chunka action
-        # injects nearly one million manifest entries through Python, which makes
-        # this stage take hours for Dakota's 8–9 GiB images.
-        env:
-          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
-        run: just chunkify "localhost/${BUILD_IMAGE_NAME}:latest"
+      # Both images are exported, so BuildStream's local cache (both images'
+      # artifacts, tens of GB) is no longer needed. Two images per job do not
+      # fit on one runner disk alongside chunkify otherwise.
+      - name: Free the BuildStream cache
+        run: sudo rm -rf "${HOME}/.cache/buildstream"
 
-      - name: Validate with bootc container lint
+      # Chunkify runs both images in parallel (each run has its own scratch
+      # directories), so a runner needs about 95 GB free at the peak. It uses
+      # the repository's compiled fakecap helper: the shared chunka action
+      # injects nearly one million manifest entries through Python, which
+      # takes hours for Dakota's 8–9 GiB images.
+      - name: Chunkify, lint and audit images
+        id: verify
         env:
-          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
-        run: just lint
-
-      - name: Audit swap/zram configuration
-        env:
-          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
-        run: just swap-audit
-
-      - name: Audit user-avatar configuration
-        env:
-          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
-        run: just avatar-audit
+          SLOTS: ${{ steps.export.outputs.slots }}
+        run: |
+          image_of() { if [ "$1" = base ]; then echo "$IMAGE_NAME$BASE_SUFFIX"; else echo "$IMAGE_NAME$NVIDIA_SUFFIX"; fi; }
+          optional_of() { if [ "$1" = base ]; then echo "$BASE_CONTINUE"; else echo "$NVIDIA_CONTINUE"; fi; }
+          drop() {
+            if [ "$(optional_of "$1")" = true ]; then
+              echo "::warning::$2 failed for $(image_of "$1"); it will not be published"
+            else
+              echo "::error::$2 failed for $(image_of "$1")"
+              exit 1
+            fi
+          }
+          declare -A pids
+          for slot in $SLOTS; do
+            just chunkify "localhost/$(image_of "$slot"):latest" > "${RUNNER_TEMP}/chunkify-${slot}.log" 2>&1 &
+            pids[$slot]=$!
+          done
+          declare -A chunk_status
+          for slot in $SLOTS; do
+            chunk_status[$slot]=0
+            wait "${pids[$slot]}" || chunk_status[$slot]=$?
+          done
+          # Prune only after both runs finish: a run's freshly imported image
+          # is untagged until it retags it. This drops the pre-chunk images
+          # that the retags leave dangling.
+          sudo podman image prune -f >/dev/null || true
+          passed=""
+          for slot in $SLOTS; do
+            status=${chunk_status[$slot]}
+            echo "::group::chunkify $(image_of "$slot")"
+            cat "${RUNNER_TEMP}/chunkify-${slot}.log"
+            echo "::endgroup::"
+            if [ "$status" -ne 0 ]; then drop "$slot" chunkify; continue; fi
+            failed=""
+            for check in lint swap-audit avatar-audit; do
+              BUILD_IMAGE_NAME="$(image_of "$slot")" just "$check" || { failed=$check; break; }
+            done
+            if [ -n "$failed" ]; then drop "$slot" "$failed"; continue; fi
+            passed="$passed $slot"
+          done
+          echo "slots=${passed# }" >> "$GITHUB_OUTPUT"
 
       - name: Login to GHCR
         env:
@@ -242,79 +300,154 @@ jobs:
         id: push
         env:
           BUILD_SHA: ${{ needs.setup.outputs.sha }}
+          SLOTS: ${{ steps.verify.outputs.slots }}
         run: |
-          LOCAL_IMAGE="${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
-          IMAGE="${{ env.IMAGE_REGISTRY }}/${LOCAL_IMAGE}"
-
-          sudo podman tag "localhost/${LOCAL_IMAGE}:latest" "${IMAGE}:${BUILD_SHA}"
-
-          PUSH_OK=false
-          for attempt in 1 2 3; do
-            sudo podman push --compression-format=zstd \
-              --digestfile /tmp/digest.txt \
-              "${IMAGE}:${BUILD_SHA}" && { PUSH_OK=true; break; }
-            echo "Push attempt ${attempt} failed for :${BUILD_SHA}, retrying in 5s..."
-            [ "$attempt" -lt 3 ] && sleep 5
-          done
-          $PUSH_OK || { echo "ERROR: all push attempts failed for :${BUILD_SHA}"; exit 1; }
-
-          DIGEST=$(cat /tmp/digest.txt)
-          if ! [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "ERROR: malformed digest in digestfile: '${DIGEST}'"
-            exit 1
-          fi
-
-          # Advisory only; must never fail the job.
-          for attempt in $(seq 1 18); do
-            if skopeo inspect --no-tags \
-                "docker://${IMAGE}:${BUILD_SHA}" > /dev/null 2>&1; then
-              echo "Anonymous tag :${BUILD_SHA} visible (attempt ${attempt})"
-              break
+          push_slot() {
+            local slot="$1" local_image image digest attempt
+            if [ "$slot" = base ]; then local_image=$IMAGE_NAME$BASE_SUFFIX; else local_image=$IMAGE_NAME$NVIDIA_SUFFIX; fi
+            image="${{ env.IMAGE_REGISTRY }}/${local_image}"
+            sudo podman tag "localhost/${local_image}:latest" "${image}:${BUILD_SHA}"
+            for attempt in 1 2 3; do
+              sudo podman push --compression-format=zstd \
+                --digestfile "${RUNNER_TEMP}/digest-${slot}.txt" \
+                "${image}:${BUILD_SHA}" && break
+              echo "Push attempt ${attempt} failed for ${image}:${BUILD_SHA}"
+              [ "$attempt" -lt 3 ] || return 1
+              sleep 5
+            done
+            digest=$(cat "${RUNNER_TEMP}/digest-${slot}.txt")
+            if ! [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "ERROR: malformed digest for ${image}: '${digest}'"
+              return 1
             fi
-            if [ "$attempt" -eq 18 ]; then
-              echo "::warning::GHCR has not exposed :${BUILD_SHA} anonymously after 3 min; continuing — the hard gate is the authenticated digest read"
-            fi
-            sleep 10
+            # Advisory only; must never fail the job.
+            for attempt in $(seq 1 18); do
+              if skopeo inspect --no-tags "docker://${image}:${BUILD_SHA}" > /dev/null 2>&1; then
+                echo "Anonymous tag ${image}:${BUILD_SHA} visible (attempt ${attempt})"
+                break
+              fi
+              if [ "$attempt" -eq 18 ]; then
+                echo "::warning::GHCR has not exposed ${image}:${BUILD_SHA} anonymously after 3 min; continuing — the hard gate is the authenticated digest read"
+              fi
+              sleep 10
+            done
+            echo "${slot}_digest=${digest}" >> "$GITHUB_OUTPUT"
+          }
+          declare -A pids
+          for slot in $SLOTS; do
+            push_slot "$slot" > "${RUNNER_TEMP}/push-${slot}.log" 2>&1 &
+            pids[$slot]=$!
           done
-
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          for slot in $SLOTS; do
+            status=0
+            wait "${pids[$slot]}" || status=$?
+            cat "${RUNNER_TEMP}/push-${slot}.log"
+            if [ "$status" -ne 0 ]; then
+              optional=$NVIDIA_CONTINUE; [ "$slot" = base ] && optional=$BASE_CONTINUE
+              if [ "$optional" = true ]; then
+                echo "::warning::push failed for the $slot image; it will not be published"
+              else
+                echo "::error::push failed for the $slot image"
+                exit 1
+              fi
+            fi
+          done
 
       - name: Install oras
+        if: steps.push.outputs.base_digest != '' || steps.push.outputs.nvidia_digest != ''
         uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
 
-      - name: Sign image and create attestation
-        # generate-sbom: false — dakota uses just sbom (BST-native provenance via
-        # bst artifact list). Syft post-build scan is less accurate for BST builds.
-        # SBOM attachment and SBOM signing are handled in the publish-sbom job.
+      # Sign, then upload the digest artifact, one image at a time: an
+      # artifact means pushed AND signed, and a failed optional image must
+      # not keep the other from promotion.
+      # generate-sbom: false — dakota uses just sbom (BST-native provenance via
+      # bst artifact list). Syft post-build scan is less accurate for BST builds.
+      # SBOM attachment and SBOM signing are handled in the publish-sbom job.
+      - name: Sign ${{ matrix.base_variant }} image and create attestation
+        id: sign-base
+        if: steps.push.outputs.base_digest != ''
+        continue-on-error: ${{ matrix.base_continue }}
         uses: projectbluefin/actions/bootc-build/sign-and-publish@v1
         with:
-          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
-          digest: ${{ steps.push.outputs.digest }}
+          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.base_image_suffix }}
+          digest: ${{ steps.push.outputs.base_digest }}
           generate-sbom: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Uploaded after signing: the artifact means pushed AND signed.
-      - name: Write digest artifact
+      - name: Write ${{ matrix.base_variant }} digest artifact
+        if: steps.sign-base.outcome == 'success'
         env:
           BUILD_SHA: ${{ needs.setup.outputs.sha }}
+          VARIANT: ${{ matrix.base_variant }}
+          IMAGE: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.base_image_suffix }}
+          DIGEST: ${{ steps.push.outputs.base_digest }}
         run: |
-          mkdir -p "${RUNNER_TEMP}/digest-artifact"
-          jq -n \
-            --arg variant "${{ matrix.variant }}" \
-            --arg image   "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}" \
-            --arg sha     "${BUILD_SHA}" \
-            --arg digest  "${{ steps.push.outputs.digest }}" \
-            --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          mkdir -p "${RUNNER_TEMP}/digest-base"
+          jq -n --arg variant "$VARIANT" --arg image "$IMAGE" --arg sha "$BUILD_SHA" \
+            --arg digest "$DIGEST" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '{schema: 1, variant: $variant, image: $image, sha: $sha, digest: $digest, created: $created}' \
-            > "${RUNNER_TEMP}/digest-artifact/digest.json"
+            > "${RUNNER_TEMP}/digest-base/digest.json"
 
-      - name: Upload digest artifact
+      - name: Upload ${{ matrix.base_variant }} digest artifact
+        if: steps.sign-base.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: digest-${{ matrix.variant }}
-          path: ${{ runner.temp }}/digest-artifact/digest.json
+          name: digest-${{ matrix.base_variant }}
+          path: ${{ runner.temp }}/digest-base/digest.json
           retention-days: 30
           if-no-files-found: error
+
+      - name: Sign ${{ matrix.nvidia_variant }} image and create attestation
+        id: sign-nvidia
+        if: (!cancelled()) && steps.push.outputs.nvidia_digest != ''
+        continue-on-error: ${{ matrix.nvidia_continue }}
+        uses: projectbluefin/actions/bootc-build/sign-and-publish@v1
+        with:
+          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.nvidia_image_suffix }}
+          digest: ${{ steps.push.outputs.nvidia_digest }}
+          generate-sbom: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write ${{ matrix.nvidia_variant }} digest artifact
+        if: (!cancelled()) && steps.sign-nvidia.outcome == 'success'
+        env:
+          BUILD_SHA: ${{ needs.setup.outputs.sha }}
+          VARIANT: ${{ matrix.nvidia_variant }}
+          IMAGE: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.nvidia_image_suffix }}
+          DIGEST: ${{ steps.push.outputs.nvidia_digest }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digest-nvidia"
+          jq -n --arg variant "$VARIANT" --arg image "$IMAGE" --arg sha "$BUILD_SHA" \
+            --arg digest "$DIGEST" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{schema: 1, variant: $variant, image: $image, sha: $sha, digest: $digest, created: $created}' \
+            > "${RUNNER_TEMP}/digest-nvidia/digest.json"
+
+      - name: Upload ${{ matrix.nvidia_variant }} digest artifact
+        if: (!cancelled()) && steps.sign-nvidia.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ matrix.nvidia_variant }}
+          path: ${{ runner.temp }}/digest-nvidia/digest.json
+          retention-days: 30
+          if-no-files-found: error
+
+      # Optional images drop out with a warning instead of failing the job,
+      # so list what this job actually published.
+      - name: Summarize published images
+        if: always()
+        env:
+          BASE: ${{ env.IMAGE_NAME }}${{ matrix.base_image_suffix }}
+          NVIDIA: ${{ env.IMAGE_NAME }}${{ matrix.nvidia_image_suffix }}
+          BASE_SIGNED: ${{ steps.sign-base.outcome }}
+          NVIDIA_SIGNED: ${{ steps.sign-nvidia.outcome }}
+        run: |
+          {
+            echo "### ${{ matrix.group }} images"
+            for row in "$BASE:$BASE_SIGNED" "$NVIDIA:$NVIDIA_SIGNED"; do
+              if [ "${row#*:}" = success ]; then echo "- \`${row%%:*}\`: published"
+              else echo "- \`${row%%:*}\`: **not published**"; fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Generate and attach SBOM ──────────────────────────────────────────────
   # Runs outside the critical path to :testing. Failures here must not block

@@ -38,6 +38,15 @@ depends:
 # linux.bst at runtime stages /boot/vmlinuz into compose sandboxes,
 # clashing with gnomeos/stack.bst's `mkdir /boot` integration command.
 
+public:
+  bst:
+    split-rules:
+      # The modules ship in the boot layer through
+      # bluefin-nvidia/nvidia-kernel-modules.bst; the base compose excludes them.
+      kernel-modules:
+      - /usr/lib/modules
+      - /usr/lib/modules/**
+
 sources:
 - kind: remote
   url: nvidia:XFree86/Linux-x86_64/615.71.09/NVIDIA-Linux-x86_64-615.71.09.run
@@ -103,8 +112,8 @@ config:
     make -j${BST_BUILD_THREADS:-1} KERNEL_UNAME="$KVER"
 
   install-commands:
-  # depmod is intentionally deferred to OCI integration time so it sees
-  # the composed root, not just nvidia-drivers' install root.
+  # depmod runs in oci/layers/bluefin-nvidia-boot.bst, over the kernel and
+  # NVIDIA modules together.
   - |
     set -euo pipefail
     KVER=$(ls /usr/lib/modules | head -n1)

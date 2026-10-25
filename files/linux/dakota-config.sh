@@ -38,6 +38,133 @@ if has INTEL_IOMMU; then
   enable INTEL_IOMMU_DEFAULT_ON
 fi
 
+# Native Intel idle driver. Without it Intel CPUs fall back to acpi_idle and
+# only reach the C-states the firmware's _CST exposes, which can keep s2idle
+# from reaching the package C-state that S0ix requires. Fedora builds it in.
+# https://docs.kernel.org/admin-guide/pm/intel_idle.html
+if [ "${ARCH}" = x86_64 ]; then
+  enable INTEL_IDLE
+fi
+
+# ACPI-driven PCI hotplug, for firmware that keeps hotplug control instead of
+# granting native PCIe hotplug to the OS (common with firmware-managed
+# Thunderbolt 3). Without it, devices behind a dock's PCIe tunnel may never
+# enumerate even though the dock is authorized. Fedora builds it in.
+# https://github.com/torvalds/linux/blob/v7.2/drivers/pci/hotplug/Kconfig
+if [ "${ARCH}" = x86_64 ]; then
+  enable HOTPLUG_PCI_ACPI
+fi
+
+# Remaining x86_64 enablement the dependencies are met on both
+# kernels. x86_64 only: the aarch64 config has not been
+# audited against these changes. Hardening and the hard-lockup detector
+# are deliberately left out at this time.
+if [ "${ARCH}" = x86_64 ]; then
+  # Laptop power and thermal: Intel DPTF participants, hybrid-core
+  # scheduling feedback (Intel HFI, AMD HFI), and the CPU wakeup-latency
+  # QoS interface that also applies across system suspend.
+  enable ACPI_DPTF
+  module DPTF_POWER
+  module DPTF_PCH_FIVR
+  enable INTEL_HFI_THERMAL
+  enable AMD_HFI
+  enable PM_QOS_CPU_SYSTEM_WAKEUP
+
+  # Platform drivers: Renesas uPD720201/2 USB 3 cards need their firmware
+  # loader, Uniwill-built laptops (TUXEDO, XMG, Schenker), Dell hardware
+  # privacy switches, and the camera ISP on recent AMD laptops.
+  module USB_XHCI_PCI_RENESAS
+  enable X86_PLATFORM_DRIVERS_UNIWILL
+  module UNIWILL_LAPTOP
+  enable DELL_WMI_PRIVACY
+  enable DRM_AMD_ISP
+
+  # Controller rumble for the Steam Deck/Steam Controller and SHIELD pads.
+  enable STEAM_FF
+  enable NVIDIA_SHIELD_FF
+
+  # sched_ext, which the OGC kernel already ships; this brings the main
+  # kernel level with it. Binder is not requested here: main ships fdsdk's
+  # Rust binder and OGC the C one, and the two are mutually exclusive.
+  enable SCHED_CLASS_EXT
+
+  # Userspace interfaces apps expect: casefolding filesystems (Proton),
+  # userfaultfd (CRIU, QEMU postcopy, Android emulators), udmabuf (QEMU
+  # virtio-gpu display), and DMA-BUF heaps (libcamera software ISP).
+  enable UNICODE
+  enable USERFAULTFD
+  enable UDMABUF
+  enable DMABUF_HEAPS
+  enable DMABUF_HEAPS_SYSTEM
+
+  # Desktop responsiveness: multi-gen LRU reclaim, per-session CPU
+  # autogrouping, BFQ as an available I/O scheduler, and a console that
+  # does not take over the framebuffer until there is output to show.
+  enable LRU_GEN
+  enable LRU_GEN_ENABLED
+  enable SCHED_AUTOGROUP
+  enable IOSCHED_BFQ
+  enable FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER
+
+  # Diagnostics for silent freezes: soft-lockup and hung-task reports, a DRM
+  # panic screen instead of a black display, and per-driver debug logging
+  # that can be switched on at runtime without a custom kernel.
+  enable SOFTLOCKUP_DETECTOR
+  enable DETECT_HUNG_TASK
+  enable DRM_PANIC
+  enable DYNAMIC_DEBUG
+
+  # systemd ships net.core.default_qdisc=fq_codel; without the qdisc every
+  # interface falls back to pfifo_fast and bufferbloats under load. Also make
+  # it the kernel default so it applies before sysctl runs.
+  enable NET_SCH_FQ_CODEL
+  enable NET_SCH_DEFAULT
+  enable DEFAULT_FQ_CODEL
+
+  # Writeback throttling keeps large writes (downloads, shader caches, USB
+  # copies) from stalling foreground I/O; BFQ cgroup support completes BFQ.
+  enable BLK_WBT
+  enable BLK_WBT_MQ
+  enable BFQ_GROUP_IOSCHED
+
+  # Display: EDID override via drm.edid_firmware= for screens that report
+  # broken EDID, and HDMI-CEC through DisplayPort-to-HDMI adapters.
+  enable DRM_LOAD_EDID_FIRMWARE
+  enable DRM_DISPLAY_DP_AUX_CEC
+
+  # Memory hot-remove and device memory, plus what depends on them: GPU
+  # shared virtual memory for ROCm and Intel compute, and virtio-mem for VM
+  # guests. fdsdk-config.sh means to enable this chain but gates it on
+  # ARCH_ENABLE_MEMORY_HOTREMOVE, a symbol the kernel no longer defines, so
+  # it never takes effect; request it here.
+  enable MEMORY_HOTREMOVE
+  enable ZONE_DEVICE
+  enable DEVICE_PRIVATE
+  module VIRTIO_MEM
+  enable PCI_P2PDMA
+  enable HSA_AMD_SVM
+  enable HSA_AMD_P2P
+  enable DRM_XE_GPUSVM
+
+  # Memory: KSM page merging for VMs, and soft-dirty tracking for CRIU
+  # (podman container checkpoint).
+  enable KSM
+  enable MEM_SOFT_DIRTY
+
+  # Socket monitoring for ss and friends, including ss -K.
+  enable INET_DIAG
+  enable INET_TCP_DIAG
+  enable INET_UDP_DIAG
+  enable INET_RAW_DIAG
+  enable INET_DIAG_DESTROY
+  enable UNIX_DIAG
+  enable PACKET_DIAG
+  enable NETLINK_DIAG
+
+  # Self-encrypting drive (Opal) support for cryptsetup and sedutil.
+  enable BLK_SED_OPAL
+fi
+
 # The OGC fragment requests the timer trigger, but olddefconfig drops it
 # unless IIO_SW_TRIGGER is enabled. Register both as expected capabilities
 # on both kernels; these modules do not create or activate a sensor trigger.

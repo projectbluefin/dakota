@@ -13,7 +13,7 @@ Use this skill when filesystem content crosses from BuildStream artifacts into O
 ## When to Use
 
 - Modifying layer composition under `elements/oci/layers/`
-- Changing post-install integration steps in `elements/oci/bluefin.bst`
+- Changing post-install integration steps in `elements/oci/bluefin-base.bst`, or the boot layer and final elements (`docs/oci-assembly.md`)
 - Running local VM boot tests (`just boot-test`, `just boot-fast`, `just boot-vm`)
 - Validating transactional OTA updates or testing local registries (`references/local-ota.md`)
 - Enforcing the installer boundary between Dakota and live installer tools

@@ -95,7 +95,7 @@ config:
   - |
     # Drop expectations for options this newer stable tree no longer offers.
     # Existing symbols whose dependencies are not met remain hard failures.
-    find . -name 'Kconfig*' -exec grep -h '^\(menu\)\{0,1\}config ' {} + \
+    find . -name 'Kconfig*' -exec grep -h '^[[:space:]]*\(menu\)\{0,1\}config[[:space:]]' {} + \
       | awk '{print $2}' | sort -u > .kconfig-symbols
     cp expected-configs expected-configs.orig
     while IFS= read -r cfg; do

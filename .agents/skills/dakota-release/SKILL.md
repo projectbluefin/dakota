@@ -29,7 +29,7 @@ Release workflows cross a cryptographic and security boundary. Stop for human ap
 1. **Trace Digest Flow**: Map the exact SHA/digest path from build receipt to the target publication tag.
 2. **Verify Cryptographic Policy**: Confirm cosign certificate identity and issuer rules match repository policy.
 3. **Lock Tested SHA**: Always pin and verify the tested source commit SHA; fail closed if upstream advanced during testing.
-4. **Verify Variant Coverage**: Inspect the actual promotion and rollback workflows independently. `rollback-stable.yml` currently rolls back only `dakota` and `dakota-nvidia`, plus optional default-image multiarch tags. It does not roll back `gaming` or `nvidia-gaming`; recovery of those variants needs a separately reviewed plan, not an assumption of four-variant parity.
+4. **Verify Variant Coverage**: Inspect the actual promotion and rollback workflows independently. Both move all four variants (`dakota`, `dakota-nvidia`, `dakota-gaming`, `dakota-nvidia-gaming`) as a set and refuse a partial set; a variant added to one must be added to the other.
 5. **Human Gate**: Stop and obtain human confirmation before executing any production promotion, signing change, or tag rollback.
 
 ## Invariants
@@ -47,7 +47,7 @@ Release workflows cross a cryptographic and security boundary. Stop for human ap
 |---|---|
 | "Adding an e2e test gate to promotion makes stable safer." | Promotion occurs hours after build. Re-running e2e adds flakiness and delays security hotfixes. CI owns test gates during build. |
 | "A regex without `^` and `$` is good enough for cosign identity." | Unanchored regular expressions allow malicious forks or subpaths to forge signatures. Always anchor with `^` and `$`. |
-| "The rollback workflow covers every published variant." | Its current coverage is the default/NVIDIA pair, not the gaming variants. Verify each affected tag before claiming recovery. |
+| "The rollback workflow covers every published variant." | It covers the four variants in its `IMAGES` list. Check that list against promotion before claiming recovery of a new variant. |
 
 ## Red Flags
 
@@ -62,7 +62,7 @@ Release workflows cross a cryptographic and security boundary. Stop for human ap
 - [ ] All third-party release actions are pinned to 40-character commit SHAs
 - [ ] Certificate identity regex is anchored with `^` and `$`
 - [ ] Digest copy commands use skopeo/cosign without intermediate re-tagging
-- [ ] Every affected variant is accounted for; the default/NVIDIA rollback is not reported as recovery of gaming variants
+- [ ] Every affected variant is accounted for; promotion and rollback cover the same variant set
 - [ ] No Git branch update gates promotion or post-release verification; stable-digest checks and cleanup remain intact
 - [ ] Human approval obtained before any release execution
 - [ ] `just test-release` passes offline; new tests are registered in the CI-facing `check-publish-workflow` recipe
