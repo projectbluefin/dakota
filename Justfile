@@ -1513,6 +1513,16 @@ swap-audit:
             fail "unexpected zram-generator config under /etc"
         fi
 
+        # GNOME OS zswap-generator would add a loop-backed swap on the read-only root.
+        if [ -e /usr/lib/systemd/system-generators/zswap-generator ] || [ -e /usr/lib/zswap-generator ]; then
+            fail "GNOME OS zswap-generator still shipped"
+        fi
+        [ -e /usr/lib/sysctl.d/50-zswap.conf ] && fail "GNOME OS 50-zswap.conf sysctl still shipped"
+        SYSCTL=/usr/lib/sysctl.d/60-zswap.conf
+        for setting in "vm.swappiness = 100" "vm.watermark_scale_factor = 200" "vm.watermark_boost_factor = 0"; do
+            grep -qxF "$setting" "$SYSCTL" 2>/dev/null || fail "$SYSCTL missing: $setting"
+        done
+
         KARGS=/usr/lib/bootc/kargs.d/20-zswap.toml
         if [ ! -f "$KARGS" ]; then
             fail "$KARGS missing"

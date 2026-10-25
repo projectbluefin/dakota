@@ -4,7 +4,10 @@ description: |
 
   bootc applies the kernel arguments from /usr/lib/bootc/kargs.d/ on switch/upgrade.
   The vm.swappiness=100 sysctl instructs the kernel to treat anonymous and file-backed
-  memory with parity, routing swap I/O through high-speed zswap cache.
+  memory with parity, routing swap I/O through high-speed zswap cache. The
+  watermark sysctls follow GNOME OS: a 2% gap between kswapd watermarks starts
+  reclaim earlier so the desktop stays responsive while swapping, and watermark
+  boosting is disabled.
 
   No zswap.zpool karg: kernel 7.x removed the parameter (zsmalloc is the only
   backend). The backing swap device zswap fronts is provided by
@@ -35,6 +38,8 @@ config:
 
   - |
     install -d "%{install-root}/usr/lib/sysctl.d"
-    cat > "%{install-root}/usr/lib/sysctl.d/60-swappiness.conf" <<'EOF'
+    cat > "%{install-root}/usr/lib/sysctl.d/60-zswap.conf" <<'EOF'
     vm.swappiness = 100
+    vm.watermark_scale_factor = 200
+    vm.watermark_boost_factor = 0
     EOF
