@@ -49,12 +49,12 @@ public:
 
 sources:
 - kind: remote
-  url: nvidia:XFree86/Linux-x86_64/615.71.09/NVIDIA-Linux-x86_64-615.71.09.run
-  ref: cdceed22bbeb61248d1a6deabc2596673e3a6501698ee71ac8d2fdc28f3b70fe
-  filename: NVIDIA-Linux-x86_64-615.71.09.run
+  url: nvidia:XFree86/Linux-x86_64/615.78.08/NVIDIA-Linux-x86_64-615.78.08.run
+  ref: 3e3f6dddc2ee767a08185300af7be3cb286ece76698d2dde3524599782d07ffe
+  filename: NVIDIA-Linux-x86_64-615.78.08.run
 
 variables:
-  nvidia-version: '615.71.09'
+  nvidia-version: '615.78.08'
   strip-binaries: ''
 
 config:
