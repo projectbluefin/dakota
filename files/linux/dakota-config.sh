@@ -694,7 +694,6 @@ if [ "${ARCH}" = x86_64 ]; then
   module SENSORS_PWM_FAN
   module SENSORS_Q54SJ108A2
   module SENSORS_QNAP_MCU_HWMON
-  module SENSORS_SBTSI
   module SENSORS_SHT15
   module SENSORS_SHTC1
   module SENSORS_STEF48H28

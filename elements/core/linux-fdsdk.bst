@@ -193,9 +193,12 @@ public:
 sources:
 - kind: git_repo
   url: kernel:linux/kernel/git/stable/linux.git
-  # Testing tracks the 7.2 stable series; rc kernels stay on next.
-  track: v7.2.*
-  ref: v7.2.12-0-gcc9de5d4b5ab6459f5774946aa3195ad51236fa8
+  # Testing tracks the 7.3 stable series; rc kernels stay on next. The
+  # glob also matches the bare v7.3 release tag, so exclude the rcs.
+  track: v7.3*
+  exclude:
+  - v7.3-rc*
+  ref: v7.3-0-gc03c1a14507dfaf8b856c2608f9ac216021fc222
 - kind: patch_queue
   path: patches/linux
 - kind: local

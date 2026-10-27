@@ -145,6 +145,14 @@ GitHub release: a Git tag may exist without a matching Linux archive. The update
 validates the filename and lets BuildStream track its checksum; a malformed feed
 or unavailable download fails without changing the existing pin.
 
+Ghostty publishes versioned tags but no versioned GitHub releases, so the updater
+reads the newest `vX.Y.Z` tag. Each release changes its Zig dependency graph, so
+`files/scripts/generate_ghostty_sources.py <version>` re-pins the release and every
+package listed in its `build.zig.zon.json` (the graph upstream publishes for
+[packagers](https://github.com/ghostty-org/ghostty/blob/main/PACKAGING.md)). It
+refuses a release whose `minimum_zig_version` is newer than `bluefin/zig.bst`; bump
+Zig first, then rerun the update.
+
 An individual failure restores that update's starting files (the entire element
 or junction/patch group), continues the remaining updates, and causes
 a nonzero exit. Successful updates remain for review. Validation and builds are
