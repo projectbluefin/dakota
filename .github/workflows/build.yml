@@ -116,10 +116,12 @@ jobs:
         id: timestamp
         run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
+      # Hosted runners need the disk cleanup and the BTRFS loopback; the
+      # ephemeral VM pools are sized for the job, so skip both there.
       - name: Setup runner
         uses: projectbluefin/actions/bootc-build/setup-runner@v1
         with:
-          storage-backend: btrfs
+          storage-backend: ${{ vars.DAKOTA_BUILD_RUNNER && 'none' || 'btrfs' }}
           update-podman: true
           native-overlay: true
           install-tools: '["just"]'
@@ -238,10 +240,12 @@ jobs:
         id: timestamp
         run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
+      # Hosted runners need the disk cleanup and the BTRFS loopback; the
+      # ephemeral VM pools are sized for the job, so skip both there.
       - name: Setup runner
         uses: projectbluefin/actions/bootc-build/setup-runner@v1
         with:
-          storage-backend: btrfs
+          storage-backend: ${{ vars.DAKOTA_SIGN_RUNNER && 'none' || 'btrfs' }}
           update-podman: true
           native-overlay: true
           install-tools: '["just"]'

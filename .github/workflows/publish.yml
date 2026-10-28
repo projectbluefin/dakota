@@ -127,6 +127,7 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      artifact-metadata: write
       actions: read
     # Image names are IMAGE_NAME plus these suffixes; the env context is not
     # available at job level, so steps join them.
@@ -142,16 +143,41 @@ jobs:
         with:
           ref: ${{ needs.setup.outputs.sha }}
 
+      # The gaming build job may fail without failing the build run, which
+      # still triggers this workflow. Publishing would then rebuild whatever
+      # is missing from the cache here, without remote execution, and drop
+      # the images on timeout; stop instead and let verify-promotion report it.
+      - name: Require this group's CI build
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          GROUP: ${{ matrix.group }}
+        run: |
+          set -euo pipefail
+          conclusion=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100" \
+            | jq -r --arg prefix "build (${GROUP}," \
+              '[.jobs[] | select(.name | startswith($prefix)) | .conclusion]
+               | if length == 1 then .[0] else "missing" end')
+          if [ "$conclusion" != success ]; then
+            echo "::error::the ${GROUP} build in run ${RUN_ID} concluded '${conclusion}'; not publishing its images"
+            exit 1
+          fi
+
       - name: Capture build timestamp
         id: timestamp
         run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       # Use the runner's Podman stack with native rootful overlay storage.
       # FUSE-backed storage below chunkify's kernel overlay can return ESTALE.
+      # Hosted runners need the disk cleanup and the BTRFS loopback; the
+      # ephemeral VM pools are sized for the job, so skip both there.
       - name: Setup runner
         uses: projectbluefin/actions/bootc-build/setup-runner@v1
         with:
-          storage-backend: btrfs
+          storage-backend: ${{ vars.DAKOTA_SIGN_RUNNER && 'none' || 'btrfs' }}
           update-podman: true
           native-overlay: true
           install-tools: '["just"]'
@@ -320,17 +346,6 @@ jobs:
               echo "ERROR: malformed digest for ${image}: '${digest}'"
               return 1
             fi
-            # Advisory only; must never fail the job.
-            for attempt in $(seq 1 18); do
-              if skopeo inspect --no-tags "docker://${image}:${BUILD_SHA}" > /dev/null 2>&1; then
-                echo "Anonymous tag ${image}:${BUILD_SHA} visible (attempt ${attempt})"
-                break
-              fi
-              if [ "$attempt" -eq 18 ]; then
-                echo "::warning::GHCR has not exposed ${image}:${BUILD_SHA} anonymously after 3 min; continuing — the hard gate is the authenticated digest read"
-              fi
-              sleep 10
-            done
             echo "${slot}_digest=${digest}" >> "$GITHUB_OUTPUT"
           }
           declare -A pids
@@ -549,6 +564,7 @@ jobs:
           image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
           build-sha: ${{ needs.setup.outputs.sha }}
           registry-creds: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
+          require-artifact: 'true'
 
       - name: Attach SBOM
         id: sbom-attach
@@ -614,6 +630,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # The digest artifact is written only after signing; never fall back
+      # to the :SHA tag, which exists for a pushed image whose signing failed.
       - name: Resolve source digest
         id: digest
         uses: ./.github/actions/resolve-image-digest
@@ -622,6 +640,7 @@ jobs:
           image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
           build-sha: ${{ needs.setup.outputs.sha }}
           registry-creds: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
+          require-artifact: 'true'
 
       - name: Promote :${{ needs.setup.outputs.sha }} to :${{ needs.setup.outputs.testing_tag }}
         env:
@@ -671,3 +690,46 @@ jobs:
             [ "$attempt" -lt 3 ] && sleep 5
           done
           $PUSH_OK || { echo "ERROR: all copy attempts failed for :btw"; exit 1; }
+
+  # ── Verify every image was promoted ──────────────────────────────────────
+  # Optional images drop out of publish-image and promote without failing
+  # those jobs. Stable releases need all four at one SHA, so fail the run
+  # here, next to the cause, instead of at the next stable cut.
+  verify-promotion:
+    needs: [setup, publish-image, promote]
+    if: >-
+      !cancelled() &&
+      needs.publish-image.result == 'success' &&
+      needs.setup.outputs.testing_tag != '' &&
+      github.event_name == 'workflow_run'
+    runs-on: ubuntu-26.04
+    permissions:
+      packages: read
+    steps:
+      - name: Require all four images at this SHA
+        env:
+          BUILD_SHA: ${{ needs.setup.outputs.sha }}
+          TESTING_TAG: ${{ needs.setup.outputs.testing_tag }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          digest_of() {
+            skopeo inspect --no-tags --creds "$GH_ACTOR:$GH_TOKEN" "docker://$1" 2>/dev/null \
+              | jq -r '.Digest // empty' || true
+          }
+          failed=false
+          echo "### :${TESTING_TAG} at ${BUILD_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          for suffix in "" -nvidia -gaming -nvidia-gaming; do
+            name="${IMAGE_NAME}${suffix}"
+            built=$(digest_of "${IMAGE_REGISTRY}/${name}:${BUILD_SHA}")
+            promoted=$(digest_of "${IMAGE_REGISTRY}/${name}:${TESTING_TAG}")
+            if [ -n "$built" ] && [ "$built" = "$promoted" ]; then
+              echo "- \`${name}\`: \`${promoted}\`" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::${name}:${TESTING_TAG} is not this build (:${BUILD_SHA} '${built:-missing}', :${TESTING_TAG} '${promoted:-missing}')"
+              echo "- \`${name}\`: **not promoted**" >> "$GITHUB_STEP_SUMMARY"
+              failed=true
+            fi
+          done
+          [ "$failed" = false ]

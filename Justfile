@@ -330,8 +330,8 @@ build variant="all":
 # Assumes the matching `just bst build` has already completed.
 # Used by: `just build` (after building) and CI (as a separate step).
 #
-# Uses SUDO_CMD to handle root vs non-root: CI runs as root (no sudo),
-# local dev needs sudo for podman access to containers-storage.
+# Uses SUDO_CMD to handle root vs non-root: podman's rootful
+# containers-storage needs sudo for any user other than root.
 [group('build')]
 export variant="default":
     #!/usr/bin/env bash
@@ -347,7 +347,7 @@ export variant="default":
     fi
     FINAL_TAG="{{image_tag}}"
 
-    # Use sudo unless already root (CI runners are root)
+    # Use sudo unless already root.
     SUDO_CMD=""
     if [ "$(id -u)" -ne 0 ]; then
         SUDO_CMD="sudo"
@@ -873,7 +873,7 @@ chunkify image_ref:
         exit 0
     fi
 
-    # Use sudo unless already root (CI runners are root)
+    # Use sudo unless already root.
     SUDO_CMD=""
     if [ "$(id -u)" -ne 0 ]; then
         SUDO_CMD="sudo"
@@ -895,11 +895,15 @@ chunkify image_ref:
         exit 1
     fi
 
-    # Compile fakecap-restore from source if not already built.
+    # Compile fakecap-restore from source if not already built. CI chunkifies
+    # two images in parallel, so build privately and rename into place: a
+    # concurrent run must never execute a partially written binary.
     FAKECAP_RESTORE="{{justfile_directory()}}/files/fakecap/fakecap-restore"
     if [ ! -x "$FAKECAP_RESTORE" ]; then
         echo "==> Compiling fakecap-restore..."
-        gcc -O2 -o "$FAKECAP_RESTORE" "{{justfile_directory()}}/files/fakecap/fakecap-restore.c"
+        FAKECAP_BUILD=$(mktemp "${FAKECAP_RESTORE}.XXXXXX")
+        gcc -O2 -o "$FAKECAP_BUILD" "{{justfile_directory()}}/files/fakecap/fakecap-restore.c"
+        mv -f "$FAKECAP_BUILD" "$FAKECAP_RESTORE"
     fi
 
     # Install cleanup before allocating anything, including partial mktemp failures.
@@ -959,8 +963,10 @@ chunkify image_ref:
         fi
     done
     echo "==> overlay tmpdir: ${_OVERLAY_TMPDIR} ($(df -h --output=avail "${_OVERLAY_TMPDIR}" | tail -1 | tr -d ' ') free)"
-    UPPER=$(mktemp -d -p "$_OVERLAY_TMPDIR"); WORK=$(mktemp -d -p "$_OVERLAY_TMPDIR"); MERGED=$(mktemp -d -p "$_OVERLAY_TMPDIR")
-    OUTPUT_DIR=$(mktemp -d -p "$_OVERLAY_TMPDIR")
+    # Allocate as root: the candidates can be root-owned (/var/lib/containers),
+    # and only root uses these directories (overlay mount, chunkah, podman pull).
+    UPPER=$($SUDO_CMD mktemp -d -p "$_OVERLAY_TMPDIR"); WORK=$($SUDO_CMD mktemp -d -p "$_OVERLAY_TMPDIR"); MERGED=$($SUDO_CMD mktemp -d -p "$_OVERLAY_TMPDIR")
+    OUTPUT_DIR=$($SUDO_CMD mktemp -d -p "$_OVERLAY_TMPDIR")
     $SUDO_CMD chmod 755 "$UPPER" "$WORK" "$MERGED"
     $SUDO_CMD mount -t overlay overlay \
         -o "lowerdir=${LOWER},upperdir=${UPPER},workdir=${WORK}" \
