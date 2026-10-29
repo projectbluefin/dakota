@@ -66,8 +66,30 @@ testing/next change → build.yml → remote CAS → publish.yml
 ```
 
 The build matrix contains default, NVIDIA, gaming, and NVIDIA-gaming variants.
-Those siblings intentionally run together; the remote executor is the capacity
-limit.
+The standard and gaming jobs remain concurrent, sharing one execution host.
+Each gets two `scheduler.builders` and eight `build.max-jobs`, splitting GBM's
+four-parent-element budget across the two jobs. Keep capacity available for
+nested compiler actions: parent element actions occupy executor slots while
+waiting for their children. These are build-system budgets, not CPU quotas.
+Do not increase either job's budget without accounting for its sibling.
+
+The GNOME junction patch queue follows
+[GBM's recc defaults](https://github.com/GNOME/gnome-build-meta/commit/e5048b9b16a931f6c26c57beaad7cbe457ceeb67):
+compiler-level remote execution and `RECC_USE_LOCALCAS` stay enabled, but
+`RECC_USE_JOBSERVER` is off by default. GBM also
+[removed its CI opt-in](https://github.com/GNOME/gnome-build-meta/commit/30e84dec77b634bd798aabdc2e4cbdd545d954f7).
+Releasing a jobserver token while waiting remotely lets Ninja submit more
+compiler requests than `max-jobs`; reducing builders alone does not bound that
+queue. In the older pinned junction, simply disabling `recc_optimisations`
+would also disable LocalCAS, so the backport separates the two settings.
+
+Like GBM, remote execution inherits the top-level `cache.storage-service`;
+it does not configure a separate execution storage service. This follows
+[BuildStream's shared-CAS configuration](https://docs.buildstream.build/master/using_config.html#cache-control)
+and keeps payloads remote until needed. Signing/export jobs still omit remote
+storage and execution and keep the shared caches read-only. Dakota's socket
+keepalive interval and mTLS fallback are retained for its server configuration;
+GBM's endpoint and authentication settings must not be copied verbatim.
 
 `publish-image` and `pr-image` use the same shape: a standard and a gaming job,
 each signing its default and NVIDIA image in one BuildStream session, so the

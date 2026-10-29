@@ -60,6 +60,46 @@ class CheckPublishWorkflowTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_rejects_excessive_remote_builders(self) -> None:
+        result = self.mutate(
+            ".github/actions/generate-bst-ci-config/action.yml",
+            "          MAX_JOBS=8\n          BUILDERS=2\n",
+            "          MAX_JOBS=8\n          BUILDERS=8\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("two builders per job", result.stderr)
+
+    def test_rejects_excessive_jobs_per_element(self) -> None:
+        result = self.mutate(
+            ".github/actions/generate-bst-ci-config/action.yml",
+            "          MAX_JOBS=8\n",
+            "          MAX_JOBS=32\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("build.max-jobs: 8", result.stderr)
+
+    def test_rejects_separate_execution_storage(self) -> None:
+        result = self.mutate(
+            ".github/actions/generate-bst-ci-config/action.yml",
+            "        remote-execution:\n",
+            "        remote-execution:\n"
+            "          storage-service:\n"
+            "            url: ${CAS_URL}\n"
+            "        ${CONNECTION_CONFIG}\n"
+            "        ${CAS_AUTH}\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("must inherit cache.storage-service", result.stderr)
+
+    def test_rejects_missing_cache_storage(self) -> None:
+        result = self.mutate(
+            ".github/actions/generate-bst-ci-config/action.yml",
+            "          storage-service:\n",
+            "          disabled-storage:\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("top-level cache storage service", result.stderr)
+
     def test_rejects_socket_without_push_guard(self) -> None:
         result = self.mutate(
             ".github/actions/generate-bst-ci-config/action.yml",
