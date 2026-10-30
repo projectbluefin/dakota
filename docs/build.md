@@ -188,7 +188,7 @@ those subsets. `--record-dir` is for CI bundle artifacts, not needed locally.
 Keep the established desktop defaults, with fuzzy application search, Tiling
 Shell, and BudsLink enabled. BudsLink's default panel stays hidden until a
 supported device is present. Syncthing Toggle, Tailscale Quick Settings, the
-extra audio panel/hider/renamer, and Power Status Color are installed but
+extra audio hider/renamer, and Power Status Color are installed but
 opt-in through the Extensions app. Their required backends
 remain available; enabling a control should not require installing missing
 native software.
