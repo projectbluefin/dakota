@@ -11,6 +11,28 @@
 | `bcvk` | Ephemeral VM from container | Auto-installed by `just boot-fast` via cargo |
 | ~100 GB disk, ~16 GB RAM | BST cache + parallel builds | — |
 
+### CPU baseline
+
+All x86_64 image variants require **x86-64-v3** (Intel Haswell Core or newer,
+AMD Excavator or newer, including all Ryzen). Check the exact CPU model: many
+Pentium, Celeron, and older Atom processors lack the required features even
+when newer than Haswell. VMs must expose v3 features to the guest. ARM/aarch64
+builds are unchanged.
+
+`project.conf` owns the default for both direct BuildStream use and `just`;
+CI build, export, and validation use that same default. The option is forwarded
+only on x86_64 to GNOME Build Meta and freedesktop-sdk. Expect a substantial
+rebuild when switching from baseline artifacts to v3.
+
+For a local baseline x86_64 build, use
+`BST_FLAGS="-o x86_64_v3 false" just build default` and keep that option for
+subsequent export/checkout commands. Direct BuildStream accepts
+`bst -o x86_64_v3 false ...` as well. This opt-out is not a separately published
+compatibility image.
+
+See [CPU compatibility](https://developers.redhat.com/articles/2024/01/02/exploring-x86-64-v3-red-hat-enterprise-linux-10)
+and [BuildStream project options](https://docs.buildstream.build/master/format_project.html#options).
+
 ## Repo layout
 
 | Path | Purpose |

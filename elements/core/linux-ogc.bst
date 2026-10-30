@@ -68,6 +68,11 @@ environment:
   KBUILD_BUILD_TIMESTAMP: 'Thu Nov 10 15:00:00 UTC 2011'
   KBUILD_BUILD_USER: 'tomjon'
   MAXJOBS: "%{max-jobs}"
+  # Match the standard kernel: override kbuild's generic x86-64 target,
+  # without removing its explicit no-SIMD flags. ARM stays unchanged.
+  (?):
+  - arch == "x86_64" and x86_64_v3:
+      KCFLAGS: "-march=x86-64-v3 -mtune=skylake"
 
 environment-nocache:
 - MAXJOBS

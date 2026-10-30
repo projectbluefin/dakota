@@ -213,7 +213,7 @@ jobs:
       # it. Images that never built fail their export below.
       - name: Sign boot chain and compose images
         env:
-          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
           BUILD_SECURE_BOOT_SIGNING: 'true'
         run: |
           status=0
@@ -231,7 +231,7 @@ jobs:
       - name: Export OCI images from BuildStream
         id: export
         env:
-          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
           BUILD_SECURE_BOOT_SIGNING: 'true'
           OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}
@@ -531,7 +531,7 @@ jobs:
 
       - name: Generate SBOM
         env:
-          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
         run: just sbom ${{ matrix.variant }}
 
       - name: Upload SBOM artifact for release workflow

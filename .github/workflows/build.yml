@@ -141,7 +141,7 @@ jobs:
       - name: Count elements for progress tracking
         id: count
         env:
-          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
         run: |
           set +e
           BST_SHOW_OUT=$(just bst show --deps all --format "%{name}" \
@@ -160,7 +160,7 @@ jobs:
 
       - name: Build OCI images with BuildStream
         env:
-          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
           ELEMENT_TOTAL: ${{ steps.count.outputs.total }}
           REQUIRED: ${{ matrix.required }}
         run: |
@@ -279,7 +279,7 @@ jobs:
       # cache; images that never built fail their export below.
       - name: Sign boot chain and compose images
         env:
-          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
           BUILD_SECURE_BOOT_SIGNING: 'true'
         run: |
           just bst build oci/bluefin.bst oci/bluefin-nvidia.bst || \
@@ -291,7 +291,7 @@ jobs:
       - name: Export OCI images from BuildStream
         id: export
         env:
-          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
           BUILD_SECURE_BOOT_SIGNING: 'true'
           OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}

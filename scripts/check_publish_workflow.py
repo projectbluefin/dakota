@@ -106,13 +106,17 @@ def check_generated_configs(shell: str, errors: list[str]) -> None:
             "  execution-service:": "execution service",
             "  action-cache-service:": "action-cache service",
             "  max-jobs: 8": "build.max-jobs: 8",
+            "  builders: 2": "two builders per job (four across the shared host)",
             "cache:\n  cache-buildtrees: never\n  storage-service:": "top-level cache storage service",
         }
         for token, description in required.items():
             if token not in remote_config:
                 errors.append(f"remote config is missing {description}")
-        if len(re.findall(r"^  storage-service:", remote_config, re.M)) != 2:
-            errors.append("remote config must contain top-level and RE storage services")
+        if len(re.findall(r"^  storage-service:", remote_config, re.M)) != 1:
+            errors.append("remote config must contain only the top-level cache storage service")
+        _, _, execution_config = remote_config.partition("\nremote-execution:\n")
+        if re.search(r"^  storage-service:", execution_config, re.M):
+            errors.append("remote execution must inherit cache.storage-service, as in GBM")
         if remote_config.count("push: true") < 3:
             errors.append("remote config must publish artifacts, sources, and action-cache results")
 
@@ -159,7 +163,7 @@ def check_socket_configs(shell: str, errors: list[str]) -> None:
         )
     else:
         url = f"url: unix:{result.socket}"
-        if config.count(url) != 6:
+        if config.count(url) != 5:
             errors.append("socket config must route artifacts, sources, storage and RE through the socket")
         if "cache.projectbluefin.io" in config or "client-key:" in config:
             errors.append("socket config must not mix in the mTLS endpoint or client identity")

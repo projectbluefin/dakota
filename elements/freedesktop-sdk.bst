@@ -14,8 +14,9 @@ sources:
 config:
   options:
     target_arch: '%{arch}'
+    x86_64_v3: false
     (?):
-    - x86_64_v3:
+    - arch == 'x86_64' and x86_64_v3:
         x86_64_v3: true
     - arch == 'x86_64':
         bootstrap_build_arch: 'x86_64'

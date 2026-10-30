@@ -11,8 +11,9 @@ sources:
 config:
   options:
     arch: '%{arch}'
+    x86_64_v3: false
     (?):
-    - x86_64_v3:
+    - arch == 'x86_64' and x86_64_v3:
         x86_64_v3: true
 
   overrides:

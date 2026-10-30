@@ -96,12 +96,16 @@ runs:
           echo "Dakota CAS transport: mTLS"
         fi
 
-        # Remote builds spend most of their time integrating sandboxes and
-        # uploading input roots, so more concurrent builders overlap that
-        # waiting. Local builds (the signing pass) stay at 2 on 4-core runners.
+        # GBM uses four parent element builds, leaving executor slots for
+        # nested recc compiles. Our two concurrent matrix jobs share one host,
+        # so each gets two builders. Keep max-jobs explicit: the coordinator
+        # VM's CPU count does not describe the 32-thread execution host.
+        # The GNOME patch queue keeps LocalCAS on and job-token release off,
+        # otherwise max-jobs would not bound outstanding recc requests.
+        # Signing stays local with one job per element and two builders.
         if [[ "${ENABLE_REMOTE_EXECUTION:-false}" == "true" ]]; then
           MAX_JOBS=8
-          BUILDERS=8
+          BUILDERS=2
         else
           MAX_JOBS=1
           BUILDERS=2
@@ -168,8 +172,9 @@ runs:
         BSTCONFCACHEBLOCK
 
         if [[ "${ENABLE_REMOTE_EXECUTION:-false}" == "true" ]]; then
-          # The top-level storage service makes the runner's local casd a
-          # remote-backed cache, so artifact payloads stay on the BuildBox host.
+          # Like GBM, let RE inherit cache.storage-service instead of defining
+          # a separate RE storage service. The runner's local casd is a proxy
+          # and artifact payloads stay on the BuildBox host until needed.
           # Keep this out of fetch-only publish configs: export must materialize
           # the final artifact on the runner.
           cat >> "$WORKSPACE_ROOT/buildstream-ci.conf" <<BSTCONFREMOTE
@@ -180,10 +185,6 @@ runs:
 
         remote-execution:
           execution-service:
-            url: ${CAS_URL}
-        ${CONNECTION_CONFIG}
-        ${CAS_AUTH}
-          storage-service:
             url: ${CAS_URL}
         ${CONNECTION_CONFIG}
         ${CAS_AUTH}

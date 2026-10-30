@@ -33,8 +33,8 @@ export OCI_IMAGE_VERSION := env("OCI_IMAGE_VERSION", "")
 
 # ── BuildStream wrapper ──────────────────────────────────────────────
 # Runs any bst command inside the bst2 container via podman.
-# Defaults to baseline x86_64 (`-o x86_64_v3 false`) so local runs match CI
-# and reuse artifacts published by gnome-build-meta and freedesktop-sdk.
+# CPU baseline comes from project.conf: x86_64-v3 on x86_64, unchanged on ARM.
+# For a baseline x86_64 build, set BST_FLAGS="-o x86_64_v3 false".
 # Set BST_FLAGS to append flags (e.g. --config ...).
 # Set BST_FLAGS_OVERRIDE to replace all default/appended flags.
 # BST_RUNNER may name an executable alternate runner (also used by isolated tests).
@@ -50,14 +50,10 @@ bst *ARGS:
         exec "$BST_RUNNER" {{ARGS}}
     fi
     mkdir -p "${HOME}/.cache/buildstream"
-    DEFAULT_BST_FLAGS="-o x86_64_v3 false --no-interactive"
     if [ -n "${BST_FLAGS_OVERRIDE:-}" ]; then
         EFFECTIVE_BST_FLAGS="${BST_FLAGS_OVERRIDE}"
     else
         EFFECTIVE_BST_FLAGS="${BST_FLAGS:-}"
-        if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]-o[[:space:]]+x86_64_v3[[:space:]]+(true|false)([[:space:]]|$) ]]; then
-            EFFECTIVE_BST_FLAGS="${DEFAULT_BST_FLAGS} ${EFFECTIVE_BST_FLAGS}"
-        fi
         if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]--no-interactive([[:space:]]|$) ]]; then
             EFFECTIVE_BST_FLAGS="${EFFECTIVE_BST_FLAGS} --no-interactive"
         fi
@@ -144,7 +140,7 @@ check-publish-workflow:
     python3 -m unittest scripts.test_check_publish_workflow
     python3 -m unittest scripts.test_ownership_metadata scripts.test_ownership_oci scripts.test_ownership_overlay scripts.test_oci_append_layer scripts.test_compare_oci_layers scripts.test_ownership_recipes scripts.test_sync_next
     python3 -m unittest scripts.test_image_variants scripts.test_track_bundle scripts.test_update_sources
-    python3 -m unittest scripts.test_desktop_defaults
+    python3 -m unittest scripts.test_desktop_defaults scripts.test_bst_wrapper
     just test-devmode
     just test-release
 

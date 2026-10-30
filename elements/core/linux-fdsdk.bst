@@ -63,7 +63,7 @@ environment:
   # gcc's --with-arch_64 default. KCFLAGS is appended after KBUILD_CFLAGS,
   # so a later -march wins.
   (?):
-  - x86_64_v3:
+  - arch == "x86_64" and x86_64_v3:
       KCFLAGS: "-march=x86-64-v3 -mtune=skylake"
 
 environment-nocache:
