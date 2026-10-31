@@ -317,6 +317,29 @@ check-anticheat:
     fi
     /usr/libexec/dakota-secure-boot check
 
+# Allow per-process network statistics (Mission Center, nethogs) for all users
+[group('System')]
+toggle-network-monitoring:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    UNIT=usr-bin-nethogs.mount
+    if [ ! -t 0 ]; then
+        echo "Interactive terminal required" >&2
+        exit 1
+    fi
+    if systemctl is-enabled --quiet "$UNIT" 2>/dev/null; then
+        echo "Per-process network monitoring is enabled."
+        gum confirm "Disable it?" || exit 0
+        sudo systemctl disable --now "$UNIT"
+        gum style --foreground 245 "Disabled. nethogs now needs sudo; restart Mission Center to apply."
+    else
+        echo "Per-process network monitoring is disabled."
+        echo "Enabling lets every local user run nethogs with packet-capture access (cap_net_raw)."
+        gum confirm "Enable it?" || exit 0
+        sudo systemctl enable --now "$UNIT"
+        gum style --foreground 82 "✓ Enabled. Restart Mission Center to see per-process network usage."
+    fi
+
 # Seal TPM disk unlock to the current boot state, after firmware or Secure Boot changes
 [group('System')]
 reseal-tpm-unlock:
