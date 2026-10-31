@@ -36,16 +36,6 @@ No telemetry. No phone-home. You review every report before it leaves your machi
 |  `:stable` |  Stable |                                                     GNOME 51 — production. Weekly promotions from `:testing`. |
 | `:testing` |     Dev |                                              GNOME 51 — daily builds from the `testing` branch. Boot-check gated. |
 |    `:next` | Rolling |                                       Tracks gnome-build-meta `master` daily (currently disabled).            |
-|     `:btw` | Rolling |                                                                                            Alias for `:next`. |
-
-The `:next` and `:btw` streams offer the Arch lifestyle — the latest GNOME the moment it lands upstream. If you want to run GNOME before everyone else and help find regressions before they reach stable, this is your image.
-
-```bash
-# Switch to the rolling stream
-sudo bootc switch ghcr.io/projectbluefin/dakota:next
-```
-
-Alternatively, use the included control panel to enable the testing branch.
 
 ## ISO Download
 
