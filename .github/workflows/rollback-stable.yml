@@ -1,11 +1,10 @@
 name: Rollback :stable
 
-# One-button rollback for ghcr.io/projectbluefin/dakota{,-nvidia}:stable when a
-# promoted image is bad. Mirrors the publish/promotion supply-chain checks:
+# One-button rollback for all four ghcr.io/projectbluefin/dakota{,-nvidia}{,-gaming}:stable
+# tags when a promoted image is bad. Mirrors the publish/promotion supply-chain checks:
 #   1. Inspect the target SHA-pinned images exist.
 #   2. cosign verify them against the anchored publish.yml identity.
-#   3. skopeo copy --preserve-digests --all into :stable.
-#   4. Rebuild :stable-multiarch from the verified images.
+#   3. skopeo copy --preserve-digests --all the verified digests into :stable.
 #
 # workflow_dispatch only. Defaults to dry_run=true — humans must opt-in to
 # moving tags. Concurrency group is shared with execute-release so this cannot
@@ -22,11 +21,6 @@ on:
         description: 'Human reason for rollback. Logged in step summary and GitHub Release notes.'
         required: true
         type: string
-      include_multiarch:
-        description: 'Also revert :stable-multiarch.'
-        required: false
-        type: boolean
-        default: true
       dry_run:
         description: 'Inspect + cosign verify only, do not move tags. Defaults to true — opt out only when ready to roll back live.'
         required: false
@@ -40,6 +34,10 @@ concurrency:
   group: dakota-execute-release
   cancel-in-progress: false
 
+env:
+  # Promotion moves all four variants as a set, so rollback does too.
+  IMAGES: dakota dakota-nvidia dakota-gaming dakota-nvidia-gaming
+
 jobs:
   verify:
     name: Verify rollback target
@@ -47,10 +45,7 @@ jobs:
     permissions:
       contents: read
     outputs:
-      dakota_digest: ${{ steps.digests.outputs.dakota_digest }}
-      nvidia_digest: ${{ steps.digests.outputs.nvidia_digest }}
-      aarch64_digest: ${{ steps.aarch64.outputs.aarch64_digest }}
-      aarch64_present: ${{ steps.aarch64.outputs.present }}
+      digests: ${{ steps.digests.outputs.digests }}
     env:
       TARGET_SHA: ${{ inputs.target_sha }}
       COSIGN_IDENTITY_REGEXP: ^https://github\.com/projectbluefin/dakota/\.github/workflows/publish\.yml@refs/heads/(testing|gh-readonly-queue/testing/.+)$
@@ -69,90 +64,42 @@ jobs:
         id: digests
         run: |
           set -euo pipefail
+          DIGESTS='{}'
+          for image in $IMAGES; do
+            if ! skopeo inspect --no-tags \
+                "docker://ghcr.io/projectbluefin/${image}:${TARGET_SHA}" > "/tmp/${image}.json" 2>&1; then
+              echo "::error::ghcr.io/projectbluefin/${image}:${TARGET_SHA} not found. All four variants must exist at the target SHA; refusing to roll back a partial set."
+              cat "/tmp/${image}.json"
+              exit 1
+            fi
+            digest=$(jq -r '.Digest' "/tmp/${image}.json")
+            if [ -z "$digest" ] || [ "$digest" = "null" ]; then
+              echo "::error::Failed to resolve digest for ${image}:${TARGET_SHA}"
+              exit 1
+            fi
+            DIGESTS=$(jq -c --arg image "$image" --arg digest "$digest" '. + {($image): $digest}' <<< "$DIGESTS")
+            echo "${image}:${TARGET_SHA} → ${digest}"
+          done
+          echo "digests=${DIGESTS}" >> "$GITHUB_OUTPUT"
 
-          # dakota
-          if ! skopeo inspect --no-tags \
-              "docker://ghcr.io/projectbluefin/dakota:${TARGET_SHA}" > /tmp/dakota.json 2>&1; then
-            echo "::error::ghcr.io/projectbluefin/dakota:${TARGET_SHA} not found in GHCR."
-            cat /tmp/dakota.json
-            exit 1
-          fi
-          DAKOTA_DIGEST=$(jq -r '.Digest' /tmp/dakota.json)
-          if [ -z "$DAKOTA_DIGEST" ] || [ "$DAKOTA_DIGEST" = "null" ]; then
-            echo "::error::Failed to resolve digest for dakota:${TARGET_SHA}"
-            exit 1
-          fi
-          echo "dakota_digest=${DAKOTA_DIGEST}" >> "$GITHUB_OUTPUT"
-          echo "dakota:${TARGET_SHA} → ${DAKOTA_DIGEST}"
-
-          # dakota-nvidia — pair invariant: both must exist
-          if ! skopeo inspect --no-tags \
-              "docker://ghcr.io/projectbluefin/dakota-nvidia:${TARGET_SHA}" > /tmp/nvidia.json 2>&1; then
-            echo "::error::ghcr.io/projectbluefin/dakota-nvidia:${TARGET_SHA} not found. dakota and dakota-nvidia must be promoted as a pair — refusing to roll back a partial set."
-            cat /tmp/nvidia.json
-            exit 1
-          fi
-          NVIDIA_DIGEST=$(jq -r '.Digest' /tmp/nvidia.json)
-          if [ -z "$NVIDIA_DIGEST" ] || [ "$NVIDIA_DIGEST" = "null" ]; then
-            echo "::error::Failed to resolve digest for dakota-nvidia:${TARGET_SHA}"
-            exit 1
-          fi
-          echo "nvidia_digest=${NVIDIA_DIGEST}" >> "$GITHUB_OUTPUT"
-          echo "dakota-nvidia:${TARGET_SHA} → ${NVIDIA_DIGEST}"
-
-      - name: Verify cosign signature on dakota:${{ inputs.target_sha }}
+      - name: Verify cosign signatures
         env:
-          DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota_digest }}
+          DIGESTS: ${{ steps.digests.outputs.digests }}
         run: |
           set -euo pipefail
-          cosign verify \
-            --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
-            --certificate-oidc-issuer "$COSIGN_ISSUER" \
-            "ghcr.io/projectbluefin/dakota@${DAKOTA_DIGEST}"
-
-      - name: Verify cosign signature on dakota-nvidia:${{ inputs.target_sha }}
-        env:
-          NVIDIA_DIGEST: ${{ steps.digests.outputs.nvidia_digest }}
-        run: |
-          set -euo pipefail
-          cosign verify \
-            --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
-            --certificate-oidc-issuer "$COSIGN_ISSUER" \
-            "ghcr.io/projectbluefin/dakota-nvidia@${NVIDIA_DIGEST}"
-
-      - name: Inspect and verify aarch64 component (if include_multiarch)
-        id: aarch64
-        if: ${{ inputs.include_multiarch }}
-        run: |
-          set -euo pipefail
-          if ! skopeo inspect --no-tags \
-              "docker://ghcr.io/projectbluefin/dakota:aarch64-${TARGET_SHA}" > /tmp/arm.json 2>&1; then
-            echo "::error::include_multiarch=true but ghcr.io/projectbluefin/dakota:aarch64-${TARGET_SHA} not found. Set include_multiarch=false to revert x86_64 only, or pick a target_sha that has a published aarch64 image."
-            cat /tmp/arm.json
-            exit 1
-          fi
-          AARCH64_DIGEST=$(jq -r '.Digest' /tmp/arm.json)
-          if [ -z "$AARCH64_DIGEST" ] || [ "$AARCH64_DIGEST" = "null" ]; then
-            echo "::error::Failed to resolve digest for dakota:aarch64-${TARGET_SHA}"
-            exit 1
-          fi
-          echo "aarch64_digest=${AARCH64_DIGEST}" >> "$GITHUB_OUTPUT"
-          echo "present=true" >> "$GITHUB_OUTPUT"
-          echo "dakota:aarch64-${TARGET_SHA} → ${AARCH64_DIGEST}"
-
-          cosign verify \
-            --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
-            --certificate-oidc-issuer "$COSIGN_ISSUER" \
-            "ghcr.io/projectbluefin/dakota@${AARCH64_DIGEST}"
+          for image in $IMAGES; do
+            digest=$(jq -r --arg image "$image" '.[$image]' <<< "$DIGESTS")
+            cosign verify \
+              --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
+              --certificate-oidc-issuer "$COSIGN_ISSUER" \
+              "ghcr.io/projectbluefin/${image}@${digest}"
+          done
 
       - name: Verify summary
         env:
-          DAKOTA_DIGEST: ${{ steps.digests.outputs.dakota_digest }}
-          NVIDIA_DIGEST: ${{ steps.digests.outputs.nvidia_digest }}
-          AARCH64_DIGEST: ${{ steps.aarch64.outputs.aarch64_digest }}
+          DIGESTS: ${{ steps.digests.outputs.digests }}
           REASON: ${{ inputs.reason }}
           DRY_RUN: ${{ inputs.dry_run }}
-          INCLUDE_MULTIARCH: ${{ inputs.include_multiarch }}
         run: |
           {
             echo "## Rollback target verified"
@@ -160,12 +107,9 @@ jobs:
             echo "- **target_sha:** \`${TARGET_SHA}\`"
             echo "- **reason:** ${REASON}"
             echo "- **dry_run:** \`${DRY_RUN}\`"
-            echo "- **include_multiarch:** \`${INCLUDE_MULTIARCH}\`"
-            echo "- **dakota digest:** \`${DAKOTA_DIGEST}\`"
-            echo "- **dakota-nvidia digest:** \`${NVIDIA_DIGEST}\`"
-            if [ -n "${AARCH64_DIGEST:-}" ]; then
-              echo "- **aarch64 digest:** \`${AARCH64_DIGEST}\`"
-            fi
+            for image in $IMAGES; do
+              echo "- **${image} digest:** \`$(jq -r --arg image "$image" '.[$image]' <<< "$DIGESTS")\`"
+            done
             echo ""
             echo "All cosign signatures verified against \`publish.yml@refs/heads/testing\`."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -180,10 +124,7 @@ jobs:
       packages: write
       id-token: write
     env:
-      TARGET_SHA: ${{ inputs.target_sha }}
-      DAKOTA_DIGEST: ${{ needs.verify.outputs.dakota_digest }}
-      NVIDIA_DIGEST: ${{ needs.verify.outputs.nvidia_digest }}
-      AARCH64_DIGEST: ${{ needs.verify.outputs.aarch64_digest }}
+      DIGESTS: ${{ needs.verify.outputs.digests }}
     steps:
       - name: Install skopeo
         run: |
@@ -199,60 +140,30 @@ jobs:
           set -euo pipefail
           echo "$GH_TOKEN" | skopeo login ghcr.io --username "$GH_ACTOR" --password-stdin
 
-      - name: Revert dakota:stable to target_sha
+      # Copy by the digest cosign verified, not the SHA tag, so a tag moved
+      # after verification cannot change what lands on :stable.
+      - name: Revert :stable tags to the verified digests
         run: |
           set -euo pipefail
-          skopeo copy --preserve-digests --all \
-            "docker://ghcr.io/projectbluefin/dakota:${TARGET_SHA}" \
-            "docker://ghcr.io/projectbluefin/dakota:stable"
-
-      - name: Revert dakota-nvidia:stable to target_sha
-        run: |
-          set -euo pipefail
-          skopeo copy --preserve-digests --all \
-            "docker://ghcr.io/projectbluefin/dakota-nvidia:${TARGET_SHA}" \
-            "docker://ghcr.io/projectbluefin/dakota-nvidia:stable"
+          for image in $IMAGES; do
+            digest=$(jq -r --arg image "$image" '.[$image]' <<< "$DIGESTS")
+            skopeo copy --preserve-digests --all \
+              "docker://ghcr.io/projectbluefin/${image}@${digest}" \
+              "docker://ghcr.io/projectbluefin/${image}:stable"
+          done
 
       - name: Verify reverted :stable digests match target
         run: |
           set -euo pipefail
-          dakota_now=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota:stable" | jq -r .Digest)
-          if [ "$dakota_now" != "$DAKOTA_DIGEST" ]; then
-            echo "::error::dakota:stable digest=$dakota_now, expected $DAKOTA_DIGEST"
-            exit 1
-          fi
-          nvidia_now=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota-nvidia:stable" | jq -r .Digest)
-          if [ "$nvidia_now" != "$NVIDIA_DIGEST" ]; then
-            echo "::error::dakota-nvidia:stable digest=$nvidia_now, expected $NVIDIA_DIGEST"
-            exit 1
-          fi
-          echo "Both :stable tags now point at the verified target digests."
-
-      - name: Login to GHCR (podman)
-        if: ${{ inputs.include_multiarch && needs.verify.outputs.aarch64_present == 'true' }}
-        env:
-          GH_ACTOR: ${{ github.actor }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          echo "$GH_TOKEN" | podman login ghcr.io --username "$GH_ACTOR" --password-stdin
-
-      - name: Rebuild :stable-multiarch from verified components
-        if: ${{ inputs.include_multiarch && needs.verify.outputs.aarch64_present == 'true' }}
-        run: |
-          set -euo pipefail
-          # Mirror execute-release.yml's create-multiarch-stable step shape. The
-          # x86_64 component references the just-reverted :stable tag; the
-          # aarch64 component references the verified digest directly so we
-          # publish exactly what cosign signed in the verify job.
-          podman manifest create \
-            "ghcr.io/projectbluefin/dakota:stable-multiarch" \
-            "ghcr.io/projectbluefin/dakota:stable" \
-            "ghcr.io/projectbluefin/dakota@${AARCH64_DIGEST}"
-          podman manifest push --all \
-            "ghcr.io/projectbluefin/dakota:stable-multiarch" \
-            "docker://ghcr.io/projectbluefin/dakota:stable-multiarch"
-          echo "Rebuilt :stable-multiarch (aarch64=${AARCH64_DIGEST})"
+          for image in $IMAGES; do
+            expected=$(jq -r --arg image "$image" '.[$image]' <<< "$DIGESTS")
+            now=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/${image}:stable" | jq -r .Digest)
+            if [ "$now" != "$expected" ]; then
+              echo "::error::${image}:stable digest=$now, expected $expected"
+              exit 1
+            fi
+          done
+          echo "All four :stable tags now point at the verified target digests."
 
   record:
     name: Record rollback in audit trail
@@ -266,10 +177,7 @@ jobs:
       TARGET_SHA: ${{ inputs.target_sha }}
       REASON: ${{ inputs.reason }}
       ACTOR: ${{ github.actor }}
-      DAKOTA_DIGEST: ${{ needs.verify.outputs.dakota_digest }}
-      NVIDIA_DIGEST: ${{ needs.verify.outputs.nvidia_digest }}
-      AARCH64_DIGEST: ${{ needs.verify.outputs.aarch64_digest }}
-      INCLUDE_MULTIARCH: ${{ inputs.include_multiarch }}
+      DIGESTS: ${{ needs.verify.outputs.digests }}
     steps:
       - name: Compose rollback notes
         id: notes
@@ -293,11 +201,9 @@ jobs:
             echo ""
             echo "| Image | Tag | Digest |"
             echo "|---|---|---|"
-            echo "| dakota | :stable | \`${DAKOTA_DIGEST}\` |"
-            echo "| dakota-nvidia | :stable | \`${NVIDIA_DIGEST}\` |"
-            if [ "${INCLUDE_MULTIARCH}" = "true" ] && [ -n "${AARCH64_DIGEST}" ]; then
-              echo "| dakota (aarch64) | :stable-multiarch | \`${AARCH64_DIGEST}\` |"
-            fi
+            for image in $IMAGES; do
+              echo "| ${image} | :stable | \`$(jq -r --arg image "$image" '.[$image]' <<< "$DIGESTS")\` |"
+            done
             echo ""
             echo "All digests were cosign-verified against \`publish.yml@refs/heads/testing\` before tags were moved."
           } > rollback-notes.md
@@ -332,10 +238,8 @@ jobs:
             echo "- **actor:** @${ACTOR}"
             echo "- **timestamp:** ${TS_HUMAN}"
             echo "- **reason:** ${REASON}"
-            echo "- **dakota digest:** \`${DAKOTA_DIGEST}\`"
-            echo "- **dakota-nvidia digest:** \`${NVIDIA_DIGEST}\`"
-            if [ "${INCLUDE_MULTIARCH}" = "true" ] && [ -n "${AARCH64_DIGEST}" ]; then
-              echo "- **aarch64 digest:** \`${AARCH64_DIGEST}\`"
-            fi
+            for image in $IMAGES; do
+              echo "- **${image} digest:** \`$(jq -r --arg image "$image" '.[$image]' <<< "$DIGESTS")\`"
+            done
             echo "- **audit release:** \`${TAG}\`"
           } >> "$GITHUB_STEP_SUMMARY"

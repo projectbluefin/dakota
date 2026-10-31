@@ -65,6 +65,9 @@ class Release:
     query: str = ".tag_name"
     endpoint: str = "releases/latest"
     tag_pattern: str = r"v[0-9]+\.[0-9]+\.[0-9]+"
+    # Pins the release together with sources derived from it, in place of a
+    # URL rewrite; called with the version (tag without "v").
+    generator: str = ""
 
 
 RELEASES = {
@@ -82,6 +85,14 @@ RELEASES = {
         x86_asset_suffix="_Linux_x86_64.tar.gz"),
     "bluefin/jetbrains-mono-nerd-font.bst": Release(
         "ryanoasis/nerd-fonts", r"download/(?P<version>v[^/]+)/", "download/{tag}/"),
+    # No versioned GitHub releases (only a rolling "tip"), so read tags. Each
+    # release changes the Zig dependency graph, which the generator re-pins.
+    "bluefin/ghostty.bst": Release(
+        "ghostty-org/ghostty", r"ghostty_releases:(?P<version>[0-9.]+)/", "",
+        endpoint="tags?per_page=100",
+        query='[.[].name | select(test("^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+$"))]'
+              ' | sort_by(ltrimstr("v") | split(".") | map(tonumber)) | last',
+        generator="files/scripts/generate_ghostty_sources.py"),
 }
 
 
@@ -179,18 +190,28 @@ def update_release(element: str, out: Path | None) -> None:
                   "--jq", release.query, capture=True)
     path = ROOT / "elements" / element
     original = path.read_text()
-    updated, old = rewrite_release(original, release, tag)
-    if updated == original:
-        print(f"{element}: already up to date")
-        return
-    path.write_text(updated)
-    track(element)
+    if release.generator:
+        if not re.fullmatch(release.tag_pattern, tag):
+            raise ValueError(f"Unexpected release tag for {release.repo}: {tag!r}")
+        old = re.search(release.pattern, original)["version"]
+        if old == tag.removeprefix("v"):
+            print(f"{element}: already up to date")
+            return
+        run(sys.executable, release.generator, tag.removeprefix("v"))
+    else:
+        updated, old = rewrite_release(original, release, tag)
+        if updated == original:
+            print(f"{element}: already up to date")
+            return
+        path.write_text(updated)
+        track(element)
     if out is not None:
         slug = Path(element).stem
-        new = tag.removeprefix("v") if element == "bluefin/tailscale.bst" else tag
+        # Report versions in the element's own style (with or without "v").
+        new = tag if old.startswith("v") else tag.removeprefix("v")
         links = f"[release](https://github.com/{release.repo}/releases/tag/{tag})"
         if ", " not in old:
-            old_tag = f"v{old}" if element == "bluefin/tailscale.bst" else old
+            old_tag = old if old.startswith("v") else f"v{old}"
             links += f" · [compare](https://github.com/{release.repo}/compare/{old_tag}...{tag})"
         run(sys.executable, ".github/scripts/track_bundle.py", "record",
             "--out", str(out), "--slug", slug,

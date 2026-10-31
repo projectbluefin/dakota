@@ -11,3 +11,5 @@ config:
     - devel
     - debug
     - static-blocklist
+    # NVIDIA kernel modules ship in oci/layers/bluefin-nvidia-boot.bst.
+    - kernel-modules

@@ -11,6 +11,28 @@
 | `bcvk` | Ephemeral VM from container | Auto-installed by `just boot-fast` via cargo |
 | ~100 GB disk, ~16 GB RAM | BST cache + parallel builds | — |
 
+### CPU baseline
+
+All x86_64 image variants require **x86-64-v3** (Intel Haswell Core or newer,
+AMD Excavator or newer, including all Ryzen). Check the exact CPU model: many
+Pentium, Celeron, and older Atom processors lack the required features even
+when newer than Haswell. VMs must expose v3 features to the guest. ARM/aarch64
+builds are unchanged.
+
+`project.conf` owns the default for both direct BuildStream use and `just`;
+CI build, export, and validation use that same default. The option is forwarded
+only on x86_64 to GNOME Build Meta and freedesktop-sdk. Expect a substantial
+rebuild when switching from baseline artifacts to v3.
+
+For a local baseline x86_64 build, use
+`BST_FLAGS="-o x86_64_v3 false" just build default` and keep that option for
+subsequent export/checkout commands. Direct BuildStream accepts
+`bst -o x86_64_v3 false ...` as well. This opt-out is not a separately published
+compatibility image.
+
+See [CPU compatibility](https://developers.redhat.com/articles/2024/01/02/exploring-x86-64-v3-red-hat-enterprise-linux-10)
+and [BuildStream project options](https://docs.buildstream.build/master/format_project.html#options).
+
 ## Repo layout
 
 | Path | Purpose |
@@ -127,8 +149,10 @@ BUILD_GAMING=true just bst build core/linux-ogc.bst bluefin-nvidia/nvidia-driver
 
 The `build` label is for maintainers only. Contributors should ask a maintainer
 to apply it when CI image builds are needed. Maintainers should inspect each
-relevant variant's result: NVIDIA and gaming jobs currently allow failure, so a
-green aggregate is not proof that those kernels/drivers built. Boot verification
+relevant variant's result: the build runs a `standard` and a `gaming` job, each
+building the default and NVIDIA images, and only the default image in the
+standard job must succeed. A green aggregate is not proof that the NVIDIA or
+gaming kernels and drivers built; check the job logs. Boot verification
 is still needed before release.
 When the FDSDK junction advances, also compare its kernel recipe, `patches/linux/`,
 `files/linux/config-utils.sh`, and `files/linux/fdsdk-config.sh` with our vendored
@@ -143,6 +167,14 @@ GitHub release: a Git tag may exist without a matching Linux archive. The update
 validates the filename and lets BuildStream track its checksum; a malformed feed
 or unavailable download fails without changing the existing pin.
 
+Ghostty publishes versioned tags but no versioned GitHub releases, so the updater
+reads the newest `vX.Y.Z` tag. Each release changes its Zig dependency graph, so
+`files/scripts/generate_ghostty_sources.py <version>` re-pins the release and every
+package listed in its `build.zig.zon.json` (the graph upstream publishes for
+[packagers](https://github.com/ghostty-org/ghostty/blob/main/PACKAGING.md)). It
+refuses a release whose `minimum_zig_version` is newer than `bluefin/zig.bst`; bump
+Zig first, then rerun the update.
+
 An individual failure restores that update's starting files (the entire element
 or junction/patch group), continues the remaining updates, and causes
 a nonzero exit. Successful updates remain for review. Validation and builds are
@@ -156,7 +188,7 @@ those subsets. `--record-dir` is for CI bundle artifacts, not needed locally.
 Keep the established desktop defaults, with fuzzy application search, Tiling
 Shell, and BudsLink enabled. BudsLink's default panel stays hidden until a
 supported device is present. Syncthing Toggle, Tailscale Quick Settings, the
-extra audio panel/hider/renamer, and Power Status Color are installed but
+extra audio hider/renamer, and Power Status Color are installed but
 opt-in through the Extensions app. Their required backends
 remain available; enabling a control should not require installing missing
 native software.
@@ -207,16 +239,13 @@ modify the same Quick Settings controls.
 its icons/colors in tests. Common updates should carry presentation changes
 without a second sync step.
 
-The temporary `patches/common/0001-fastfetch-install-date.patch` changes only
-the date command to read the first-boot record. Drop it when common supports
-that record through a shared helper. `firstboot-date.bst` owns the runtime
-records, not the presentation; `nerd-fonts-symbols.bst` supplies icon fallback
-without changing the default text font. The existing booted-image helper patch
-in `common.bst` is separate and remains until common supports that record too.
+Common's install-date line reads `/var/lib/ublue-os/install-date` first and
+falls back to `/var/log` only when that record is missing. `firstboot-date.bst`
+owns that runtime record, not the presentation; `nerd-fonts-symbols.bst`
+supplies icon fallback without changing the default text font.
 
-Two more patches remove inputs Dakota cannot provide. `0005` drops the
-`rpm-ostree` signed-status glyph from `ublue-image-info.sh`, because Dakota has
-no `rpm-ostree`. `0006` drops the weekly user and Bazaar install count lines,
+`patches/common/0006-fastfetch-drop-weekly-stats.patch` removes an input Dakota
+cannot provide. It drops the weekly user and Bazaar install count lines,
 because other images fill `fastfetch-user-count` and `bazaar-install-count`
 with a build-time network fetch that Dakota's sandboxed builds cannot make. Do
 not ship placeholder or invented counts in their place.

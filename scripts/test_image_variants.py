@@ -222,6 +222,72 @@ class MatrixForTests(unittest.TestCase):
         )
 
 
+def grouped_declaration() -> dict:
+    """Four variants across two gaming values and two slots."""
+    def variant(name, element, gaming, required=False):
+        entry = {"variant": name, "image": f"dakota-{name}", "element": element,
+                 "image_suffix": f"-{name}", "roles": {"publish": {"continue": not required}}}
+        if gaming:
+            entry["gaming"] = "true"
+        return entry
+
+    return declaration(
+        roles={"publish": {
+            "derived": True, "consumer": "publish.yml (publish-image)",
+            "fields": ["variant", "continue"],
+            "slots": {"base": "oci/bluefin.bst", "nvidia": "oci/bluefin-nvidia.bst"},
+        }},
+        variants=[
+            variant("default", "oci/bluefin.bst", False, required=True),
+            variant("nvidia", "oci/bluefin-nvidia.bst", False),
+            variant("gaming", "oci/bluefin.bst", True),
+            variant("nvidia-gaming", "oci/bluefin-nvidia.bst", True),
+        ],
+    )
+
+
+class GroupedMatrixTests(unittest.TestCase):
+    def test_one_entry_per_gaming_value_with_prefixed_slots(self) -> None:
+        self.assertEqual(image_variants.matrix_for(grouped_declaration(), "publish"), [
+            {"group": "standard", "gaming": "false", "continue": False,
+             "base_variant": "default", "base_continue": False,
+             "nvidia_variant": "nvidia", "nvidia_continue": True},
+            {"group": "gaming", "gaming": "true", "continue": True,
+             "base_variant": "gaming", "base_continue": True,
+             "nvidia_variant": "nvidia-gaming", "nvidia_continue": True},
+        ])
+
+    def test_group_is_required_when_any_image_is(self) -> None:
+        decl = grouped_declaration()
+        decl["variants"][3]["roles"]["publish"]["continue"] = False
+        gaming = image_variants.matrix_for(decl, "publish")[1]
+        self.assertIs(gaming["continue"], False)
+
+    def test_element_outside_the_slots_is_rejected(self) -> None:
+        decl = grouped_declaration()
+        decl["variants"][1]["element"] = "oci/other.bst"
+        with self.assertRaisesRegex(image_variants.DeclarationError, "not one of its slots"):
+            image_variants.matrix_for(decl, "publish")
+
+    def test_two_variants_in_one_slot_are_rejected(self) -> None:
+        decl = grouped_declaration()
+        decl["variants"][1]["element"] = "oci/bluefin.bst"
+        with self.assertRaisesRegex(image_variants.DeclarationError, "two 'base' variants"):
+            image_variants.matrix_for(decl, "publish")
+
+    def test_empty_slot_is_rejected(self) -> None:
+        decl = grouped_declaration()
+        decl["variants"][3]["roles"]["publish"] = {"excluded": "not published"}
+        with self.assertRaisesRegex(image_variants.DeclarationError, "has no"):
+            image_variants.matrix_for(decl, "publish")
+
+    def test_slots_must_map_to_elements(self) -> None:
+        decl = grouped_declaration()
+        decl["roles"]["publish"]["slots"] = {"base": ""}
+        self.assertIn("role 'publish' must map each slot to an element",
+                      image_variants.validate(decl))
+
+
 class ScalarTests(unittest.TestCase):
     def test_bare_booleans_become_booleans(self) -> None:
         self.assertIs(image_variants._scalar(" true "), True)

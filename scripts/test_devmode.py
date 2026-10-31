@@ -14,6 +14,9 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+# files/just-overrides is a BuildStream local source: bytecode written there
+# changes bluefin/just-overrides.bst's cache key and everything built on it.
+sys.dont_write_bytecode = True
 SPEC = importlib.util.spec_from_file_location(
     "dakota_devmode", ROOT / "files/just-overrides/devmode.py"
 )

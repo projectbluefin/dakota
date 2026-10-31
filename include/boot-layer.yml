@@ -1,0 +1,72 @@
+# Shared commands for the boot layer script elements (oci/layers/boot.bst,
+# oci/layers/bluefin-nvidia-boot.bst). The instantiating element stages its
+# boot stack at /boot-set, plus kmod (and sbsigntools when signing) at /.
+variables:
+  boot-signed: "false"
+  (?):
+  - secure_boot_signing == true:
+      boot-signed: "true"
+
+config:
+  commands:
+    - |
+      set -eu
+      versions="$(ls -1 /boot-set/usr/lib/modules)"
+      if [ -z "$versions" ] || [ "$(printf '%s\n' "$versions" | wc -l)" -ne 1 ]; then
+        echo "FATAL: expected exactly one kernel under /boot-set/usr/lib/modules, found: $versions" >&2
+        exit 1
+      fi
+      test -f "/boot-set/usr/lib/modules/$versions/vmlinuz"
+      test -f "/boot-set/usr/lib/modules/$versions/initramfs.img"
+      # depmod resolves its module directory under -b, as /lib/modules or
+      # /usr/lib/modules depending on how kmod was built. The temporary
+      # link makes both spellings reach the staged tree.
+      ln -s usr/lib /boot-set/lib
+      depmod -b /boot-set -a "$versions"
+      rm /boot-set/lib
+      test -f "/boot-set/usr/lib/modules/$versions/modules.dep"
+
+    # Easy Anti-Cheat for Linux v2 rejects any loaded unsigned module, and
+    # lockdown=integrity refuses to load one at all, so a signed image with
+    # a single unsigned module fails EAC (or, for NVIDIA, boots to a black
+    # screen). Verify the kernel image and every module against the Dakota
+    # certificate here, before the layer can ship. Unsigned images must not
+    # carry the lockdown karg, which would refuse every module.
+    - |
+      set -eu
+      lockdown=/boot-set/usr/lib/bootc/kargs.d/20-lockdown.toml
+      if [ "%{boot-signed}" != true ]; then
+        if [ -e "$lockdown" ]; then
+          echo "FATAL: unsigned boot layer carries $lockdown" >&2
+          exit 1
+        fi
+        exit 0
+      fi
+      test -f "$lockdown"
+      mkdir -p /boot-check
+      der=/boot-set/usr/lib/dakota/secure-boot/dakota-secure-boot.der
+      openssl x509 -inform DER -in "$der" -out /boot-check/dakota.pem
+      signer="$(openssl x509 -in /boot-check/dakota.pem -noout -subject -nameopt multiline | sed -n 's/^ *commonName *= *//p')"
+      test -n "$signer"
+      version="$(ls -1 /boot-set/usr/lib/modules)"
+      sbverify --cert /boot-check/dakota.pem "/boot-set/usr/lib/modules/$version/vmlinuz"
+      find /boot-set/usr/lib/modules -type f \( -name '*.ko' -o -name '*.ko.*' \) -print0 > /boot-check/modules
+      total="$(tr -cd '\0' < /boot-check/modules | wc -c)"
+      if [ "$total" -eq 0 ]; then
+        echo "FATAL: no kernel modules in the boot layer" >&2
+        exit 1
+      fi
+      # The kernel checks only the last appended signature, which is the
+      # one modinfo reports.
+      bad="$(SIGNER="$signer" xargs -0 -r -n 64 -P "$(nproc)" sh -c '
+        for mod do
+          [ "$(modinfo -F signer "$mod")" = "$SIGNER" ] || printf "%s\n" "$mod"
+        done' sh < /boot-check/modules)"
+      if [ -n "$bad" ]; then
+        echo "FATAL: modules not signed by $signer:" >&2
+        printf '%s\n' "$bad" | head -n 20 >&2
+        exit 1
+      fi
+      echo "Verified $total modules and the kernel image against $signer"
+
+    - cp -a /boot-set/. "%{install-root}/"

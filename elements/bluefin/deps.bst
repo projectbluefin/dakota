@@ -54,7 +54,10 @@ depends:
   - bluefin/sudo-linuxbrew-path.bst
   - bluefin/fprintd-system-auth.bst
   - bluefin/fprintd-fingerprint-auth.bst
+  # efibootmgr and mokutil stay in every image: the Secure Boot tools in
+  # the boot layer (oci/layers/boot-stack.bst) run them but cannot carry them.
   - bluefin/efibootmgr.bst
+  - gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/mokutil.bst
   - bluefin/xdg-terminal-exec.bst
   - bluefin/nautilus-python.bst
   - bluefin/gnome-ponytail-daemon.bst
@@ -106,7 +109,3 @@ depends:
     depends:
       (>):
       - bluefin/intel-media-driver.bst
-- secure_boot_signing == true:
-    depends:
-      (>):
-      - bluefin/secure-boot.bst

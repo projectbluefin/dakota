@@ -8,12 +8,35 @@ disagrees with this page.
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `validate.yml` | PR and merge queue targeting `testing`, `next`, or `main` | Workflow checks, patch drift, and default/NVIDIA BST graphs |
-| `build.yml` | Relevant pushes to `testing`, daily 13:00 UTC, manual | Build four x86 variants through remote execution |
+| `build.yml` | Relevant pushes to `testing`, labelled same-repo PRs, manual | Build the four x86 variants through remote execution, in a standard and a gaming job |
 | `publish.yml` | Successful build workflow on `testing`/`next`, manual recovery | Export CAS artifacts, publish immutable and stream tags, sign, attest, and attach SBOMs |
 | `e2e.yml` | Manual only | Run testsuite suites against an explicitly published image |
 | `build-aarch64.yml` | Manual only; automatic ARM CI paused | Build the decoupled aarch64 image on explicit request |
 | `boot-test-aarch64.yml` | Manual only; automatic ARM CI paused | Experimental ARM boot validation; requires KVM |
 | `execute-release.yml` | Manual dispatch (maintainer-initiated) | Verify and promote the tested x86 variants to `stable` |
+
+The `build` job runs on the `DAKOTA_BUILD_RUNNER` repository variable and the
+signing jobs (`pr-image` and `publish-image`) on `DAKOTA_SIGN_RUNNER`. Both
+default to GitHub-hosted `ubuntu-26.04` when unset. The two pools must stay
+separate: build-pool runners may share the cache server's casd socket, and a
+signing job there would store the Secure Boot key in the production CAS.
+`just check-publish-workflow` rejects a signing job on any other runner, the
+signing pool outside signing jobs, and a key removal step without
+`if: always()`.
+
+On build-pool runners that sit on the cache server, `generate-bst-ci-config`
+uses casd's unix socket (`casd-socket`, default `/run/casd/casd.sock`) instead
+of the mTLS endpoint, and mounts its directory into the bst container through
+`BST_PODMAN_EXTRA_ARGS`. buildbox-casd accepts `unix:` remotes as plaintext
+gRPC channels (`buildboxcommon_connectionoptions.cpp` in
+[buildbox](https://gitlab.com/BuildGrid/buildbox/buildbox)); BuildStream passes
+the `url` through unchanged, though its
+[configuration docs](https://docs.buildstream.build/master/using_config.html)
+only list `http` and `https`. The socket has no TLS or client identity and
+grants write access to the production CAS, so the action only uses it when the
+socket exists and the job has both remote execution and pushes on. Every
+signing job has pushes off and never reaches it; the checker renders the config
+with a live socket to prove both cases.
 
 PRs do not publish their image, so `e2e.yml` does not run on pull requests: it
 would test a stale public tag rather than the PR. Run it manually only after the
@@ -43,8 +66,44 @@ testing/next change → build.yml → remote CAS → publish.yml
 ```
 
 The build matrix contains default, NVIDIA, gaming, and NVIDIA-gaming variants.
-Those siblings intentionally run together; the remote executor is the capacity
-limit.
+The standard and gaming jobs remain concurrent, sharing one execution host.
+Each gets two `scheduler.builders` and eight `build.max-jobs`, splitting GBM's
+four-parent-element budget across the two jobs. Keep capacity available for
+nested compiler actions: parent element actions occupy executor slots while
+waiting for their children. These are build-system budgets, not CPU quotas.
+Do not increase either job's budget without accounting for its sibling.
+
+The GNOME junction patch queue follows
+[GBM's recc defaults](https://github.com/GNOME/gnome-build-meta/commit/e5048b9b16a931f6c26c57beaad7cbe457ceeb67):
+compiler-level remote execution and `RECC_USE_LOCALCAS` stay enabled, but
+`RECC_USE_JOBSERVER` is off by default. GBM also
+[removed its CI opt-in](https://github.com/GNOME/gnome-build-meta/commit/30e84dec77b634bd798aabdc2e4cbdd545d954f7).
+Releasing a jobserver token while waiting remotely lets Ninja submit more
+compiler requests than `max-jobs`; reducing builders alone does not bound that
+queue. In the older pinned junction, simply disabling `recc_optimisations`
+would also disable LocalCAS, so the backport separates the two settings.
+
+Like GBM, remote execution inherits the top-level `cache.storage-service`;
+it does not configure a separate execution storage service. This follows
+[BuildStream's shared-CAS configuration](https://docs.buildstream.build/master/using_config.html#cache-control)
+and keeps payloads remote until needed. Signing/export jobs still omit remote
+storage and execution and keep the shared caches read-only. Dakota's socket
+keepalive interval and mTLS fallback are retained for its server configuration;
+GBM's endpoint and authentication settings must not be copied verbatim.
+
+`publish-image` and `pr-image` use the same shape: a standard and a gaming job,
+each signing its default and NVIDIA image in one BuildStream session, so the
+shared boot set is built once. `-o gaming` is project-wide, so each value needs
+its own job. Exports run one at a time (they share `.build-out`), then BuildStream's
+local cache is deleted and chunkify and push run both images in parallel.
+Each chunkify holds an overlay copy-up, output and import of an 11 GB image,
+so a signing runner needs about 95 GB free at the peak; the cache-box
+signing VMs have 200 GB disks. In publish, only the default image is
+required: an optional image that fails drops out with a warning and is listed
+as not published in the job summary, and the gaming job is continue-on-error.
+`.github/image-variants.json` declares the `publish` role with one slot per OCI
+element, and `just check-publish-workflow` fails if the inline matrix drifts
+from it or the job stops reading each image's continue flag.
 
 Publish records the pushed digest and passes that receipt between jobs. Signing,
 attestation, stream-tag promotion, and verification operate on the resolved SHA
@@ -58,10 +117,17 @@ a labelled PR queues again; the stale check skips runs a newer push has
 superseded. Fork PRs cannot build: they have no cache credentials and a
 runner-local build does not finish.
 
-A successful PR build exports each variant and pushes
-`ghcr.io/projectbluefin/dakota<suffix>:pr-N`. PR images are unsigned and never
+A successful PR build exports each variant, in a standard and a gaming job,
+and pushes
+`ghcr.io/projectbluefin/dakota<suffix>:pr-N`. PR images are Secure Boot signed
+with the release key, so the label is maintainer-only, and they are never
 promoted; `bootc switch` to one to try it. `pr-cleanup.yml` deletes the tags
 when the PR closes.
+
+There is no automated x86 boot gate. Before merging a change to a signing
+input (the kernel, modules, shim, systemd-boot, fwupd, or a junction bump), a
+maintainer boots the `:pr-N` image on real hardware with Secure Boot on and
+checks `dakota-secure-boot status` and `ujust verify`.
 
 ## Next synchronization
 
@@ -125,9 +191,9 @@ if testing advances between runs.
 
 Stable promotion neither updates `main` nor requires it to match the promoted
 SHA. Post-release verification compares all four `:stable` image digests with
-their SHA-tagged candidates, checks `:stable-multiarch`, and retains the existing
-stale-branch scan and untagged GHCR cleanup. These checks depend on image
-promotion, not a Git branch update; no branch-protection bypass is needed.
+their SHA-tagged candidates and retains the existing stale-branch scan and
+untagged GHCR cleanup. These checks depend on image promotion, not a Git branch
+update; no branch-protection bypass is needed.
 
 `just test-release` runs offline Python tests with a mocked `gh`, including the
 real Justfile argument path. It is registered in `check-publish-workflow` so CI
