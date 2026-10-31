@@ -79,7 +79,7 @@ from testing plus its stream-specific overlay. Stable promotion selects a
 published testing commit SHA, not a commit from `main`.
 
 ```text
-testing change or daily schedule
+testing change or manual dispatch
   → build.yml
   → publish.yml on successful build
       ├─ :sha

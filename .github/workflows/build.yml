@@ -14,12 +14,9 @@ on:
       - "Justfile"
       - "project.conf"
       - "include/**"
-  # Fires daily at 13:00 UTC — 5 hours after the gnome-build-meta nightly
-  # (~08:00 UTC) to absorb nightly deltas before building.
-  # NOTE: schedule triggers run on the default branch; set testing as the
-  # default branch in repo settings for this to target testing.
-  schedule:
-    - cron: "0 13 * * *"
+  # No schedule: junctions are pinned, so a timed run rebuilds identical
+  # inputs and republishes them under a new date. Every relevant push to
+  # testing already builds; dispatch manually to rerun.
   workflow_dispatch:
   # Label a same-repo PR `build` to build it; adding the label starts a run.
   pull_request:
@@ -42,22 +39,6 @@ concurrency:
   queue: max
 
 jobs:
-  verify-default-branch:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-    steps:
-      - name: Verify repository default branch is "testing"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          db=$(gh api "repos/${GITHUB_REPOSITORY}" --jq .default_branch)
-          if [ "$db" != "testing" ]; then
-            echo "::error::default branch is '$db', expected 'testing'. Daily schedule will silently target wrong branch. Fix repo settings."
-            exit 1
-          fi
-
   # With queue: max every push queues its own run instead of superseding the
   # previous pending one. A run that waited in the queue may be stale by the
   # time it starts: a newer push run for the same branch is already queued
@@ -98,37 +79,28 @@ jobs:
           fi
 
   build:
-    needs: [verify-default-branch, stale-check]
-    if: (!cancelled()) && needs.stale-check.outputs.stale != 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build') && github.event.pull_request.head.repo.full_name == github.repository))
-    runs-on: ubuntu-26.04
+    needs: [stale-check]
+    if: (!cancelled()) && needs.stale-check.outputs.stale != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build') && github.event.pull_request.head.repo.full_name == github.repository))
+    # Runner pools are repo variables so switching back to GitHub-hosted
+    # runners is one settings change. Only signing jobs may use the signing pool.
+    runs-on: ${{ vars.DAKOTA_BUILD_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 350
-    # The BuildBox backend has four action slots. Start every image variant
-    # together; the backend remains the global execution-capacity limit.
+    # One job per gaming value. Each builds the default and NVIDIA images in
+    # a single BuildStream session, so the shared base is scheduled once
+    # instead of once per variant job. The NVIDIA image stays allowed to
+    # fail: only `required` must end up built for the job to pass.
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         include:
-          - variant: default
-            element: oci/bluefin.bst
-            image_suffix: ""
-            publish: true
+          - group: standard
+            elements: oci/bluefin.bst oci/bluefin-nvidia.bst
+            required: oci/bluefin.bst
             continue: false
-          - variant: nvidia
-            element: oci/bluefin-nvidia.bst
-            image_suffix: "-nvidia"
-            publish: true
-            continue: true
-          - variant: gaming
-            element: oci/bluefin.bst
-            image_suffix: "-gaming"
-            publish: true
-            continue: true
-            gaming: "true"
-          - variant: nvidia-gaming
-            element: oci/bluefin-nvidia.bst
-            image_suffix: "-nvidia-gaming"
-            publish: true
+          - group: gaming
+            elements: oci/bluefin.bst oci/bluefin-nvidia.bst
+            required: ""
             continue: true
             gaming: "true"
     continue-on-error: ${{ matrix.continue }}
@@ -144,10 +116,12 @@ jobs:
         id: timestamp
         run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
+      # Hosted runners need the disk cleanup and the BTRFS loopback; the
+      # ephemeral VM pools are sized for the job, so skip both there.
       - name: Setup runner
         uses: projectbluefin/actions/bootc-build/setup-runner@v1
         with:
-          storage-backend: btrfs
+          storage-backend: ${{ vars.DAKOTA_BUILD_RUNNER && 'none' || 'btrfs' }}
           update-podman: true
           native-overlay: true
           install-tools: '["just"]'
@@ -167,11 +141,11 @@ jobs:
       - name: Count elements for progress tracking
         id: count
         env:
-          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
         run: |
           set +e
           BST_SHOW_OUT=$(just bst show --deps all --format "%{name}" \
-            ${{ matrix.element }} 2>&1)
+            ${{ matrix.elements }} 2>&1)
           rc=$?
           set -e
           if [ "$rc" -eq 0 ]; then
@@ -184,16 +158,20 @@ jobs:
             echo "total=0" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build OCI image with BuildStream
+      - name: Build OCI images with BuildStream
         env:
-          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
           ELEMENT_TOTAL: ${{ steps.count.outputs.total }}
+          REQUIRED: ${{ matrix.required }}
         run: |
           set -o pipefail
-          CONSOLE_LOG="logs/bst-console-${{ matrix.variant }}.log"
-          just bst build --deps none ${{ matrix.element }} 2>&1 \
+          CONSOLE_LOG="logs/bst-console-${{ matrix.group }}.log"
+          # on-error: continue builds every target it can, then fails if any
+          # target failed.
+          status=0
+          just bst build --deps none ${{ matrix.elements }} 2>&1 \
             | tee "$CONSOLE_LOG" \
-            | python3 files/scripts/bst-progress.py
+            | python3 files/scripts/bst-progress.py || status=$?
 
           # Fail closed: a green cache hit is not proof that BuildStream loaded
           # the remote executor. The startup banner is emitted whenever the
@@ -202,45 +180,58 @@ jobs:
             echo "::error::BuildStream did not load the remote execution configuration"
             exit 1
           fi
+
+          if [ "$status" -ne 0 ]; then
+            if [ -z "$REQUIRED" ]; then
+              exit "$status"
+            fi
+            # A failure among the optional targets must not fail the job, so
+            # rerun only the required target. It is a cache query when that
+            # target already built, and a retry of its failure otherwise.
+            echo "::warning::an optional target failed to build; checking ${REQUIRED}"
+            just bst build --deps none "$REQUIRED"
+          fi
         timeout-minutes: 330
 
       - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: buildstream-logs-x86_64-${{ matrix.variant }}
+          name: buildstream-logs-x86_64-${{ matrix.group }}
           path: logs/
           retention-days: 7
           if-no-files-found: ignore
 
-  # PR images: export from the shared cache and push :pr-N. Never signed or
-  # promoted; publish.yml ignores pull_request runs.
+  # PR images: export from the shared cache, sign the boot chain, and push
+  # :pr-N. Never promoted; publish.yml ignores pull_request runs.
   pr-image:
     needs: build
     if: (!cancelled()) && needs.build.result == 'success' && (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build') && github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-26.04
-    timeout-minutes: 90
+    runs-on: ${{ vars.DAKOTA_SIGN_RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 120
+    # One job per gaming value, signing and pushing a base and an NVIDIA
+    # image from one BuildStream session, the way publish-image does. Every
+    # image is attempted; the job fails if any of them did not push.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - variant: default
-            image_suffix: ""
-          - variant: nvidia
-            image_suffix: "-nvidia"
-          - variant: gaming
-            export_variant: default
-            image_suffix: "-gaming"
+          - group: standard
+            gaming: "false"
+            base_image_suffix: ""
+            nvidia_image_suffix: "-nvidia"
+          - group: gaming
             gaming: "true"
-          - variant: nvidia-gaming
-            export_variant: nvidia
-            image_suffix: "-nvidia-gaming"
-            gaming: "true"
+            base_image_suffix: "-gaming"
+            nvidia_image_suffix: "-nvidia-gaming"
     permissions:
       contents: read
       packages: write
     env:
       PR_TAG: pr-${{ github.event.pull_request.number }}
+      BUILD_GAMING: ${{ matrix.gaming }}
+      BASE_SUFFIX: ${{ matrix.base_image_suffix }}
+      NVIDIA_SUFFIX: ${{ matrix.nvidia_image_suffix }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -249,10 +240,12 @@ jobs:
         id: timestamp
         run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
+      # Hosted runners need the disk cleanup and the BTRFS loopback; the
+      # ephemeral VM pools are sized for the job, so skip both there.
       - name: Setup runner
         uses: projectbluefin/actions/bootc-build/setup-runner@v1
         with:
-          storage-backend: btrfs
+          storage-backend: ${{ vars.DAKOTA_SIGN_RUNNER && 'none' || 'btrfs' }}
           update-podman: true
           native-overlay: true
           install-tools: '["just"]'
@@ -282,68 +275,127 @@ jobs:
           umask 077
           printf '%s\n' "$DAKOTA_SECURE_BOOT_KEY" > files/boot-keys/private/secure-boot.key
 
-      - name: Sign boot chain and compose image
+      # A failed session still leaves whatever it finished in the local
+      # cache; images that never built fail their export below.
+      - name: Sign boot chain and compose images
         env:
-          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
-          BUILD_GAMING: ${{ matrix.gaming || 'false' }}
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
           BUILD_SECURE_BOOT_SIGNING: 'true'
-          VARIANT: ${{ matrix.export_variant || matrix.variant }}
         run: |
-          case "$VARIANT" in
-            default) element=oci/bluefin.bst ;;
-            nvidia) element=oci/bluefin-nvidia.bst ;;
-            *) echo "::error::unknown variant $VARIANT"; exit 1 ;;
-          esac
-          just bst build "$element"
+          just bst build oci/bluefin.bst oci/bluefin-nvidia.bst || \
+            echo "::warning::signing pass failed; exporting whatever built"
 
       # The key stays until export: the signed elements' cache keys include
-      # it, so checkout cannot find their artifacts without it.
-      - name: Export OCI image from BuildStream
+      # it, so checkout cannot find their artifacts without it. Exports share
+      # .build-out, so they run one at a time.
+      - name: Export OCI images from BuildStream
+        id: export
         env:
-          BST_FLAGS: -o x86_64_v3 false --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
           BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          BUILD_GAMING: ${{ matrix.gaming || 'false' }}
           BUILD_SECURE_BOOT_SIGNING: 'true'
           OCI_IMAGE_CREATED: ${{ steps.timestamp.outputs.created }}
           OCI_IMAGE_REVISION: ${{ github.event.pull_request.head.sha }}
           OCI_IMAGE_VERSION: ${{ env.PR_TAG }}
-        run: just export ${{ matrix.export_variant || matrix.variant }}
+        run: |
+          slots=""
+          for slot in base nvidia; do
+            source=default; [ "$slot" = base ] || source=nvidia
+            if just export "$source"; then
+              slots="$slots $slot"
+            else
+              echo "::error::export failed for the $slot image"
+            fi
+          done
+          echo "slots=${slots# }" >> "$GITHUB_OUTPUT"
 
       - name: Remove Secure Boot signing key
         if: always()
         run: rm -f files/boot-keys/private/secure-boot.key
 
-      - name: Chunkify image layers
-        env:
-          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
-        run: just chunkify "localhost/${BUILD_IMAGE_NAME}:latest"
+      # Both images are exported, so BuildStream's local cache (both images'
+      # artifacts, tens of GB) is no longer needed. Two images per job do not
+      # fit on one runner disk alongside chunkify otherwise.
+      - name: Free the BuildStream cache
+        run: sudo rm -rf "${HOME}/.cache/buildstream"
 
-      - name: Validate with bootc container lint
+      - name: Chunkify and lint images
+        id: verify
         env:
-          BUILD_IMAGE_NAME: ${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
-        run: just lint
+          SLOTS: ${{ steps.export.outputs.slots }}
+        run: |
+          image_of() { if [ "$1" = base ]; then echo "$IMAGE_NAME$BASE_SUFFIX"; else echo "$IMAGE_NAME$NVIDIA_SUFFIX"; fi; }
+          declare -A pids
+          for slot in $SLOTS; do
+            just chunkify "localhost/$(image_of "$slot"):latest" > "${RUNNER_TEMP}/chunkify-${slot}.log" 2>&1 &
+            pids[$slot]=$!
+          done
+          declare -A chunk_status
+          for slot in $SLOTS; do
+            chunk_status[$slot]=0
+            wait "${pids[$slot]}" || chunk_status[$slot]=$?
+          done
+          # Prune only after both runs finish: a run's freshly imported image
+          # is untagged until it retags it. This drops the pre-chunk images
+          # that the retags leave dangling.
+          sudo podman image prune -f >/dev/null || true
+          passed=""
+          for slot in $SLOTS; do
+            status=${chunk_status[$slot]}
+            echo "::group::chunkify $(image_of "$slot")"
+            cat "${RUNNER_TEMP}/chunkify-${slot}.log"
+            echo "::endgroup::"
+            if [ "$status" -ne 0 ]; then echo "::error::chunkify failed for $(image_of "$slot")"; continue; fi
+            if ! BUILD_IMAGE_NAME="$(image_of "$slot")" just lint; then
+              echo "::error::bootc container lint failed for $(image_of "$slot")"
+              continue
+            fi
+            passed="$passed $slot"
+          done
+          echo "slots=${passed# }" >> "$GITHUB_OUTPUT"
 
       - name: Login to GHCR
+        if: steps.verify.outputs.slots != ''
         env:
           GH_ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "$GH_TOKEN" | sudo podman login ghcr.io --username "$GH_ACTOR" --password-stdin
 
       - name: Push :${{ env.PR_TAG }} to GHCR
+        id: push
+        if: steps.verify.outputs.slots != ''
+        env:
+          SLOTS: ${{ steps.verify.outputs.slots }}
         run: |
           set -euo pipefail
-          LOCAL_IMAGE="${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}"
-          IMAGE="${{ env.IMAGE_REGISTRY }}/${LOCAL_IMAGE}"
-          sudo podman tag "localhost/${LOCAL_IMAGE}:latest" "${IMAGE}:${PR_TAG}"
-          for attempt in 1 2 3; do
-            sudo podman push --compression-format=zstd \
-              --digestfile /tmp/digest.txt "${IMAGE}:${PR_TAG}" && break
-            [ "$attempt" -lt 3 ] || { echo "ERROR: push failed for ${IMAGE}:${PR_TAG}"; exit 1; }
-            sleep 5
+          pushed=0
+          for slot in $SLOTS; do
+            LOCAL_IMAGE="$IMAGE_NAME$BASE_SUFFIX"; [ "$slot" = base ] || LOCAL_IMAGE="$IMAGE_NAME$NVIDIA_SUFFIX"
+            IMAGE="${{ env.IMAGE_REGISTRY }}/${LOCAL_IMAGE}"
+            sudo podman tag "localhost/${LOCAL_IMAGE}:latest" "${IMAGE}:${PR_TAG}"
+            ok=false
+            for _ in 1 2 3; do
+              sudo podman push --compression-format=zstd \
+                --digestfile "${RUNNER_TEMP}/digest-${slot}.txt" "${IMAGE}:${PR_TAG}" && { ok=true; break; }
+              sleep 5
+            done
+            if ! $ok; then echo "::error::push failed for ${IMAGE}:${PR_TAG}"; continue; fi
+            DIGEST=$(cat "${RUNNER_TEMP}/digest-${slot}.txt")
+            echo "${IMAGE}:${PR_TAG} @ ${DIGEST}"
+            echo "- \`${IMAGE}:${PR_TAG}\` \`${DIGEST}\`" >> "$GITHUB_STEP_SUMMARY"
+            pushed=$((pushed + 1))
           done
-          DIGEST=$(cat /tmp/digest.txt)
-          echo "${IMAGE}:${PR_TAG} @ ${DIGEST}"
-          echo "- \`${IMAGE}:${PR_TAG}\` \`${DIGEST}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "pushed=$pushed" >> "$GITHUB_OUTPUT"
+
+      - name: Require both images
+        if: always()
+        env:
+          PUSHED: ${{ steps.push.outputs.pushed }}
+        run: |
+          if [ "${PUSHED:-0}" -ne 2 ]; then
+            echo "::error::only ${PUSHED:-0} of 2 images were pushed as :${PR_TAG}"
+            exit 1
+          fi
 
   # Required check: pending until a `build`-labeled PR has built.
   build-gate:

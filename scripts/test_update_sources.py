@@ -88,6 +88,8 @@ class SelectionTests(unittest.TestCase):
 class RewriteTests(unittest.TestCase):
     def test_every_release_updates_only_urls_and_is_idempotent(self):
         for element, release in updater.RELEASES.items():
+            if release.generator:
+                continue
             with self.subTest(element=element):
                 original = (REPOSITORY / "elements" / element).read_text()
                 tag = "v99.88.77"
@@ -245,6 +247,17 @@ else:
 '''
 
 
+GENERATOR_STUB = r'''import json, os, pathlib, re, sys
+with open(os.environ["CALL_LOG"], "a") as log:
+    log.write(json.dumps(["generator", *sys.argv[1:]]) + "\n")
+path = pathlib.Path("elements/bluefin/ghostty.bst")
+path.write_text(re.sub(r"ghostty_releases:[0-9.]+/ghostty-[0-9.]+",
+                       f"ghostty_releases:{sys.argv[1]}/ghostty-{sys.argv[1]}", path.read_text()))
+if os.environ.get("FAIL_GENERATOR"):
+    sys.exit(1)
+'''
+
+
 class CliTests(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -270,6 +283,11 @@ class CliTests(unittest.TestCase):
             path = self.bin / name
             path.write_text(f"#!{sys.executable}\n" + STUB)
             path.chmod(0o755)
+        # The Ghostty generator downloads; stand in with a recorder that
+        # rewrites the release version (and can fail after a partial write).
+        generator = self.root / updater.RELEASES["bluefin/ghostty.bst"].generator
+        generator.parent.mkdir(parents=True)
+        generator.write_text(GENERATOR_STUB)
         self.log = self.root / "calls.jsonl"
 
     def cli(self, *args, **env):
@@ -309,6 +327,33 @@ class CliTests(unittest.TestCase):
         self.assertIn("v99.88.77", meta["title"])
         self.assertEqual((self.root / "tracked/files/elements/bluefin/gum.bst").read_bytes(),
                          (self.root / "elements/bluefin/gum.bst").read_bytes())
+
+    def test_generated_release_regenerates_without_tracking(self):
+        path = self.root / "elements/bluefin/ghostty.bst"
+        old = re.search(r"ghostty_releases:([0-9.]+)/", path.read_text())[1]
+        result = self.cli("--element", "bluefin/ghostty.bst", "--record-dir", "tracked")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        self.assertEqual(calls[0][0:3], ["gh", "api", "repos/ghostty-org/ghostty/tags?per_page=100"])
+        self.assertEqual(calls[1:], [["generator", "99.88.77"]])
+        self.assertIn("ghostty_releases:99.88.77/", path.read_text())
+        meta = json.loads((self.root / "tracked/meta/ghostty.json").read_text())
+        self.assertEqual(meta["title"], f"chore(deps): update ghostty {old} -> 99.88.77")
+        self.assertIn(f"compare/v{old}...v99.88.77", meta["links"])
+
+    def test_generated_release_up_to_date_or_failed_leaves_element(self):
+        path = self.root / "elements/bluefin/ghostty.bst"
+        tag = "v" + re.search(r"ghostty_releases:([0-9.]+)/", path.read_text())[1]
+        before = self.snapshot()
+        for env in ({"RELEASE_TAG": tag}, {"FAIL_GENERATOR": "1"}, {"RELEASE_TAG": "tip"}):
+            with self.subTest(env=env):
+                self.log.unlink(missing_ok=True)
+                result = self.cli("--element", "bluefin/ghostty.bst", "--record-dir", "tracked", **env)
+                self.assertEqual(result.returncode, 0 if "RELEASE_TAG" in env and env["RELEASE_TAG"] == tag else 1)
+                self.assertEqual(self.snapshot(), before)
+                self.assertFalse((self.root / "tracked").exists())
+                if "FAIL_GENERATOR" not in env:
+                    self.assertEqual([c[0] for c in self.calls()], ["gh"])
 
     def test_tracking_failure_restores_entire_element_and_records_nothing(self):
         path = self.root / "elements/bluefin/gum.bst"
@@ -357,8 +402,9 @@ class CliTests(unittest.TestCase):
     def test_next_kernel_patterns_and_rc_refs_are_preserved(self):
         linux = self.root / "elements/core/linux-fdsdk.bst"
         ogc = self.root / "elements/core/linux-ogc.bst"
-        linux.write_text(linux.read_text().replace("track: v7.2.*", "track: v*"))
-        ogc.write_text(ogc.read_text().replace("track: v7.2.*-ogc*", "track: v*-ogc*"))
+        linux.write_text(re.sub(r"track: v[0-9.]+\*\n(  exclude:\n(  - \S+\n)+)?", "track: v*\n",
+                                linux.read_text()))
+        ogc.write_text(re.sub(r"track: v[0-9.]+\*-ogc\*\n", "track: v*-ogc*\n", ogc.read_text()))
         result = self.cli("--group", "kernels", KERNEL_REF=f"v7.3-rc4-0-g{SHA}",
                           OGC_REF=f"v7.3-rc4-ogc3-0-g{SHA}")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -505,7 +551,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         # Wallpaper tag is deliberately invalid; Tailscale simulates a 404.
         self.assertEqual(sorted(p.stem for p in (self.root / "tracked/meta").glob("*.json")),
-                         ["gtk4-layer-shell", "gum", "jetbrains-mono-nerd-font", "uupd"])
+                         ["ghostty", "gtk4-layer-shell", "gum", "jetbrains-mono-nerd-font", "uupd"])
 
 
 class NextKernelPolicyTests(unittest.TestCase):

@@ -6,8 +6,8 @@ depends:
 
   - freedesktop-sdk.bst:components/linux-firmware.bst
   - core/ntsync-modules-load.bst
-  - gnome-build-meta.bst:gnomeos/initramfs/signed-modules.bst
-  - gnome-build-meta.bst:oci/initramfs/image.bst
+  # The kernel, modules and initramfs ship in the boot layer
+  # (oci/layers/boot.bst), so this stack never depends on secure_boot_signing.
 
   - gnome-build-meta.bst:gnomeos-deps/bootc.bst
   - gnome-build-meta.bst:oci/integration/bootc-config.bst
@@ -30,6 +30,10 @@ public:
       # .agents/skills/dakota-buildstream/SKILL.md); integration commands run after all staging,
       # so this is the deterministic winner. No [zramN] section = no zram device.
       - printf '# zram disabled; Dakota swaps via zswap + /var/swap/swapfile\n' > /usr/lib/systemd/zram-generator.conf
+      # Drop gnomeos-deps/zswap-generator.bst. Its default swap file lives on
+      # the read-only root at /swap and would duplicate /var/swap/swapfile.
+      # The watermark sysctls it ships live in bluefin/zswap-config.bst.
+      - rm -rf /usr/lib/systemd/system-generators/zswap-generator /usr/lib/zswap-generator /usr/lib/sysctl.d/50-zswap.conf
 
       - rm -rfv /boot /run
 
