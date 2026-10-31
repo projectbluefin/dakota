@@ -40,4 +40,18 @@ config:
       cat > "%{install-root}%{indep-libdir}/tmpfiles.d/sysstat.conf" <<'EOF'
       d /var/log/sa 0755 root root -
       EOF
+    # Collection is opt-in: sar/iostat/mpstat/pidstat work on demand without it.
+    # Dakota's presets have no catch-all `disable *`, so unlisted units with an
+    # [Install] section would be enabled; disable them explicitly. The sleep
+    # hook writes sa records on every suspend regardless, so drop it too.
+    # Enable with: systemctl enable --now sysstat.service
+    - |
+      install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system-preset/80-sysstat.preset"
+      cat > "%{install-root}%{indep-libdir}/systemd/system-preset/80-sysstat.preset" <<'EOF'
+      disable sysstat.service
+      disable sysstat-collect.timer
+      disable sysstat-summary.timer
+      disable sysstat-rotate.timer
+      EOF
+    - rm -f "%{install-root}%{indep-libdir}/systemd/system-sleep/sysstat.sleep"
     - install -Dm644 COPYING "%{install-root}%{datadir}/licenses/sysstat/COPYING"

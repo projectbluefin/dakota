@@ -95,7 +95,7 @@ depends:
 
   - bluefin/nicstat.bst
   - bluefin/tiptop.bst
-  - bluefin/numactl.bst
+  - gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/numactl.bst
   - bluefin/sysstat.bst
   - bluefin/trace-cmd.bst
 
