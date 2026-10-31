@@ -4,11 +4,11 @@ sources:
 - kind: tar
   (?):
   - arch == "x86_64":
-      url: ziglang:download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz
-      ref: 02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239
+      url: ziglang:download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz
+      ref: 1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026
   - arch == "aarch64":
-      url: ziglang:download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz
-      ref: 958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498f667f
+      url: ziglang:download/0.17.0/zig-aarch64-linux-0.17.0.tar.xz
+      ref: 9e8d11661d4ae3bd57702a3832781e23ad151dde5798e16a5ccd503f65234ff8
 
 build-depends:
 - core/sandbox-tools.bst

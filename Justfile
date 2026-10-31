@@ -28,12 +28,13 @@ export vm_cpus := env("VM_CPUS", "4")
 # OCI metadata (dynamic labels)
 export OCI_IMAGE_CREATED := env("OCI_IMAGE_CREATED", "")
 export OCI_IMAGE_REVISION := env("OCI_IMAGE_REVISION", "")
-export OCI_IMAGE_VERSION := env("OCI_IMAGE_VERSION", "latest")
+# Empty means the export date, the same value written to os-release.
+export OCI_IMAGE_VERSION := env("OCI_IMAGE_VERSION", "")
 
 # ── BuildStream wrapper ──────────────────────────────────────────────
 # Runs any bst command inside the bst2 container via podman.
-# Defaults to baseline x86_64 (`-o x86_64_v3 false`) so local runs match CI
-# and reuse artifacts published by gnome-build-meta and freedesktop-sdk.
+# CPU baseline comes from project.conf: x86_64-v3 on x86_64, unchanged on ARM.
+# For a baseline x86_64 build, set BST_FLAGS="-o x86_64_v3 false".
 # Set BST_FLAGS to append flags (e.g. --config ...).
 # Set BST_FLAGS_OVERRIDE to replace all default/appended flags.
 # BST_RUNNER may name an executable alternate runner (also used by isolated tests).
@@ -49,14 +50,10 @@ bst *ARGS:
         exec "$BST_RUNNER" {{ARGS}}
     fi
     mkdir -p "${HOME}/.cache/buildstream"
-    DEFAULT_BST_FLAGS="-o x86_64_v3 false --no-interactive"
     if [ -n "${BST_FLAGS_OVERRIDE:-}" ]; then
         EFFECTIVE_BST_FLAGS="${BST_FLAGS_OVERRIDE}"
     else
         EFFECTIVE_BST_FLAGS="${BST_FLAGS:-}"
-        if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]-o[[:space:]]+x86_64_v3[[:space:]]+(true|false)([[:space:]]|$) ]]; then
-            EFFECTIVE_BST_FLAGS="${DEFAULT_BST_FLAGS} ${EFFECTIVE_BST_FLAGS}"
-        fi
         if [[ ! " ${EFFECTIVE_BST_FLAGS} " =~ [[:space:]]--no-interactive([[:space:]]|$) ]]; then
             EFFECTIVE_BST_FLAGS="${EFFECTIVE_BST_FLAGS} --no-interactive"
         fi
@@ -141,9 +138,9 @@ update-sources *FLAGS:
 check-publish-workflow:
     python3 scripts/check_publish_workflow.py
     python3 -m unittest scripts.test_check_publish_workflow
-    python3 -m unittest scripts.test_ownership_metadata scripts.test_ownership_oci scripts.test_compare_oci_layers scripts.test_ownership_recipes scripts.test_sync_next
+    python3 -m unittest scripts.test_ownership_metadata scripts.test_ownership_oci scripts.test_ownership_overlay scripts.test_oci_append_layer scripts.test_compare_oci_layers scripts.test_ownership_recipes scripts.test_sync_next
     python3 -m unittest scripts.test_image_variants scripts.test_track_bundle scripts.test_update_sources
-    python3 -m unittest scripts.test_desktop_defaults
+    python3 -m unittest scripts.test_desktop_defaults scripts.test_bst_wrapper
     just test-devmode
     just test-release
 
@@ -329,8 +326,8 @@ build variant="all":
 # Assumes the matching `just bst build` has already completed.
 # Used by: `just build` (after building) and CI (as a separate step).
 #
-# Uses SUDO_CMD to handle root vs non-root: CI runs as root (no sudo),
-# local dev needs sudo for podman access to containers-storage.
+# Uses SUDO_CMD to handle root vs non-root: podman's rootful
+# containers-storage needs sudo for any user other than root.
 [group('build')]
 export variant="default":
     #!/usr/bin/env bash
@@ -346,7 +343,7 @@ export variant="default":
     fi
     FINAL_TAG="{{image_tag}}"
 
-    # Use sudo unless already root (CI runners are root)
+    # Use sudo unless already root.
     SUDO_CMD=""
     if [ "$(id -u)" -ne 0 ]; then
         SUDO_CMD="sudo"
@@ -377,6 +374,10 @@ export variant="default":
     mv .build-ownership-source/ownership-final.json ".build-ownership-source/${IMAGE_ID}.json"
     rm -rf .build-out .build-ownership-source/ownership-final.json
 
+    # One build date for both the version label and os-release, so
+    # `bootc status` and /usr/lib/os-release always agree.
+    DATE_TAG="$(date -u +%Y%m%d)"
+
     # Build label arguments for dynamic OCI metadata
     LABEL_ARGS=""
     if [ -n "${OCI_IMAGE_CREATED}" ]; then
@@ -385,9 +386,7 @@ export variant="default":
     if [ -n "${OCI_IMAGE_REVISION}" ]; then
         LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.revision=${OCI_IMAGE_REVISION}"
     fi
-    if [ -n "${OCI_IMAGE_VERSION}" ]; then
-        LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.version=${OCI_IMAGE_VERSION}"
-    fi
+    LABEL_ARGS="${LABEL_ARGS} --label org.opencontainers.image.version=${OCI_IMAGE_VERSION:-$DATE_TAG}"
 
     # Squash, inject build-date VERSION_ID, and apply dynamic labels.
     # BST has no string option type, so VERSION_ID is set to "0" in os-release.bst
@@ -396,7 +395,6 @@ export variant="default":
     # available in quay.io/podman/stable (breaks local builds and Argo pipeline)
     # and the multi-layer output breaks composefs xattr injection in chunka.
     # Fixes: projectbluefin/dakota#841 (boot failure on :testing 2026-06-13)
-    DATE_TAG="$(date -u +%Y%m%d)"
     # Preserve the deterministic source mtimes. sed -i changes the parent
     # directory mtime, which otherwise invalidates every Chunkah layer that
     # carries /usr/lib metadata even when its component files are unchanged.
@@ -871,7 +869,7 @@ chunkify image_ref:
         exit 0
     fi
 
-    # Use sudo unless already root (CI runners are root)
+    # Use sudo unless already root.
     SUDO_CMD=""
     if [ "$(id -u)" -ne 0 ]; then
         SUDO_CMD="sudo"
@@ -893,11 +891,15 @@ chunkify image_ref:
         exit 1
     fi
 
-    # Compile fakecap-restore from source if not already built.
+    # Compile fakecap-restore from source if not already built. CI chunkifies
+    # two images in parallel, so build privately and rename into place: a
+    # concurrent run must never execute a partially written binary.
     FAKECAP_RESTORE="{{justfile_directory()}}/files/fakecap/fakecap-restore"
     if [ ! -x "$FAKECAP_RESTORE" ]; then
         echo "==> Compiling fakecap-restore..."
-        gcc -O2 -o "$FAKECAP_RESTORE" "{{justfile_directory()}}/files/fakecap/fakecap-restore.c"
+        FAKECAP_BUILD=$(mktemp "${FAKECAP_RESTORE}.XXXXXX")
+        gcc -O2 -o "$FAKECAP_BUILD" "{{justfile_directory()}}/files/fakecap/fakecap-restore.c"
+        mv -f "$FAKECAP_BUILD" "$FAKECAP_RESTORE"
     fi
 
     # Install cleanup before allocating anything, including partial mktemp failures.
@@ -957,8 +959,10 @@ chunkify image_ref:
         fi
     done
     echo "==> overlay tmpdir: ${_OVERLAY_TMPDIR} ($(df -h --output=avail "${_OVERLAY_TMPDIR}" | tail -1 | tr -d ' ') free)"
-    UPPER=$(mktemp -d -p "$_OVERLAY_TMPDIR"); WORK=$(mktemp -d -p "$_OVERLAY_TMPDIR"); MERGED=$(mktemp -d -p "$_OVERLAY_TMPDIR")
-    OUTPUT_DIR=$(mktemp -d -p "$_OVERLAY_TMPDIR")
+    # Allocate as root: the candidates can be root-owned (/var/lib/containers),
+    # and only root uses these directories (overlay mount, chunkah, podman pull).
+    UPPER=$($SUDO_CMD mktemp -d -p "$_OVERLAY_TMPDIR"); WORK=$($SUDO_CMD mktemp -d -p "$_OVERLAY_TMPDIR"); MERGED=$($SUDO_CMD mktemp -d -p "$_OVERLAY_TMPDIR")
+    OUTPUT_DIR=$($SUDO_CMD mktemp -d -p "$_OVERLAY_TMPDIR")
     $SUDO_CMD chmod 755 "$UPPER" "$WORK" "$MERGED"
     $SUDO_CMD mount -t overlay overlay \
         -o "lowerdir=${LOWER},upperdir=${UPPER},workdir=${WORK}" \
@@ -966,6 +970,13 @@ chunkify image_ref:
 
     echo "==> Applying user.component xattrs via fakecap-restore..."
     $SUDO_CMD "$FAKECAP_RESTORE" "$MANIFEST" "$MERGED"
+
+    # Podman's squash RUN creates /sys with the build time as its mtime, which
+    # would change the unclaimed layer on every export. Pin it to /usr's
+    # deterministic BuildStream mtime; the write lands in the overlay upper.
+    if [ -d "$MERGED/sys" ]; then
+        $SUDO_CMD touch -r "$MERGED/usr" "$MERGED/sys"
+    fi
 
     # Run chunkah against the overlay (bind-mounted read-only).
     # --max-layers 120 balances layer granularity with registry storage space.
@@ -1325,9 +1336,12 @@ sbom variant="default":
         -v "${HOME}/.config/buildstream-generate:/root/.config/buildstream-generate:rw" \
         -w /src \
         "{{bst2_image}}" \
-        bash -c "bst --no-colors show --deps none --format '%{name}' ${ELEMENT}" \
+        bash -c "bst --no-colors -o secure_boot_signing true show --deps none --format '%{name}' ${ELEMENT}" \
         2>/dev/null || true
 
+    # Published images are always signed, so the SBOM resolves the signed
+    # graph. The private key is a local source; `show` only needs its absence
+    # to change cache keys, so this works without the key present.
     echo "==> Generating BST-native SBOM with buildstream-sbom (${ELEMENT} → ${OUTFILE})..."
     # Ensure pip cache directory exists before podman bind-mount.
     # actions/cache does not create the path on a cold cache miss; podman
@@ -1365,6 +1379,7 @@ sbom variant="default":
                 --spdx-creator "Tool: buildstream-sbom" \
                 --spdx-creator "Organization: projectbluefin" \
                 --deps all \
+                --option secure_boot_signing true \
                 --output "/src/${OUTFILE}"
         '
     echo ""
@@ -1499,6 +1514,16 @@ swap-audit:
         if compgen -G "/etc/systemd/zram-generator.conf*" > /dev/null; then
             fail "unexpected zram-generator config under /etc"
         fi
+
+        # GNOME OS zswap-generator would add a loop-backed swap on the read-only root.
+        if [ -e /usr/lib/systemd/system-generators/zswap-generator ] || [ -e /usr/lib/zswap-generator ]; then
+            fail "GNOME OS zswap-generator still shipped"
+        fi
+        [ -e /usr/lib/sysctl.d/50-zswap.conf ] && fail "GNOME OS 50-zswap.conf sysctl still shipped"
+        SYSCTL=/usr/lib/sysctl.d/60-zswap.conf
+        for setting in "vm.swappiness = 100" "vm.watermark_scale_factor = 200" "vm.watermark_boost_factor = 0"; do
+            grep -qxF "$setting" "$SYSCTL" 2>/dev/null || fail "$SYSCTL missing: $setting"
+        done
 
         KARGS=/usr/lib/bootc/kargs.d/20-zswap.toml
         if [ ! -f "$KARGS" ]; then

@@ -7,9 +7,13 @@ kind: manual
 build-depends:
 - core/sandbox-tools.bst
 
+# The boot layer stages these tools through bluefin/secure-boot-tools-files.bst,
+# without these dependencies; bluefin/deps.bst puts them in the base and the
+# final OCI elements fail if the base lacks what dakota-secure-boot runs.
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 - bluefin/efibootmgr.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/mokutil.bst
 
 variables:
   strip-binaries: ''

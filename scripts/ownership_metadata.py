@@ -455,6 +455,119 @@ def finalize_oci(layout: Path, root: Path, basis_path: Path, arch: str, variant:
     _write_json(output, payload)
 
 
+def _layer_structure(blob: Path) -> dict[str, str]:
+    """Path/type identity of one additive OCI layer; whiteouts are refused."""
+    result = {}
+    with tarfile.open(blob, mode="r:") as archive:
+        for member in archive:
+            relative = _oci_path(member.name)
+            if not relative:
+                continue
+            if PurePosixPath(relative).name.startswith(".wh."):
+                _fail(f"overlay layer must be additive, found whiteout: {relative}")
+            if relative in result:
+                _fail(f"duplicate OCI layer path: {relative}")
+            if member.isfile() or member.islnk(): kind = "file"
+            elif member.issym(): kind = "symlink"
+            elif member.isdir(): kind = "directory"
+            else: _fail(f"overlay layer contains a special file: {relative}")
+            result[relative] = kind
+    return dict(sorted(result.items()))
+
+
+def _owner(entry: Any, label: str) -> tuple[str, dict[str, str]]:
+    if not isinstance(entry, dict):
+        _fail(f"{label} contains non-object entry")
+    relative = _relative(entry.get("path"))
+    owner = {key: entry.get(key) for key in ("component", "producer", "interval")}
+    if not all(isinstance(value, str) and value and "\t" not in value and "\n" not in value
+               for value in owner.values()):
+        _fail(f"invalid {label} owner: /{relative}")
+    return relative, owner
+
+
+def finalize_overlay(layout: Path, base_layout: Path, base_sidecar: Path, overlay_basis: Path,
+                     allow_prefixes: list[str], arch: str, variant: str, output: Path,
+                     require_base_paths: list[str] = ()) -> None:
+    """Bind ownership for a cached base image plus one additive boot layer.
+
+    The base sidecar keeps its owners for every path the overlay leaves alone.
+    Overlay paths take their owners from the overlay compose basis, and the
+    overlay may only add or replace paths under the declared prefixes (plus
+    metadata-identical ancestor directories). Any other difference between the
+    base snapshot and the combined image fails, so a boot set can never change
+    or hide base content. require_base_paths names base files the overlay's
+    programs need at runtime but cannot carry themselves.
+    """
+    base = _load_final(base_sidecar)
+    if base["binding"] != "oci-layout":
+        _fail("base metadata is not bound to an OCI layout")
+    _check_identity(base, arch, variant)
+    base_manifest, base_digest = _manifest_from_layout(base_layout)
+    if base_digest != base["oci_manifest_digest"]:
+        _fail("base sidecar is not bound to the staged base OCI layout")
+    tree, manifest_digest = oci_snapshot(layout)
+    manifest, _ = _manifest_from_layout(layout)
+    base_layers = [layer.get("digest") for layer in base_manifest.get("layers", [])]
+    layers = [layer["digest"] for layer in manifest["layers"]]
+    if not base_layers or layers[:-1] != base_layers:
+        _fail("image must be the exact base layers plus one overlay layer")
+    overlay = _layer_structure(layout / "blobs/sha256" / layers[-1].removeprefix("sha256:"))
+
+    overlay_owners, basis_structure, _, overlay_digest = _load_basis(overlay_basis)
+    if overlay != basis_structure:
+        mismatches = [name for name in sorted(set(overlay) | set(basis_structure))
+                      if overlay.get(name) != basis_structure.get(name)]
+        _fail(f"overlay layer does not match its basis ({len(mismatches)} paths; first: {mismatches[:5]})")
+
+    prefixes = [_relative(prefix) for prefix in allow_prefixes]
+    if not prefixes:
+        _fail("overlay requires at least one allowed prefix")
+    previous = base["snapshot"]
+    missing = [path for path in map(_relative, require_base_paths)
+               if previous.get(path, {}).get("type") not in ("file", "symlink")]
+    if missing:
+        _fail(f"base image lacks paths the overlay needs: {['/' + path for path in missing]}")
+    for path, kind in overlay.items():
+        if any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes):
+            continue
+        if kind != "directory" or not any(prefix.startswith(path + "/") for prefix in prefixes):
+            _fail(f"overlay path outside the allowed prefixes: /{path}")
+        # Ancestors exist only to reach the boot paths. Layer builders may
+        # normalize their mtime, but nothing else about them may change.
+        if path in previous:
+            identity = ("type", "mode", "uid", "gid", "xattrs")
+            if any(previous[path].get(key) != tree[path].get(key) for key in identity):
+                _fail(f"overlay changes ancestor directory metadata: /{path}")
+    if "usr/lib/os-release" in overlay:
+        _fail("overlay must not replace os-release")
+    changed = {name for name in set(previous) | set(tree) if previous.get(name) != tree.get(name)}
+    outside = sorted(changed - set(overlay))
+    if outside:
+        _fail(f"overlay changes base paths it does not contain ({len(outside)}; first: {outside[:5]})")
+
+    owners: dict[str, dict[str, str]] = {}
+    for entry in base["entries"]:
+        relative, owner = _owner(entry, "base sidecar")
+        if relative in owners:
+            _fail(f"duplicate base sidecar entry: /{relative}")
+        owners[relative] = owner
+    owners = {path: owner for path, owner in owners.items() if path not in overlay}
+    owners.update(overlay_owners)
+    payload = _final_payload(tree, owners, base["layer_artifact"], base["basis_sha256"],
+                             base["arch"], base["variant"], manifest_digest)
+    eligible = {path for path, record in tree.items() if record["type"] in ("file", "symlink")}
+    if set(owners) != eligible:
+        _fail(f"overlay ownership is incomplete (first: {sorted(eligible ^ set(owners))[:5]})")
+    _validate_entries(payload["entries"], tree)
+    payload["overlay"] = {"base_oci_manifest_digest": base_digest,
+                          "base_sidecar_sha256": hashlib.sha256(_read_regular(base_sidecar)).hexdigest(),
+                          "basis_sha256": overlay_digest, "allow_prefixes": ["/" + p for p in prefixes]}
+    if "os_release_lines" in base:
+        payload["os_release_lines"] = base["os_release_lines"]
+    _write_json(output, payload)
+
+
 def _write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and not stat.S_ISREG(os.lstat(path).st_mode):
@@ -644,12 +757,14 @@ def main() -> int:
     final_oci = commands.add_parser("finalize-oci"); final_oci.add_argument("--layout", type=Path, required=True); final_oci.add_argument("--root", type=Path, required=True); final_oci.add_argument("--basis", type=Path, required=True); final_oci.add_argument("--arch", required=True); final_oci.add_argument("--variant", required=True); final_oci.add_argument("--output", type=Path, required=True)
     rebind = commands.add_parser("rebind-exported"); rebind.add_argument("--root", type=Path, required=True); rebind.add_argument("--sidecar", type=Path, required=True); rebind.add_argument("--image-id", required=True); rebind.add_argument("--arch"); rebind.add_argument("--variant"); rebind.add_argument("--output", type=Path, required=True); rebind.add_argument("--manifest", type=Path)
     validate = commands.add_parser("validate-exported"); validate.add_argument("--root", type=Path, required=True); validate.add_argument("--sidecar", type=Path, required=True); validate.add_argument("--arch"); validate.add_argument("--variant"); validate.add_argument("--manifest", type=Path)
+    overlay = commands.add_parser("finalize-overlay"); overlay.add_argument("--layout", type=Path, required=True); overlay.add_argument("--base-layout", type=Path, required=True); overlay.add_argument("--base-sidecar", type=Path, required=True); overlay.add_argument("--overlay-basis", type=Path, required=True); overlay.add_argument("--allow-prefix", action="append", default=[], required=True); overlay.add_argument("--require-base-path", action="append", default=[]); overlay.add_argument("--arch", required=True); overlay.add_argument("--variant", required=True); overlay.add_argument("--output", type=Path, required=True)
     prepare = commands.add_parser("prepare-chunkify"); prepare.add_argument("--sidecar", type=Path, required=True); prepare.add_argument("--image-id", required=True); prepare.add_argument("--manifest", type=Path, required=True); prepare.add_argument("--output", type=Path, required=True)
     comparison = commands.add_parser("compare"); comparison.add_argument("--legacy", type=Path, required=True); comparison.add_argument("--manifest", type=Path, required=True); comparison.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
         if args.command == "verify-basis": verify_basis(args.root, args.basis)
         elif args.command == "finalize-oci": finalize_oci(args.layout, args.root, args.basis, args.arch, args.variant, args.output)
+        elif args.command == "finalize-overlay": finalize_overlay(args.layout, args.base_layout, args.base_sidecar, args.overlay_basis, args.allow_prefix, args.arch, args.variant, args.output, args.require_base_path)
         elif args.command == "rebind-exported": rebind_exported(args.root, args.sidecar, args.image_id, args.arch, args.variant, args.output, args.manifest)
         elif args.command == "validate-exported": validate_exported(args.root, args.sidecar, args.arch, args.variant, args.manifest)
         elif args.command == "prepare-chunkify": prepare_chunkify_manifest(args.sidecar, args.image_id, args.manifest, args.output)

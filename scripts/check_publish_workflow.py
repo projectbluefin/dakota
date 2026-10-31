@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import re
+import socket
 import subprocess
 import sys
 import tempfile
@@ -41,29 +42,45 @@ def extract_composite_shell(action: str) -> str | None:
     return textwrap.dedent("".join(shell_lines))
 
 
-def run_generator(shell: str, *, remote: bool, push: bool, credentials: bool):
+def run_generator(shell: str, *, remote: bool, push: bool, credentials: bool,
+                  casd_socket: bool = False):
     with tempfile.TemporaryDirectory() as tempdir:
         workspace = Path(tempdir)
+        github_env = workspace / "github-env"
+        github_env.touch()
         env = os.environ.copy()
         env.update(
             {
                 "GITHUB_WORKSPACE": str(workspace),
+                "GITHUB_ENV": str(github_env),
                 "ENABLE_REMOTE_EXECUTION": str(remote).lower(),
                 "ENABLE_PUSH": str(push).lower(),
                 "CASD_CLIENT_CERT": "test certificate" if credentials else "",
                 "CASD_CLIENT_KEY": "test private key" if credentials else "",
+                "CASD_SOCKET": str(workspace / "run/casd/casd.sock"),
             }
         )
-        result = subprocess.run(
-            ["bash", "-c", shell],
-            cwd=workspace,
-            env=env,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        listener = None
+        if casd_socket:
+            (workspace / "run/casd").mkdir(parents=True)
+            listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            listener.bind(env["CASD_SOCKET"])
+        try:
+            result = subprocess.run(
+                ["bash", "-c", shell],
+                cwd=workspace,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        finally:
+            if listener is not None:
+                listener.close()
         config_path = workspace / "buildstream-ci.conf"
         config = config_path.read_text() if config_path.exists() else ""
+        result.github_env = github_env.read_text()
+        result.socket = env["CASD_SOCKET"]
         return result, config
 
 
@@ -89,13 +106,17 @@ def check_generated_configs(shell: str, errors: list[str]) -> None:
             "  execution-service:": "execution service",
             "  action-cache-service:": "action-cache service",
             "  max-jobs: 8": "build.max-jobs: 8",
+            "  builders: 2": "two builders per job (four across the shared host)",
             "cache:\n  cache-buildtrees: never\n  storage-service:": "top-level cache storage service",
         }
         for token, description in required.items():
             if token not in remote_config:
                 errors.append(f"remote config is missing {description}")
-        if len(re.findall(r"^  storage-service:", remote_config, re.M)) != 2:
-            errors.append("remote config must contain top-level and RE storage services")
+        if len(re.findall(r"^  storage-service:", remote_config, re.M)) != 1:
+            errors.append("remote config must contain only the top-level cache storage service")
+        _, _, execution_config = remote_config.partition("\nremote-execution:\n")
+        if re.search(r"^  storage-service:", execution_config, re.M):
+            errors.append("remote execution must inherit cache.storage-service, as in GBM")
         if remote_config.count("push: true") < 3:
             errors.append("remote config must publish artifacts, sources, and action-cache results")
 
@@ -123,10 +144,49 @@ def check_generated_configs(shell: str, errors: list[str]) -> None:
     if missing_result.returncode == 0:
         errors.append("remote config generation must fail when mTLS credentials are missing")
 
+    check_socket_configs(shell, errors)
+
+
+def check_socket_configs(shell: str, errors: list[str]) -> None:
+    """casd's socket grants unauthenticated write access to the production CAS.
+
+    Build-pool jobs (remote execution and pushes on) use it when it exists;
+    any job with pushes off, which includes every signing job, must ignore it.
+    """
+    result, config = run_generator(
+        shell, remote=True, push=True, credentials=False, casd_socket=True
+    )
+    if result.returncode:
+        errors.append(
+            "socket BuildStream config generation failed: "
+            + (result.stderr.strip() or result.stdout.strip())
+        )
+    else:
+        url = f"url: unix:{result.socket}"
+        if config.count(url) != 5:
+            errors.append("socket config must route artifacts, sources, storage and RE through the socket")
+        if "cache.projectbluefin.io" in config or "client-key:" in config:
+            errors.append("socket config must not mix in the mTLS endpoint or client identity")
+        pings = [int(value) for value in re.findall(r"keepalive-time: (\d+)", config)]
+        if not pings or min(pings) < 300:
+            errors.append("socket config must ping casd at most every 300 seconds (gRPC's server minimum)")
+        socket_dir = str(Path(result.socket).parent)
+        if f"-v {socket_dir}:{socket_dir}:rw" not in result.github_env:
+            errors.append("socket config must mount the socket into the bst container")
+    for remote, push in ((False, False), (True, False), (False, True)):
+        result, config = run_generator(
+            shell, remote=remote, push=push, credentials=True, casd_socket=True
+        )
+        if result.returncode or "unix:" in config or "BST_PODMAN_EXTRA_ARGS" in result.github_env:
+            errors.append(
+                f"config with remote-execution={remote} push={push} must ignore the casd socket"
+            )
+
 
 def check_build_workflow(build: str, errors: list[str]) -> None:
     required = {
-        "max-parallel: 4": "four-way variant concurrency",
+        "max-parallel: 2": "concurrent standard and gaming build jobs",
+        "required: oci/bluefin.bst": "a required default image in the standard build job",
         'enable-remote-execution: "true"': "fail-closed remote execution",
         'enable-push: "true"': "automatic artifact publication",
         'grep -Fq "Remote Execution Configuration"': "runtime RE evidence check",
@@ -178,6 +238,36 @@ def check_signing_scope(build: str, errors: list[str]) -> None:
             errors.append("pr-image signs images, so it must disable CAS pushes")
         if "rm -f files/boot-keys/private/secure-boot.key" not in pr_image:
             errors.append("pr-image must remove the signing key when it finishes")
+    check_runner_pools(build, ("pr-image",), "build", errors)
+
+
+SIGN_RUNNER = "runs-on: ${{ vars.DAKOTA_SIGN_RUNNER || 'ubuntu-26.04' }}"
+BUILD_POOL_TOKENS = ("DAKOTA_BUILD_RUNNER", "dakota-cas", "casd.sock")
+
+
+def check_runner_pools(workflow: str, signing_jobs: tuple[str, ...], name: str,
+                       errors: list[str]) -> None:
+    """The signing key may only reach the signing pool or a GitHub-hosted runner.
+
+    Build-pool runners share casd's socket, so a signing job there would store
+    the key in the production CAS. Only signing jobs may use the signing pool.
+    """
+    remaining = workflow
+    for job in signing_jobs:
+        body = job_body(workflow, job)
+        if body is None:
+            errors.append(f"{name} workflow is missing the {job} job")
+            continue
+        remaining = remaining.replace(body, "")
+        if SIGN_RUNNER not in body:
+            errors.append(f"{job} must run on the signing pool or a GitHub-hosted runner")
+        for token in BUILD_POOL_TOKENS:
+            if token in body:
+                errors.append(f"{job} signs images, so it must not reference {token}")
+        if "if: always()\n        run: rm -f files/boot-keys/private/secure-boot.key" not in body:
+            errors.append(f"{job} must remove the signing key in an if: always() step")
+    if "DAKOTA_SIGN_RUNNER" in remaining:
+        errors.append(f"{name} workflow uses DAKOTA_SIGN_RUNNER outside a signing job")
 
 
 def check_image_variants(publish: str, errors: list[str]) -> None:
@@ -231,6 +321,18 @@ def check_publish_workflow(publish: str, errors: list[str]) -> None:
         errors.append("publish export and SBOM jobs must remain local/fetch-only")
     if publish.count("enable-push: 'false'") < 2:
         errors.append("publish export and SBOM jobs must keep remote caches read-only")
+    check_runner_pools(publish, ("publish-image",), "publish", errors)
+
+    # The grouped matrix only protects the default image if the job and each
+    # image's signing step actually read its continue flags.
+    image = job_body(publish, "publish-image") or ""
+    for token in ("continue-on-error: ${{ matrix.continue }}",
+                  "continue-on-error: ${{ matrix.base_continue }}",
+                  "continue-on-error: ${{ matrix.nvidia_continue }}",
+                  "BASE_CONTINUE: ${{ matrix.base_continue }}",
+                  "NVIDIA_CONTINUE: ${{ matrix.nvidia_continue }}"):
+        if token not in image:
+            errors.append(f"publish-image must wire {token}")
 
 
 def main() -> int:

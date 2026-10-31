@@ -9,9 +9,3 @@ depends:
   - bluefin-nvidia/nvidia-device-nodes.bst
   - bluefin-nvidia/nvidia-container-toolkit.bst
   - bluefin-nvidia/nvidia-container-toolkit-preset.bst
-
-(?):
-- secure_boot_signing == true:
-    depends:
-      (>):
-      - bluefin-nvidia/nvidia-signed-modules.bst

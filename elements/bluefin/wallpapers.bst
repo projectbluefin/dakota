@@ -8,7 +8,7 @@ sources:
   track: latest
   (?):
   - arch == "x86_64":
-      ref: 4b5fae18598c79e9284dddc5f498234cbedf69db611cd6cdbc0867d9f92570be
+      ref: 5de1c73addda7f96e1f226ea633993f148121805ee57f52eb10fc93cd79fcda8
   - arch == "aarch64":
       ref: 18637092c7c955a5d3fe58084ef0b7658a9a4903e03f2a944e6478f4825694a9
 

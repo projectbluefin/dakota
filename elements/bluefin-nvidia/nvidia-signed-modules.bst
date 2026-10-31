@@ -1,9 +1,10 @@
 # NVIDIA kernel modules signed with the Dakota Secure Boot key. Added to
-# bluefin-nvidia/deps.bst only with `-o secure_boot_signing true`. It
-# depends on nvidia-drivers.bst so it stages after it, and the signed copies
-# replace the unsigned modules through the overlap whitelist. Signing in a
-# separate element keeps the key out of nvidia-drivers.bst, so the driver
-# build stays cached and shared with unsigned builds.
+# oci/layers/bluefin-nvidia-boot-stack.bst only with
+# `-o secure_boot_signing true`. It depends on the unsigned modules so it
+# stages after them, and the signed copies replace them through the overlap
+# whitelist. Signing in a separate element keeps the key out of
+# nvidia-drivers.bst, so the driver build stays cached and shared with
+# unsigned builds.
 #
 # Same isolation rule as bluefin/signed-modules.bst: never build this with
 # push remotes or remote execution.
@@ -17,7 +18,7 @@ build-depends:
 - freedesktop-sdk.bst:components/zstd.bst
 
 depends:
-- bluefin-nvidia/nvidia-drivers.bst
+- bluefin-nvidia/nvidia-kernel-modules.bst
 
 variables:
   strip-binaries: ""

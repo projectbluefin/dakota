@@ -4,11 +4,7 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/common.git
   track: main
-  ref: v2026.08-318-ga7088074382c18a788fd378363b41589835c01cc
-# Consume common's fastfetch layout directly; only adapt the install-date input.
-# Drop this patch once common provides a shared install-date helper.
-- kind: patch
-  path: patches/common/0001-fastfetch-install-date.patch
+  ref: v2026.08-367-gcea7dddcf938c760af3c2b50af53661d2222da82
 # Dakota uses Ghostty as primary terminal: enable dual-theme to track GNOME Dark/Light style.
 # Drop this patch once common ships dual-theme by default.
 - kind: patch
@@ -19,10 +15,6 @@ sources:
   path: patches/common/0003-uwelcome-interactive-only.patch
 - kind: patch
   path: patches/common/0004-policy-drop-redhat-gpg-entries.patch
-# Dakota has no rpm-ostree: drop the signed-status glyph from the image line.
-# Drop once common guards or removes the rpm-ostree call.
-- kind: patch
-  path: patches/common/0005-image-info-drop-rpm-ostree.patch
 # The weekly stats are fetched at build time elsewhere; Dakota builds have no
 # network, so drop the two lines rather than print missing-file errors.
 - kind: patch
@@ -75,35 +67,20 @@ config:
     # detection on Dakota's real /home; common respelled everything to
     # /home/linuxbrew in projectbluefin/common#997. Guard against the bad
     # spelling regressing upstream (.agents/skills/dakota-workstation/references/host-homebrew.md).
-    if grep -rl "/var/home/linuxbrew" system_files/shared system_files/bluefin; then
+    # The sandbox has bash, coreutils and sed but no grep or find
+    # (core/sandbox-tools.bst), so walk the tree with globstar and print
+    # matching files with sed's F command.
+    linuxbrew_refs="$(bash -O globstar -O dotglob -O nullglob -c '
+      for f in system_files/shared/** system_files/bluefin/**; do
+        if [ -f "$f" ] && [ ! -L "$f" ]; then
+          sed -n "\#/var/home/linuxbrew#{F;q}" "$f"
+        fi
+      done')"
+    if [ -n "$linuxbrew_refs" ]; then
+      printf '%s\n' "$linuxbrew_refs" >&2
       echo "ERROR: /var/home/linuxbrew references above break brew bottle-prefix detection — fix them in projectbluefin/common" >&2
       exit 1
     fi
-
-    # Dakota-only: make fastfetch's image line show the real stream tag.
-    # Unprivileged `bootc status` requires root on bootc >= 1.14, so the
-    # script's bootc fallback is dead in user sessions — and Dakota's baked
-    # image-tag is always "latest" because promotion retags the same digest
-    # (unlike Bluefin/LTS/Aurora, which bake the tag per-stream build).
-    # ublue-booted-image.service (bluefin/firstboot-date.bst) records the
-    # booted ref in /run/ublue-os/booted-image at boot; teach the script to
-    # prefer it. Guard so an upstream rewrite of the script fails loudly
-    # here instead of silently shipping an unpatched fastfetch.
-    # NB: the build sandbox has only bash + coreutils + sed (no grep/awk) —
-    # see core/sandbox-tools.bst — so guard and patch are sed/wc based.
-    IMG_INFO="system_files/shared/usr/bin/ublue-image-info.sh"
-    if [ "$(sed -n '/\.status\.booted\.image\.image\.image/p' "$IMG_INFO" | wc -l)" != 1 ]; then
-      echo "ERROR: ublue-image-info.sh changed upstream — re-fit the booted-image patch (see ublue-booted-image.service)" >&2
-      exit 1
-    fi
-    sed -i '/\.status\.booted\.image\.image\.image/a \
-    \
-    # Dakota: prefer the boot-time snapshot written by ublue-booted-image.service.\
-    # Unprivileged bootc status fails on bootc >= 1.14, so the query above is dead\
-    # in user sessions, and the baked Dakota tag is always "latest".\
-    if [[ -r /run/ublue-os/booted-image ]]; then\
-    \tread -r BOOTED_REF < /run/ublue-os/booted-image\
-    fi' "$IMG_INFO"
 
     cp -r system_files/bluefin/usr/./ "%{install-root}%{prefix}/"
     cp -r system_files/shared/usr/./ "%{install-root}%{prefix}/"
@@ -154,6 +131,14 @@ config:
     # Dakota uses its own ublue-motd (from motd.bst) with a double-display guard.
     # Remove common's umotd.sh hook to prevent dual MOTD on every login.
     rm -f "%{install-root}%{sysconfdir}/profile.d/umotd.sh"
+
+    # System Update, Community and Documentation launchers duplicate Control Center,
+    # which already provides updates, the Community discussions link and the Bluefin
+    # PDF docs on Dakota. Drop the three icons common ships for Bluefin/bluefin-lts.
+    # The `ujust update` command itself is untouched; only the duplicate icons go.
+    rm -f "%{install-root}%{prefix}/usr/share/applications/system-update.desktop"
+    rm -f "%{install-root}%{prefix}/usr/share/applications/discourse.desktop"
+    rm -f "%{install-root}%{prefix}/usr/share/applications/documentation.desktop"
 
     # Add BudsLink to default system flatpaks
     echo 'flatpak "io.github.maniacx.BudsLink"' >> "%{install-root}%{datadir}/ublue-os/homebrew/system-flatpaks.Brewfile"

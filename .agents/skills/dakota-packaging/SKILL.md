@@ -45,7 +45,7 @@ Package software as BuildStream elements. Dakota builds natively from source and
 
 - **Go**: Use `go build` with flags ensuring deterministic, offline compilation (`-buildvcs=false`, `-trimpath`). Statically or dynamically link as appropriate. Do not run `go get` or `go install` across the network.
 - **Rust**: Never hand-craft crate lists. Always use `files/scripts/generate_cargo_sources.py` from `Cargo.lock` to generate `kind: cargo2` source blocks. Build with `cargo --frozen --offline`.
-- **Zig**: Pin the exact toolchain version; specify the target triple explicitly.
+- **Zig**: Pin the exact toolchain version; specify the target triple explicitly. Generate dependency sources from upstream's lock data (Ghostty: `files/scripts/generate_ghostty_sources.py`), never by hand. Populate the package cache by unpacking each archive and running `zig fetch <directory>`: `zig fetch <local tarball>` caches it without stripping the top-level directory, and the package then fails its hash check at build time. Never ignore a failed `zig fetch`.
 - **C/Meson/Autotools**: Inherit build dependencies from junctions (`freedesktop-sdk.bst:components/...`). Do not install unpinned dependencies.
 - **Binary Releases**: Require per-architecture URLs, SHA256 checksums, and license installation to `%{install-root}%{datadir}/licenses/<package>/`.
 

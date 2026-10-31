@@ -1,5 +1,5 @@
 name: Resolve image digest
-description: Resolve a published image digest from a publish digest artifact, with authenticated tag inspect fallback.
+description: Resolve a published image digest from a publish digest artifact, optionally with authenticated tag inspect fallback.
 
 inputs:
   artifact-name:
@@ -24,6 +24,12 @@ inputs:
     default: ${{ github.token }}
   verify:
     description: Also require an authenticated read of the resolved digest.
+    required: false
+    default: 'false'
+  require-artifact:
+    description: >-
+      Fail instead of falling back to the :<build-sha> tag. The artifact is
+      written only after signing, so the tag can name an unsigned image.
     required: false
     default: 'false'
 
@@ -62,6 +68,7 @@ runs:
         BUILD_SHA: ${{ inputs.build-sha }}
         REGISTRY_CREDS: ${{ inputs.registry-creds }}
         VERIFY: ${{ inputs.verify }}
+        REQUIRE_ARTIFACT: ${{ inputs.require-artifact }}
       run: |
         set -euo pipefail
         DIGEST=""
@@ -77,6 +84,10 @@ runs:
           fi
         else
           echo "::warning::${ARTIFACT_NAME} missing; falling back to authenticated tag inspect"
+        fi
+        if [ -z "$DIGEST" ] && [ "$REQUIRE_ARTIFACT" = "true" ]; then
+          echo "::error::no valid ${ARTIFACT_NAME} for ${BUILD_SHA}: ${IMAGE} was not pushed and signed"
+          exit 1
         fi
         if [ -z "$DIGEST" ]; then
           for attempt in $(seq 1 12); do

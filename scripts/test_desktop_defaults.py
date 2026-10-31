@@ -90,7 +90,6 @@ class DesktopDefaultsTests(unittest.TestCase):
             "syncthing-toggle@rehhouari.github.com",
             "syncthing-toggle@projectbluefin.io",
             "tailscale-gnome-qs@tailscale-qs.github.io",
-            "quick-settings-audio-panel@rayzeq.github.io",
             "quicksettings-audio-devices-hider@marcinjahn.com",
             "quicksettings-audio-devices-renamer@marcinjahn.com",
             "power-status-color@local",

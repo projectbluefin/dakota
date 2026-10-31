@@ -45,7 +45,7 @@ variables:
   # OGC patchset revision of the pinned tag; keep in sync with the
   # `ref:` under sources (v<kver>-ogcN-...). Not derivable at build
   # time: the tree ships no EXTRAVERSION or localversion files.
-  ogc-localversion: '-ogc2'
+  ogc-localversion: '-ogc4'
   indep-libdir: '%{prefix}/lib'
   # Modules are stripped by kbuild (INSTALL_MOD_STRIP=1) *before* the
   # module signature is appended; a post-build strip pass would tear
@@ -68,6 +68,11 @@ environment:
   KBUILD_BUILD_TIMESTAMP: 'Thu Nov 10 15:00:00 UTC 2011'
   KBUILD_BUILD_USER: 'tomjon'
   MAXJOBS: "%{max-jobs}"
+  # Match the standard kernel: override kbuild's generic x86-64 target,
+  # without removing its explicit no-SIMD flags. ARM stays unchanged.
+  (?):
+  - arch == "x86_64" and x86_64_v3:
+      KCFLAGS: "-march=x86-64-v3 -mtune=skylake"
 
 environment-nocache:
 - MAXJOBS
@@ -156,7 +161,7 @@ config:
     # Drop expectations for options this tree no longer offers (the
     # vendored fdsdk config pass targets an older kernel era). Gaming-
     # critical symbols are exempt: losing them must fail the build.
-    find . -name 'Kconfig*' -exec grep -h '^\(menu\)\{0,1\}config ' {} + \
+    find . -name 'Kconfig*' -exec grep -h '^[[:space:]]*\(menu\)\{0,1\}config[[:space:]]' {} + \
       | awk '{print $2}' | sort -u > .kconfig-symbols
     cp expected-configs expected-configs.orig
     while IFS= read -r cfg; do
@@ -255,7 +260,7 @@ sources:
   url: github:OpenGamingCollective/linux.git
   # rc-based OGC tags are fair game on the next stream.
   track: v7.2.*-ogc*
-  ref: v7.2.11-ogc2-0-g720dc161aaae18c508185bbc3d633b0de2e213ce
+  ref: v7.2.11-ogc4-0-gb29ed9a17000da1ac234356daafb61a02868cb9a
 # Dakota fixups for the OGC patchset itself; review at every tag bump and
 # drop each patch once the fix lands upstream.
 - kind: patch_queue
