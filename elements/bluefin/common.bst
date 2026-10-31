@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/common.git
   track: main
-  ref: v2026.08-367-gcea7dddcf938c760af3c2b50af53661d2222da82
+  ref: v2026.08-379-ged945ef0226734a45df5f6a257d672e8886b5567
 # Dakota uses Ghostty as primary terminal: enable dual-theme to track GNOME Dark/Light style.
 # Drop this patch once common ships dual-theme by default.
 - kind: patch
