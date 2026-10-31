@@ -111,8 +111,15 @@ depends:
 
   - gnome-build-meta.bst:gnomeos-deps/snapd.bst
 
+  # VM guest agents; each starts only on its own hypervisor.
+  - bluefin/qemu-guest-agent.bst
+  - bluefin/hyperv-daemons.bst
+
 (?):
 - arch == "x86_64":
     depends:
       (>):
       - bluefin/intel-media-driver.bst
+      # x86_64 only: the aarch64 kernel enables neither vmwgfx nor VMCI, so
+      # display auto-resize, the reason to ship it, cannot work there yet.
+      - bluefin/open-vm-tools.bst

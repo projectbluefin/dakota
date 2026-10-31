@@ -74,7 +74,7 @@ class SelectionTests(unittest.TestCase):
 
     def test_matrix_preserves_review_notes_and_adds_oci_source(self):
         items = {x["element"]: x for x in updater.matrix()["include"]}
-        self.assertEqual(len(items), 22)
+        self.assertEqual(len(items), 23)
         for kernel, _, _ in updater.KERNELS:
             self.assertIn("NVIDIA build", items[kernel]["note"])
         self.assertIn("bluefin/brew-tarball.bst", items)
@@ -83,6 +83,19 @@ class SelectionTests(unittest.TestCase):
                          "review: unreleased branch head")
         for element in items:
             self.assertTrue((REPOSITORY / "elements" / element).is_file())
+
+    def test_hyperv_daemons_tracks_the_kernel_source(self):
+        # Hyper-V daemons build from the kernel's tools/hv. Sharing url, track
+        # and exclude with the kernel moves both to the same tag on each run.
+        def git_source(element):
+            text = (REPOSITORY / "elements" / element).read_text()
+            block = re.search(r"^- kind: git_repo\n((?:  [^\n]*\n)+)", text, re.MULTILINE)
+            self.assertIsNotNone(block, element)
+            lines = [line for line in block[1].splitlines()
+                     if not line.lstrip().startswith("#")]
+            return [line for line in lines if not line.startswith("  ref:")]
+        self.assertEqual(git_source("bluefin/hyperv-daemons.bst"),
+                         git_source("core/linux-fdsdk.bst"))
 
 
 class RewriteTests(unittest.TestCase):
