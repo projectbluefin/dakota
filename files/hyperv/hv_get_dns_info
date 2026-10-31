@@ -1,0 +1,8 @@
+#!/bin/sh
+# Dakota replacement for tools/hv/hv_get_dns_info.sh.
+#
+# hv_kvp_daemon calls this with an interface name and expects one IPv4
+# nameserver per line. /etc/resolv.conf only names the systemd-resolved stub,
+# so ask NetworkManager for the interface's servers (nmcli -g separates
+# multiple values with " | ").
+nmcli -g IP4.DNS device show "$1" 2>/dev/null | tr '|' '\n' | tr -d ' ' | sed '/^$/d'

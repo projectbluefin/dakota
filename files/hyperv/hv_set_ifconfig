@@ -1,0 +1,20 @@
+#!/bin/sh
+# Dakota replacement for tools/hv/hv_set_ifconfig.sh.
+#
+# hv_kvp_daemon calls this as: hv_set_ifconfig <ifcfg-file> <keyfile>
+# after writing both formats to /var/lib/hyperv. Dakota has no
+# network-scripts and no ifup/ifdown, so apply only the NetworkManager
+# keyfile. NetworkManager ignores keyfiles that are not mode 0600.
+set -eu
+
+src="$2"
+filename="${src##*/}"
+interface="${filename%.nmconnection}"
+id="hyperv-${interface}"
+dest="/etc/NetworkManager/system-connections/${filename}"
+
+umask 0177
+sed "/^\[connection\]/a id=${id}\nautoconnect=true" "$src" > "$dest"
+
+nmcli connection load "$dest"
+exec nmcli connection up id "$id"
