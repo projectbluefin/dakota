@@ -2,23 +2,24 @@
 *Dakotaraptor steini*
 
 [Bluefin](https://projectbluefin.io) built on [GNOME OS](https://os.gnome.org/), assembled entirely from source.
-
-<a href="https://docs.projectbluefin.io/changelogs">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://docs.projectbluefin.io/img/cards/dakota-dark.png">
-    <img src="https://docs.projectbluefin.io/img/cards/dakota-light.png" alt="Bluefin Dakota" width="800">
-  </picture>
-</a>
-
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/projectbluefin/dakota)
 
-**Alpha** — [filing issues](https://github.com/projectbluefin/dakota/issues) is the whole point.
+
+## Features
+
+Dakota is the flagship Bluefin desktop. Compared with previous images such as Bluefin Classic, it offers:
+
+- The latest GNOME desktop
+- System libraries and development tools from the Freedesktop SDK
+- Optimized x86-64-v3 builds for modern CPUs
+- systemd-boot as the bootloader, with full Secure Boot support
+- A dedicated gaming session with a gaming kernel from the Open Gaming Collective and Steam Gamescope
+- uutils as the default coreutils implementation
+- A graphical Control Center for system administration
 
 ## Built-in feedback loop
 
-Dakota doesn't eat tickets, it treats them as evidence.
-
-Every user running Dakota is part of a structured loop that flows directly back into upstream GNOME, freedesktop, and the kernel. When something breaks on your hardware, you have three commands:
+Dakota doesn't eat tickets; it treats them as evidence. Every user running Dakota is part of a structured loop that feeds directly back into the issue tracker. When something breaks on your hardware, you have three commands:
 
 | Command | What it does |
 |---|---|
@@ -26,81 +27,36 @@ Every user running Dakota is part of a structured loop that flows directly back 
 | `ujust confirm <issue>` | Tells the team your hardware hits the same bug. Adds a hardware fingerprint to the issue — no duplicate filing. |
 | `ujust verify <issue>` | After a fix ships in a nightly, confirms it works on your machine. Closes the loop with evidence. |
 
-No telemetry. No phone-home. Every report is reviewed by you before it leaves your machine, lives in a gist you own, and can be deleted anytime.
-
-When three users independently run `ujust verify` on a fix, that issue closes with real confidence — not just "we think this is fixed."
-
-### The hardware layer
-
-Each Dakota installation is designed to run as a hardware diagnostic lab for itself. When will you find your first?
-
-[Read the full feedback loop design](docs/feedback-loop.md)
-
-## The research behind it
-
-Dakota is human driven with contribution workflows for agents, so if you have tokens to donate, ask it to review issues or PRs, it's useful! The humans make the final decisions. We coordinate this project via a tool called [Hive](https://github.com/kubestellar/hive) from Kubestellar, a CNCF Sandbox project.
-
-Dakota's feedback loop model is grounded in Andy Anderson's work on autonomous AI-assisted software development. The core finding: the intelligence of a system like this lives not in any single model, but in the infrastructure of instructions, tests, metrics, and feedback loops surrounding it.
-
-- [The AI Codebase Maturity Model](https://arxiv.org/abs/2604.09388) — the arxiv paper
-- [When AI agents become contributors](https://www.cncf.io/blog/2026/05/14/when-ai-agents-become-contributors-how-kubestellar-reached-81-pr-acceptance/) — CNCF blog
-- [Beyond prompting: How KubeStellar reached 81% PR acceptance](https://thenewstack.io/ai-codebase-maturity-model/) — The New Stack
-- [KubeStellar Hive](https://github.com/kubestellar/hive) — the reference implementation Dakota draws from
-
-## Help shape what gets built
-
-**Architects and designers** — these features and epics need your input before any code is written. Design decisions, tradeoffs, and priorities:
-
-### [Open issues needing triage &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Aneeds-triage)
-
-Leave a comment, challenge the design, propose alternatives. When an issue reaches consensus a maintainer marks it with `/triage accepted`.
-
-**Engineers** — these issues have clear acceptance criteria and no open design questions. Pick one up and build it:
-
-### [Triage-accepted queue &rarr;](https://github.com/projectbluefin/dakota/issues?q=is%3Aopen+label%3Atriage%2Faccepted+no%3Aassignee)
-
-Assign yourself with `/assign`. See [docs/workflow.md](docs/workflow.md) for the contributor workflow.
+No telemetry. No phone-home. You review every report before it leaves your machine. Reports live in gists you own and can delete at any time.
 
 ## Image streams
 
 |        Tag |  Stream |                                                                                                    What it is |
 | ---------: | ------: | ------------------------------------------------------------------------------------------------------------: |
-|  `:stable` |  Stable |                        GNOME 50 — production. On-demand promotion from `:testing` via `just release --apply`. |
-| `:testing` |     Dev |    GNOME 50, built from every change to the `testing` branch. Boot-chain changes are maintainer boot-tested. |
-|    `:next` |  Paused |                                     GNOME master. Paused until the next GNOME beta; receives no updates. |
-|     `:btw` |  Paused |                                                                                            Alias for `:next`. |
+|  `:stable` |  Stable |                                                     GNOME 51 — production. Weekly promotions from `:testing`. |
+| `:testing` |     Dev |                                              GNOME 51 — daily builds from the `testing` branch. Boot-check gated. |
+|    `:next` | Rolling |                                       Tracks gnome-build-meta `master` daily (currently disabled).            |
+|     `:btw` | Rolling |                                                                                            Alias for `:next`. |
 
-`:next` / `:btw` is paused until the next GNOME beta and no longer receives updates, including security fixes. If you are on it, switch to `:testing`. Moving from GNOME master back to the current release is a downgrade, so some settings or app data written by the newer GNOME may not carry over.
+The `:next` and `:btw` streams offer the Arch lifestyle — the latest GNOME the moment it lands upstream. If you want to run GNOME before everyone else and help find regressions before they reach stable, this is your image.
 
 ```bash
-sudo bootc switch ghcr.io/projectbluefin/dakota:testing
+# Switch to the rolling stream
+sudo bootc switch ghcr.io/projectbluefin/dakota:next
 ```
 
-## Secure Boot
-
-Dakota supports Secure Boot. It's optional and takes a few minutes to set up:
-
-1. Run `ujust enroll-secure-boot-key` and reboot.
-2. On the blue screen that appears, choose **Enroll MOK**, **Continue**, **Yes**, type the password `dakota`, then **Reboot**.
-3. Turn on Secure Boot in your firmware settings. Some laptops (Lenovo, Surface) also need an option like "Allow Microsoft 3rd party UEFI CA" turned on.
-
-Run `ujust secure-boot-status` to see what is set up, or `ujust check-anticheat` to see whether your system meets Easy Anti-Cheat's requirements.
-
-If your disk unlocks with the TPM, it keeps doing so through these steps. If a firmware update or a change to your Secure Boot settings later makes it ask for your disk passphrase, enter it and run `ujust reseal-tpm-unlock`.
-
-Whether or not you use Secure Boot, Dakota keeps the kernel locked down, so hibernation is not available (suspend works) and kernel modules you build yourself won't load.
-
-Secure Boot has always been on the roadmap, and the extra kernel protections also get Dakota ready for Epic's Easy Anti-Cheat for Linux v2 once it's available.
+Alternatively, use the included control panel to enable the testing branch.
 
 ## ISO Download
 
 [dakota-live-latest.iso](https://projectbluefin.dev/dakota-live-latest.iso) · [Checksum](https://projectbluefin.dev/dakota-live-latest.iso-CHECKSUM)
 
+## Secure Boot
+
+- Run: `ujust enroll-secure-boot-key`
+- Check EAC readiness: `ujust check-anticheat`
 
 ## Known gaps
-
-- Installation path is still being worked on
-- Upgrades and rollbacks need more hardening
 
 See the [open issues](https://github.com/projectbluefin/dakota/issues) for where things stand.
 
@@ -108,4 +64,4 @@ See the [open issues](https://github.com/projectbluefin/dakota/issues) for where
 
 See [AGENTS.md](AGENTS.md) for the full contributor workflow, build instructions, and PR checklist.
 
-![Dakorator](https://github.com/user-attachments/assets/ee92291d-a617-496e-abb6-9045a4c665ce)
+![Dakotaraptor](https://github.com/user-attachments/assets/ee92291d-a617-496e-abb6-9045a4c665ce)
