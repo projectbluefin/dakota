@@ -43,6 +43,10 @@ TRACKED = [
     # Despite its name this is a docker source, not a release tarball.
     ("bluefin/brew-tarball.bst", "brew-tarball", ""),
     ("bluefin/wallpapers.bst", "wallpapers", ""),
+    # Same git source and track pattern as core/linux-fdsdk.bst, so both move
+    # to the same stable tag on the same run.
+    ("bluefin/hyperv-daemons.bst", "Hyper-V daemons",
+     "review: tools/hv from the core/linux-fdsdk.bst tree"),
 ]
 
 

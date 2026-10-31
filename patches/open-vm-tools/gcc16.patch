@@ -1,5 +1,10 @@
-Upstream-Status: Pending [https://src.fedoraproject.org/rpms/open-vm-tools]
-Description: Fix GCC 16 C23 and pointer-constness compiler errors
+Subject: Fix const-qualified string search results under GCC 16 / C23
+Upstream-Status: Pending [carried by Fedora as open-vm-tools-gcc16.patch, https://src.fedoraproject.org/rpms/open-vm-tools]
+
+C23 strchr/strrchr/strstr return const char * for const input, which these
+call sites assign to char *. glib defines g_malloc0/g_free as macros in
+optimized GCC builds, which collide with the RPCI-only stubs. Drop once an
+open-vm-tools release builds with the freedesktop-sdk toolchain without it.
 
 diff -Naur open-vm-tools-13.1.0-25218885.old/lib/hgfs/hgfsEscape.c open-vm-tools-13.1.0-25218885/lib/hgfs/hgfsEscape.c
 --- open-vm-tools-13.1.0-25218885.old/lib/hgfs/hgfsEscape.c	2026-05-20 09:29:22.785922590 +0200
