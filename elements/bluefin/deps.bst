@@ -46,6 +46,8 @@ depends:
   # Papers' thumbnailer and PDF backend. The full package already reaches the
   # image through gnome-build-meta's sushi, and the Papers Flatpak's desktop
   # entry takes precedence in XDG_DATA_DIRS, so users see one Papers app.
+  # bluefin/common.bst also points the logo menu's Documentation entry at
+  # its /usr/bin/papers; the Flatpak cannot read /usr/share/doc.
   - gnome-build-meta.bst:core/papers.bst
   - bluefin/wallpapers.bst
 

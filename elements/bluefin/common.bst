@@ -33,6 +33,12 @@ sources:
   url: github-raw:projectbluefin/artwork/de74de65647f9109594345fd30966136d70fa458/assets/vector/logos/bluefin/bluefin-logo-dark.svg
   ref: 4ae1d486e6e73743fad1e1ef625615c4a28e72bbcc0a966ba3c5294303e4e380
   filename: bluefin-logo-dark.svg
+# The logo menu's Documentation entry opens this offline PDF.
+# Upstream replaces the release asset weekly; common's source tracker pins it.
+- kind: remote
+  url: github-releases:projectbluefin/documentation/releases/download/0.1/bluefin.pdf
+  ref: 601ac32ec39c15e5f4ef502844ce4c9771d1c86112afa78812ca110910de0348
+  filename: bluefin.pdf
 
 build-depends:
 - core/sandbox-tools.bst
@@ -82,11 +88,22 @@ config:
       exit 1
     fi
 
+    # The Papers Flatpak cannot see the host's /usr/share/doc, so common's
+    # logo-menu Documentation entry opens nothing. Use the image's own Papers
+    # (gnome-build-meta core/papers.bst, pulled in by bluefin/deps.bst).
+    DOC_MENU="system_files/bluefin/etc/dconf/db/distro.d/04-bluefin-custom-command-menu"
+    if [ "$(sed -n '\#flatpak run org\.gnome\.Papers /usr/share/doc/bluefin/bluefin\.pdf#p' "$DOC_MENU" | wc -l)" != 1 ]; then
+      echo "ERROR: common's Documentation menu entry changed upstream — re-fit the host Papers retarget" >&2
+      exit 1
+    fi
+    sed -i 's#flatpak run org\.gnome\.Papers /usr/share/doc/bluefin/bluefin\.pdf#/usr/bin/papers /usr/share/doc/bluefin/bluefin.pdf#' "$DOC_MENU"
+
     cp -r system_files/bluefin/usr/./ "%{install-root}%{prefix}/"
     cp -r system_files/shared/usr/./ "%{install-root}%{prefix}/"
     cp -r system_files/bluefin/etc/./ "%{install-root}%{sysconfdir}/"
     cp -r system_files/shared/etc/./ "%{install-root}%{sysconfdir}/"
     cp -r bluefin-branding/system_files/etc/./ "%{install-root}%{sysconfdir}/"
+    install -Dm644 bluefin.pdf "%{install-root}%{datadir}/doc/bluefin/bluefin.pdf"
 
     # Default Bluefin shell MOTD to disabled, while allowing user overrides.
     install -Dm644 /dev/null "%{install-root}%{sysconfdir}/profile.d/bluefin-shell-defaults.sh"
@@ -136,9 +153,9 @@ config:
     # which already provides updates, the Community discussions link and the Bluefin
     # PDF docs on Dakota. Drop the three icons common ships for Bluefin/bluefin-lts.
     # The `ujust update` command itself is untouched; only the duplicate icons go.
-    rm -f "%{install-root}%{prefix}/usr/share/applications/system-update.desktop"
-    rm -f "%{install-root}%{prefix}/usr/share/applications/discourse.desktop"
-    rm -f "%{install-root}%{prefix}/usr/share/applications/documentation.desktop"
+    rm -f "%{install-root}%{datadir}/applications/system-update.desktop"
+    rm -f "%{install-root}%{datadir}/applications/discourse.desktop"
+    rm -f "%{install-root}%{datadir}/applications/documentation.desktop"
 
     # Add BudsLink to default system flatpaks
     echo 'flatpak "io.github.maniacx.BudsLink"' >> "%{install-root}%{datadir}/ublue-os/homebrew/system-flatpaks.Brewfile"
