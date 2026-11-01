@@ -33,12 +33,6 @@ sources:
   url: github-raw:projectbluefin/artwork/de74de65647f9109594345fd30966136d70fa458/assets/vector/logos/bluefin/bluefin-logo-dark.svg
   ref: 4ae1d486e6e73743fad1e1ef625615c4a28e72bbcc0a966ba3c5294303e4e380
   filename: bluefin-logo-dark.svg
-# The logo menu's Documentation entry opens this offline PDF.
-# Upstream replaces the release asset weekly; common's source tracker pins it.
-- kind: remote
-  url: github-releases:projectbluefin/documentation/releases/download/0.1/bluefin.pdf
-  ref: 601ac32ec39c15e5f4ef502844ce4c9771d1c86112afa78812ca110910de0348
-  filename: bluefin.pdf
 
 build-depends:
 - core/sandbox-tools.bst
@@ -103,7 +97,6 @@ config:
     cp -r system_files/bluefin/etc/./ "%{install-root}%{sysconfdir}/"
     cp -r system_files/shared/etc/./ "%{install-root}%{sysconfdir}/"
     cp -r bluefin-branding/system_files/etc/./ "%{install-root}%{sysconfdir}/"
-    install -Dm644 bluefin.pdf "%{install-root}%{datadir}/doc/bluefin/bluefin.pdf"
 
     # Default Bluefin shell MOTD to disabled, while allowing user overrides.
     install -Dm644 /dev/null "%{install-root}%{sysconfdir}/profile.d/bluefin-shell-defaults.sh"
