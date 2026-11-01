@@ -16,6 +16,9 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE = "core-junctions"
+# Overridden into gnome-build-meta, so it must provide every plugin GBM's
+# project.conf loads: copy GBM's pin rather than tracking it independently.
+PLUGINS_COMMUNITY = "elements/plugins/buildstream-plugins-community.bst"
 TAILSCALE_FEED = "https://pkgs.tailscale.com/stable/?mode=json"
 
 # This is also CI's matrix. Keep review notes with the corresponding element.
@@ -240,6 +243,27 @@ def sync_ogc_localversion(text: str) -> str:
     return updated
 
 
+def gbm_file(sha: str, path: str) -> str:
+    quoted = path.replace("/", "%2F")
+    url = ("https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/"
+           f"repository/files/{quoted}/raw?ref={sha}")
+    return run("curl", "-fsSL", url, capture=True)
+
+
+def sync_plugins_community(upstream: str) -> None:
+    source = re.search(r"^- kind: tar\n  url: (pypi:[A-Za-z0-9/._-]+\.tar\.gz)\n"
+                       r"  ref: ([0-9a-f]{64})$", upstream, re.MULTILINE)
+    if not source:
+        raise ValueError("Could not read buildstream-plugins-community pin from GNOME Build Meta")
+    path = ROOT / PLUGINS_COMMUNITY
+    text, count = re.subn(r"^(  url: )pypi:\S+\n(  ref: )\S+$",
+                          lambda m: f"{m[1]}{source[1]}\n{m[2]}{source[2]}",
+                          path.read_text(), count=1, flags=re.MULTILINE)
+    if count != 1:
+        raise ValueError("Missing local buildstream-plugins-community tar source")
+    path.write_text(text)
+
+
 def update_core() -> None:
     track("gnome-build-meta.bst")
     gbm = (ROOT / "elements/gnome-build-meta.bst").read_text()
@@ -247,9 +271,7 @@ def update_core() -> None:
     sha = re.search(r"-g([0-9a-f]{40})$", ref[1]) if ref else None
     if not sha:
         raise ValueError("Could not extract GNOME Build Meta commit SHA")
-    url = ("https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/"
-           f"repository/files/elements%2Ffreedesktop-sdk.bst/raw?ref={sha[1]}")
-    upstream = run("curl", "-fsSL", url, capture=True)
+    upstream = gbm_file(sha[1], "elements/freedesktop-sdk.bst")
     # Read the ref from the git source, not another source or config block.
     source = re.search(r"^  url: gitlab:freedesktop-sdk/[^\n]+\n"
                        r"(?:(?!^\S)[^\n]*\n)*?^  ref: (\S+)", upstream, re.MULTILINE)
@@ -265,6 +287,7 @@ def update_core() -> None:
               "files/linux/config-utils.sh and files/linux/fdsdk-config.sh with the new SDK; "
               "preserve Dakota's local kernel configuration.")
     path.write_text(text)
+    sync_plugins_community(gbm_file(sha[1], "elements/plugins/buildstream-plugins-community.bst"))
     run("just", "patch-sync")
     run("just", "patch-drift-check")
 
@@ -273,7 +296,7 @@ def update(element: str, out: Path | None) -> None:
     paths = [ROOT / "elements" / element]
     if element == CORE:
         paths = [ROOT / p for p in ("elements/gnome-build-meta.bst",
-                 "elements/freedesktop-sdk.bst", "patches/freedesktop-sdk",
+                 "elements/freedesktop-sdk.bst", PLUGINS_COMMUNITY, "patches/freedesktop-sdk",
                  "patches/freedesktop-sdk.manifest.json")]
     with rollback_on_failure(paths):
         if element == CORE:
