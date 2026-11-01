@@ -82,7 +82,7 @@ tree (based on `upstream/testing` for normal development):
 just update-sources --list                  # preview the scope, no network or writes
 just update-sources                         # CI-managed sources, kernels, and core junctions
 just update-sources --group bundle          # everything except core junctions
-just update-sources --group core-junctions  # GNOME Build Meta + matching SDK + patches
+just update-sources --group core-junctions  # GNOME Build Meta + matching SDK, plugins, patches
 just update-sources --group kernels         # standard + OGC kernel refs and OGC suffix
 just update-sources --element bluefin/gum.bst
 
