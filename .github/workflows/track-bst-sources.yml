@@ -204,7 +204,7 @@ jobs:
       - name: Pull BuildStream container image
         run: podman pull "$BST2_IMAGE"
 
-      - name: Track gnome-build-meta, derive freedesktop-sdk from its pin
+      - name: Track gnome-build-meta, derive freedesktop-sdk and plugin pins from it
         run: just update-sources --group core-junctions
 
       - name: Create or update PR
@@ -216,7 +216,7 @@ jobs:
 
           git checkout -B auto/track-core-junctions origin/testing
           # patch-sync adds and removes files, so stage first and test the index.
-          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst patches/freedesktop-sdk patches/freedesktop-sdk.manifest.json
+          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst elements/plugins/buildstream-plugins-community.bst patches/freedesktop-sdk patches/freedesktop-sdk.manifest.json
           git diff --cached --quiet && { echo "No junction updates"; exit 0; }
           git commit -m "chore(deps): update core junctions (gnome-build-meta + freedesktop-sdk)"
           git push --force-with-lease origin auto/track-core-junctions
@@ -230,6 +230,6 @@ jobs:
               --base testing \
               --head auto/track-core-junctions \
               --title "chore(deps): update core junctions (gnome-build-meta + freedesktop-sdk)" \
-              --body "Updates \`gnome-build-meta.bst\`, derives the \`freedesktop-sdk.bst\` pin from it, and re-syncs \`patches/freedesktop-sdk\`. Manual review required — junction bumps can break downstream elements.")
+              --body "Updates \`gnome-build-meta.bst\`, derives the \`freedesktop-sdk.bst\` and \`plugins/buildstream-plugins-community.bst\` pins from it, and re-syncs \`patches/freedesktop-sdk\`. Manual review required — junction bumps can break downstream elements.")
             echo "PR: $PR_URL"
           fi

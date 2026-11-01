@@ -24,7 +24,7 @@ sources:
   track: v7.3*
   exclude:
   - v7.3-rc*
-  ref: v7.3-0-gc03c1a14507dfaf8b856c2608f9ac216021fc222
+  ref: v7.3.1-0-g79a907609d53d5cd645b42c11550d295d43abf99
 - kind: local
   path: files/hyperv
   directory: dakota-hyperv

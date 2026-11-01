@@ -6,7 +6,7 @@ Exit: Drop once common ships dual-theme by default.
 
 --- a/system_files/shared/etc/skel/.config/ghostty/config.ghostty
 +++ b/system_files/shared/etc/skel/.config/ghostty/config.ghostty
-@@ -1,7 +1,7 @@
+@@ -8,7 +8,7 @@
  # Bluefin GNOME profile for Ghostty
  # To override the theme, add `theme = <name>` to your config.
  # Run `ghostty +list-themes` to see all available themes.

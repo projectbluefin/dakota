@@ -212,6 +212,8 @@ elif name == "curl" and args[-1] == "https://pkgs.tailscale.com/stable/?mode=jso
         sys.exit(22)
     print(os.environ.get("TAILSCALE_FEED", json.dumps({"Tarballs": {
         "amd64": "tailscale_99.88.77_amd64.tgz"}})))
+elif name == "curl" and "buildstream-plugins-community" in args[-1]:
+    print(os.environ.get("UPSTREAM_PLUGINS", "kind: junction\n\nsources:\n- kind: tar\n  url: pypi:12/34/" + "e" * 60 + "/buildstream_plugins_community-9.9.9.tar.gz\n  ref: " + "f" * 64))
 elif name == "curl":
     print(os.environ.get("UPSTREAM_FDSDK", "kind: junction\nsources:\n- kind: git_repo\n  url: gitlab:freedesktop-sdk/freedesktop-sdk.git\n  track: stable\n  ref: sdk-99-0-g" + "c" * 40))
 elif name == "just" and args[0] == "bst" and "fetch" in args:
@@ -281,7 +283,8 @@ class CliTests(unittest.TestCase):
         (self.root / ".github/scripts").mkdir(parents=True)
         shutil.copy2(REPOSITORY / ".github/scripts/track_bundle.py", self.root / ".github/scripts")
         paths = [x[0] for x in updater.TRACKED + updater.KERNELS] + list(updater.RELEASES)
-        paths += ["gnome-build-meta.bst", "freedesktop-sdk.bst"]
+        paths += ["gnome-build-meta.bst", "freedesktop-sdk.bst",
+                  "plugins/buildstream-plugins-community.bst"]
         for element in paths:
             dest = self.root / "elements" / element
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -541,9 +544,13 @@ class CliTests(unittest.TestCase):
         calls = self.calls()
         self.assertEqual(calls[0][-1], "gnome-build-meta.bst")
         self.assertIn(f"ref={SHA}", calls[1][-1])
-        self.assertEqual(calls[2:], [["just", "patch-sync"], ["just", "patch-drift-check"]])
+        self.assertIn("elements%2Fplugins%2Fbuildstream-plugins-community.bst", calls[2][-1])
+        self.assertIn(f"ref={SHA}", calls[2][-1])
+        self.assertEqual(calls[3:], [["just", "patch-sync"], ["just", "patch-drift-check"]])
         self.assertIn("sdk-99-0-g" + "c" * 40,
                       (self.root / "elements/freedesktop-sdk.bst").read_text())
+        plugins = (self.root / "elements/plugins/buildstream-plugins-community.bst").read_text()
+        self.assertIn("buildstream_plugins_community-9.9.9.tar.gz\n  ref: " + "f" * 64, plugins)
 
     def test_core_failure_restores_both_pins_patch_deletions_additions_and_manifest(self):
         before = self.snapshot()
@@ -557,6 +564,13 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(self.snapshot(), before)
         self.assertEqual(len(self.calls()), 2)
+
+    def test_invalid_upstream_plugins_pin_restores_core_and_skips_patch_sync(self):
+        before = self.snapshot()
+        result = self.cli("--group", "core-junctions", UPSTREAM_PLUGINS="kind: junction")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(len(self.calls()), 3)
 
     def test_failed_release_does_not_drop_other_records(self):
         result = self.cli("--group", "tarballs", "--record-dir", "tracked",
