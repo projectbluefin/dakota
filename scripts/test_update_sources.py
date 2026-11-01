@@ -105,7 +105,7 @@ class RewriteTests(unittest.TestCase):
                 continue
             with self.subTest(element=element):
                 original = (REPOSITORY / "elements" / element).read_text()
-                tag = "v99.88.77"
+                tag = "v99.88.77" if re.fullmatch(release.tag_pattern, "v99.88.77") else "99.88.77"
                 updated, old = updater.rewrite_release(original, release, tag)
                 self.assertNotEqual(updated, original)
                 self.assertTrue(old)
@@ -206,7 +206,8 @@ with open(os.environ["CALL_LOG"], "a") as log:
     log.write(json.dumps([name, *args]) + "\n")
 if name == "gh":
     assert args[0] == "api" and args[1].startswith("repos/")
-    print(os.environ.get("RELEASE_TAG", "v99.88.77"))
+    default = "99.88.77" if args[1].startswith("repos/projectbluefin/documentation/") else "v99.88.77"
+    print(os.environ.get("RELEASE_TAG", default))
 elif name == "curl" and args[-1] == "https://pkgs.tailscale.com/stable/?mode=json":
     if os.environ.get("FAIL_FEED"):
         sys.exit(22)
@@ -576,9 +577,10 @@ class CliTests(unittest.TestCase):
         result = self.cli("--group", "tarballs", "--record-dir", "tracked",
                           FAIL_ELEMENT="bluefin/tailscale.bst")
         self.assertEqual(result.returncode, 1)
-        # Wallpaper tag is deliberately invalid; Tailscale simulates a 404.
+        # Tailscale simulates a 404; every other release is still recorded.
         self.assertEqual(sorted(p.stem for p in (self.root / "tracked/meta").glob("*.json")),
-                         ["ghostty", "gtk4-layer-shell", "gum", "jetbrains-mono-nerd-font", "uupd"])
+                         ["bluefin-docs", "ghostty", "gtk4-layer-shell", "gum",
+                          "jetbrains-mono-nerd-font", "uupd"])
 
 
 class NextKernelPolicyTests(unittest.TestCase):

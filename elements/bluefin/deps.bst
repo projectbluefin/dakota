@@ -30,6 +30,7 @@ depends:
   - bluefin/uwelcome.bst
 
   - bluefin/common.bst
+  - bluefin/bluefin-docs.bst
   - bluefin/user-avatars.bst
   - bluefin/just-overrides.bst
   - bluefin/zswap-config.bst
