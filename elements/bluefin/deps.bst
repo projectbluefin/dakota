@@ -115,6 +115,10 @@ depends:
   - bluefin/qemu-guest-agent.bst
   - bluefin/hyperv-daemons.bst
 
+  - bluefin/nethogs.bst
+  - bluefin/lm-sensors.bst
+  - freedesktop-sdk.bst:components/which.bst
+
 (?):
 - arch == "x86_64":
     depends:
