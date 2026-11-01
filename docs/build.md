@@ -193,14 +193,22 @@ opt-in through the Extensions app. Their required backends
 remain available; enabling a control should not require installing missing
 native software.
 
-- **Sync Folder (Syncthing):** `bluefin/syncthing.bst` builds the vendored source
-  release, with CGO SQLite support and self-updates disabled. A private
-  `core/syncthing-go.bst` build dependency supplies the required Go 1.26 compiler
-  without replacing the image's toolchain. The Syncthing element installs the
-  standard `syncthing.service` user unit. Once enabled, its Quick Settings toggle starts and
-  stops that unit, waits for systemd jobs, and refreshes service state. Open its
-  Web GUI to pair devices and choose folders. Syncthing is not started for every
-  user automatically; identities are generated at runtime, never in the image.
+- **Sync Folder (Syncthing):** the opt-in Quick Settings control prepares a
+  same-UID rootless container through Podman's user Quadlet integration. Package
+  the complete `extensions/syncthing-toggle/` directory: `service.js` and
+  `syncthing.container.in` are runtime assets. Keep extension-local schemas
+  strictly compiled and install their XML globally. The element explicitly
+  includes Podman/Quadlet, a POSIX shell, GJS, libsoup 3, XDG tooling, and core
+  utilities. The first activation downloads the digest-pinned container image
+  and can take minutes; the toggle waits for the unit's startup budget.
+  `bluefin/syncthing.bst` retains the packaged native user unit for migration of
+  existing state, folders, and startup choices. Fresh provisioning uses existing
+  XDG Documents unpaused and Music, Pictures, Videos, and Templates paused;
+  it creates no custom `~/Sync` and shares nothing with peers without consent.
+  Dakota keeps the extension disabled by default, presets the native service
+  disabled, and sets `start-stop-only=true` so clicks do not change login startup.
+  No identities, credentials, peer settings, or user Quadlets are generated
+  during image construction. The web page receives a private login on activation.
 - **Tailscale:** the daemon is enabled in the image, but a fresh installation is
   unauthenticated. The application launcher offers **Tailscale Setup**, as does
   the Quick Settings menu after the user enables that extension. Setup requests administrator
