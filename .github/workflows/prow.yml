@@ -59,7 +59,7 @@ jobs:
       pull-requests: write
       statuses: write
       actions: write
-    uses: cncf/prow-github-actions/.github/workflows/prow.yml@ed3bb424a5475f42b5d699048faa4a469a68b9ef # v3.4.0
+    uses: cncf/prow-github-actions/.github/workflows/prow.yml@a192ee15687d4ede4d553ff0929b2b296666afd7 # v3.5.0
     with:
       # Aliases inherit their base command: /remove-triage and /remove-priority are gated too.
       # Keep generic /label gated so a verbatim allowlist cannot bypass the restriction.
@@ -85,6 +85,6 @@ jobs:
       pull-requests: write
       statuses: write
       actions: write
-    uses: cncf/prow-github-actions/.github/workflows/prow.yml@ed3bb424a5475f42b5d699048faa4a469a68b9ef # v3.4.0
+    uses: cncf/prow-github-actions/.github/workflows/prow.yml@a192ee15687d4ede4d553ff0929b2b296666afd7 # v3.5.0
     with:
       jobs: label-sync
