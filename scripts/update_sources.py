@@ -92,6 +92,11 @@ RELEASES = {
         x86_asset_suffix="_Linux_x86_64.tar.gz"),
     "bluefin/jetbrains-mono-nerd-font.bst": Release(
         "ryanoasis/nerd-fonts", r"download/(?P<version>v[^/]+)/", "download/{tag}/"),
+    # Published weekly as immutable YY.MM.N releases.
+    "bluefin/bluefin-docs.bst": Release(
+        "projectbluefin/documentation",
+        r"download/(?P<version>[0-9]{2}\.[0-9]{2}\.[0-9]+)/bluefin\.pdf",
+        "download/{tag}/bluefin.pdf", tag_pattern=r"[0-9]{2}\.[0-9]{2}\.[0-9]+"),
     # No versioned GitHub releases (only a rolling "tip"), so read tags. Each
     # release changes the Zig dependency graph, which the generator re-pins.
     "bluefin/ghostty.bst": Release(
@@ -218,7 +223,7 @@ def update_release(element: str, out: Path | None) -> None:
         new = tag if old.startswith("v") else tag.removeprefix("v")
         links = f"[release](https://github.com/{release.repo}/releases/tag/{tag})"
         if ", " not in old:
-            old_tag = old if old.startswith("v") else f"v{old}"
+            old_tag = ("v" if tag.startswith("v") else "") + old.removeprefix("v")
             links += f" · [compare](https://github.com/{release.repo}/compare/{old_tag}...{tag})"
         run(sys.executable, ".github/scripts/track_bundle.py", "record",
             "--out", str(out), "--slug", slug,
