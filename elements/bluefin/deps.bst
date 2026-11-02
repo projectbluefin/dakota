@@ -69,6 +69,9 @@ depends:
   - bluefin/network.bst
   - bluefin/nfs-utils.bst
   - bluefin/networkmanager-polkit.bst
+  # GVfs already supplies AFC/MTP backends; AFC also needs the USB daemon.
+  - bluefin/usbmuxd.bst
+  - bluefin/ifuse.bst
   - bluefin/wireplumber-pcsp.bst
   - bluefin/alsa-utils.bst
   - bluefin/brlaser.bst
