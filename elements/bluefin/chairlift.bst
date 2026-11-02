@@ -12,11 +12,11 @@ sources:
 - kind: tar
   (?):
   - arch == "x86_64":
-      url: github_files:projectbluefin/chairlift/releases/download/v26.10.4/chairlift_26.10.4_linux_amd64.tar.gz
-      ref: be9824c2caa368cdf8f35a99dd18871076fb3db003cfb62e3c63b43439ff834a
+      url: github_files:projectbluefin/chairlift/releases/download/v26.11.2/chairlift_26.11.2_linux_amd64.tar.gz
+      ref: 173a0064d8c93faf61404aa75303686a50b83bf5f2eeda677f729ef8655b5556
   - arch == "aarch64":
-      url: github_files:projectbluefin/chairlift/releases/download/v26.10.4/chairlift_26.10.4_linux_arm64.tar.gz
-      ref: c38a0df47dc107527b3686610192602db1dcff51375cc5874115fcdf47c57028
+      url: github_files:projectbluefin/chairlift/releases/download/v26.11.2/chairlift_26.11.2_linux_arm64.tar.gz
+      ref: a0a0d79de23075d410af9b4ddbf2e4e5ecd1321c60c8ffd801405332da7c36a5
   base-dir: ""
 
 build-depends:
