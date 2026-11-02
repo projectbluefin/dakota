@@ -17,6 +17,10 @@
     "it needs a token with the `workflows` permission, which the agent App does",
     "not hold. Run `image_variants.py --role <role>` to get the exact payload.",
     "",
+    "A role with \"slots\" projects one matrix entry per gaming value, with",
+    "each slot's fields prefixed by the slot name; that job builds every",
+    "slot's element in one BuildStream session.",
+    "",
     "Roles with \"derived\": false are still restated literally in their own",
     "workflow and are not yet gated. Their membership is recorded here so the",
     "divergence is visible in one place. Reconciling them is a maintainer",
@@ -26,15 +30,11 @@
     "publish": {
       "derived": true,
       "consumer": ".github/workflows/publish.yml (publish-image)",
-      "fields": [
-        "variant",
-        "export_variant",
-        "element",
-        "image_suffix",
-        "gaming",
-        "sbom_filename",
-        "continue"
-      ]
+      "fields": ["variant", "image_suffix", "continue"],
+      "slots": {
+        "base": "oci/bluefin.bst",
+        "nvidia": "oci/bluefin-nvidia.bst"
+      }
     },
     "sbom": {
       "derived": true,

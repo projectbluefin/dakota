@@ -1,0 +1,42 @@
+Upstream-Status: Pending
+Exit: Drop when gnome-build-meta's initramfs carries these modules itself.
+Subject: initramfs: add USB root, LUKS AES-NI, Intel I2C input and virtiofs
+
+uas lets roots on UAS USB adapters mount; usb-storage declines UAS-capable
+devices and leaves them for uas. aesni_intel lets dm-crypt pick the
+accelerated AES-XTS at unlock instead of the generic fallback, which stays
+in use for the life of the mapping. Intel LPSS, the DesignWare I2C PCI glue
+and Intel pinctrl back i2c-hid keyboards at the passphrase prompt. fs/fuse
+brings virtiofs so the image boots in bcvk ephemeral VMs.
+
+diff --git a/files/gnomeos/generate-initramfs/modules/50-kmod/module.sh b/files/gnomeos/generate-initramfs/modules/50-kmod/module.sh
+index 5b676b6..113e082 100644
+--- a/files/gnomeos/generate-initramfs/modules/50-kmod/module.sh
++++ b/files/gnomeos/generate-initramfs/modules/50-kmod/module.sh
+@@ -20,12 +20,14 @@ MODULES=(
+     fs/erofs
+     fs/exfat
+     fs/btrfs
++    fs/fuse
+     drivers/nvme
+     drivers/scsi
+     drivers/pci/controller
+     drivers/phy/qualcomm
+     drivers/ufs/host
+     drivers/clk/qcom
++    drivers/pinctrl/intel
+ )
+ 
+ MODULES_BY_NAME=(
+@@ -45,6 +47,11 @@ MODULES_BY_NAME=(
+     i2c-qcom-geni
+     qcom-pon
+     goodix-berlin-spi
++    uas
++    aesni_intel
++    intel-lpss-pci
++    intel-lpss-acpi
++    i2c-designware-pci
+ )
+ 
+ install() {

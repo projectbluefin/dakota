@@ -1,9 +1,59 @@
 # OCI Assembly — Required Post-Install Steps
 
-`elements/oci/bluefin.bst` assembles the final bootc image from staged layers.
-After all packages are installed it runs several post-install steps before
-calling `build-oci`. **These steps are load-bearing — removing or reordering
-them breaks the deployed image in ways that only appear after a `bootc switch`.**
+`elements/oci/bluefin-base.bst` assembles the base bootc image from staged
+layers. After all packages are installed it runs several post-install steps
+before calling `build-oci`. **These steps are load-bearing — removing or
+reordering them breaks the deployed image in ways that only appear after a
+`bootc switch`.** `elements/oci/bluefin-nvidia-base.bst` repeats them for the
+NVIDIA image on top of the default base.
+
+## Base image and boot layer
+
+Each published image is a base image plus one boot layer:
+
+| Image | Base | Boot layer | Final element |
+|---|---|---|---|
+| default, gaming | `oci/bluefin-base.bst` | `oci/layers/boot.bst` | `oci/bluefin.bst` |
+| NVIDIA, NVIDIA gaming | `oci/bluefin-nvidia-base.bst` | `oci/layers/bluefin-nvidia-boot.bst` | `oci/bluefin-nvidia.bst` |
+
+The boot layer holds everything that changes with `secure_boot_signing`: the
+kernel image and modules (NVIDIA modules too), the initramfs, the `depmod`
+index, and in signed images the shim chain, signed EFI binaries, Secure Boot
+tools and the `lockdown=integrity` karg. The base never depends on the option,
+so it has the same cache key in `build.yml` and in the signing pass, which pulls
+it from the cache instead of rebuilding it. `just bst show` with and without
+`-o secure_boot_signing true` must report the same key for both base elements
+and their compose and chunkah elements.
+
+Invariants, each enforced by a build failure:
+
+- **No kernel modules or depmod configuration in the base.** The base elements
+  fail on any file under `/usr/lib/modules`, `/usr/lib/depmod.d` or
+  `/etc/depmod.d`. A module in the base would skip signing and `depmod`, which
+  breaks `lockdown=integrity` and Easy Anti-Cheat; the boot layer's `depmod`
+  cannot see base configuration. Elements that install modules need a
+  `kernel-modules` split rule that the base compose excludes (see
+  `bluefin-nvidia/nvidia-drivers.bst` and `bluefin-nvidia/nvidia-kernel-modules.bst`).
+- **The boot layer carries only its own files.** Its stack may only reach
+  artifacts without runtime dependencies; use a filter to drop them, as
+  `bluefin/secure-boot-tools-files.bst` does. The base must contain what those
+  programs need, and the final element fails when a `--require-base-path` is
+  missing.
+- **Signed boot layers verify their signatures.** `include/boot-layer.yml`
+  checks the kernel image with `sbverify` and every module's signer with
+  `modinfo` against the Dakota certificate, and requires the lockdown karg in
+  signed layers and forbids it in unsigned ones. Easy Anti-Cheat for Linux v2
+  rejects a single unsigned loaded module, and `lockdown=integrity` refuses to
+  load one.
+- **The boot layer only adds allowed paths.** The final elements append it with
+  `scripts/oci_append_layer.py` (build-oci's parent mode writes whiteouts for
+  every parent file missing from each directory the new layer touches) and
+  bind ownership with `ownership_metadata.py finalize-overlay`. That rejects
+  whiteouts, paths outside the `--allow-prefix` list, metadata changes to
+  parent directories other than mtime, and any change to a base path the layer
+  does not contain. Keep the list exact: base post-install steps never see the
+  boot layer, so nothing that needs sysusers, `ldconfig`, schemas or presets
+  may live there.
 
 ## Chunkah component ownership metadata
 
@@ -149,6 +199,6 @@ file or directory` / `No GPUs found` on every boot — GDM looped and never show
 a login screen. Fix: `sudo ldconfig` on the affected system, and this `ldconfig
 -r /layer` step in the build to prevent recurrence.
 
-> If you are adding a new post-install step to `elements/oci/bluefin.bst`, insert
+> If you are adding a new post-install step to `elements/oci/bluefin-base.bst`, insert
 > it **before** `ldconfig -r /layer` so the linker cache reflects the final
 > installed state.

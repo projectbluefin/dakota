@@ -1,0 +1,21 @@
+Upstream-Status: Pending
+
+Origin: Fedora (Tomasz Torcz <ttorcz@fedoraproject.org>)
+Bug-Report: https://sourceforge.net/p/nicstat/bugs/1/
+Bug-Fedora: https://bugzilla.redhat.com/show_bug.cgi?id=2145035
+
+Fix integer overflow on 10G+ interfaces and read 32-bit speed via
+ethtool_cmd_speed() for 100G+ interfaces.
+Exit: Drop when upstream nicstat releases > 1.95 with ethtool_cmd_speed().
+
+--- a/nicstat.c
++++ b/nicstat.c
+@@ -1609,7 +1609,7 @@ get_speed_duplex(nicdata_t *nicp)
+ 		get_speed_duplex(nicp);
+ 		return;
+ 	}
+-	nicp->speed = edata.speed * 1000000;
++	nicp->speed = (uint64_t) ethtool_cmd_speed(&edata) * 1000000;
+ 	nicp->duplex = edata.duplex;
+ }
+ #endif /* OS_LINUX */

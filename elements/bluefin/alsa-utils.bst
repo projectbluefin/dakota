@@ -1,6 +1,6 @@
 kind: autotools
 description: |
-  ALSA mixer state save/restore.
+  ALSA utilities (alsamixer, alsactl, amixer, aplay/arecord, speaker-test, and MIDI/IEC tools) and mixer state save/restore.
 
   freedesktop-sdk ships alsa-lib (libasound) but no alsa-utils, so the image
   has no alsactl, no alsa-restore/alsa-state systemd units and no
@@ -10,10 +10,11 @@ description: |
   (auto-mute, amp-enable, IEC958, output selection) this surfaces as
   "boots with broken sound" (projectbluefin/dakota#1027).
 
-  We build alsa-utils and keep only the mixer-state machinery: the alsactl
-  binary, its systemd units (statically enabled via sound.target.wants/ by
-  `make install`), the udev rule that restores per-card state on hotplug, and
-  the init database.
+  We build alsa-utils to provide standard ALSA userland tools (alsamixer,
+  amixer, aplay/arecord, speaker-test, aconnect/aseqnet, iecset) along with the
+  mixer-state machinery: alsactl, its systemd units (statically enabled via
+  sound.target.wants/ by `make install`), the udev rule that restores per-card
+  state on hotplug, and the init database.
 
 sources:
 - kind: tar
@@ -33,13 +34,14 @@ sources:
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-autotools.bst
 - freedesktop-sdk.bst:components/alsa-lib.bst
+- freedesktop-sdk.bst:bootstrap/ncurses.bst
 - freedesktop-sdk.bst:components/systemd.bst
 - freedesktop-sdk.bst:components/pkg-config.bst
 
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
 - freedesktop-sdk.bst:components/alsa-lib.bst
-
+- freedesktop-sdk.bst:bootstrap/ncurses.bst
 variables:
   # alsactl is a sbin_PROGRAM and the units/udev rule bake in @sbindir@. This
   # is a merged-usr image (/usr/sbin -> bin), so installing into a real
@@ -57,7 +59,7 @@ variables:
     --sbindir=%{bindir}
     --with-systemdsystemunitdir=%{indep-libdir}/systemd/system
     --with-udev-rules-dir=%{indep-libdir}/udev/rules.d
-    --disable-alsamixer
+    --enable-alsamixer
     --disable-bat
     --disable-alsaloop
     --disable-alsaconf
@@ -68,18 +70,16 @@ variables:
 config:
   install-commands:
   - '%{make-install}'
-  # Keep only alsactl. `make install` also runs alsa-utils' install-data-hook,
-  # which statically enables the services by dropping relative symlinks into
+  # `make install` also runs alsa-utils' install-data-hook, which statically
+  # enables the services by dropping relative symlinks into
   # %{indep-libdir}/systemd/system/sound.target.wants/ (sound.target is pulled
   # into every boot by udev's controlC*.device units). The units carry no
   # [Install] section, so a systemd-preset cannot enable them; the static
   # sound.target.wants/ symlinks are the correct, preset-all-safe mechanism.
-  # Drop the rest of the suite (amixer, aplay, speaker-test, seq/midi tools,
-  # docs, translations, sample sounds) to keep the image lean.
-  - find "%{install-root}%{bindir}" -mindepth 1 ! -name alsactl -delete
+  #
+  # Strip docs/translations and remove the orphan alsatplg topology-compiler
+  # plugin (which builds even with --disable-nhlt; drop alsatplg binary too).
+  - rm -f "%{install-root}%{bindir}/alsatplg"
   - rm -rf "%{install-root}%{mandir}"
   - rm -rf "%{install-root}%{datadir}/locale"
-  - rm -rf "%{install-root}%{datadir}/sounds/alsa"
-  # The alsatplg topology-compiler plugin builds even with --disable-nhlt;
-  # alsatplg itself is pruned above, so its plugin is an orphan.
   - rm -rf "%{install-root}%{libdir}/alsa-topology"

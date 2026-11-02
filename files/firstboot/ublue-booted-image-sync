@@ -1,20 +1,69 @@
 #!/usr/bin/bash
-# Record the booted bootc image ref where unprivileged consumers (fastfetch's
-# ublue-image-info.sh) can read it. `bootc status` requires root on bootc
-# >= 1.14 (get_host() -> prepare_for_write()), and the baked image-info.json
-# tag is always the compose-time "latest" because promotion retags the same
-# digest. The booted ref cannot change within a boot, so one write per boot
-# is always accurate.
+# Record the booted bootc image where unprivileged consumers can read it.
+# `bootc status` requires root on bootc >= 1.14 (get_host() ->
+# prepare_for_write()), and the baked image-info.json tag is always the
+# compose-time "latest" because promotion retags the same digest. The booted
+# ref cannot change within a boot, so one write per boot is always accurate.
+#
+# Two outputs, both under /run so nothing outlives the boot:
+#   /run/ublue-os/booted-image     the raw booted ref (fastfetch reads it)
+#   /run/ublue-os/image-info.json  the baked image-info.json with the real
+#                                  tag and ref, bind-mounted over
+#                                  /usr/share/ublue-os/image-info.json so
+#                                  ujust, uwelcome and report tools read the
+#                                  truth unchanged. Without this service the
+#                                  baked file shows through, as before.
 set -euo pipefail
 
-ref="$(bootc status --json | jq -r '.status.booted.image.image.image // empty')"
+baked=/usr/share/ublue-os/image-info.json
+state=/run/ublue-os
+
+status="$(bootc status --json)"
+ref="$(jq -r '.status.booted.image.image.image // empty' <<<"${status}")"
 if [ -z "${ref}" ]; then
-    echo "no booted bootc image found; leaving no state file" >&2
+    echo "no booted bootc image found; leaving no state files" >&2
     exit 0
 fi
+transport="$(jq -r '.status.booted.image.image.transport // "registry"' <<<"${status}")"
+signature="$(jq -r '.status.booted.image.image.signature // "insecure" | if type == "object" then (keys[0]) else . end' <<<"${status}")"
 
-install -d -m 0755 /run/ublue-os
-tmp="$(mktemp /run/ublue-os/booted-image.XXXXXX)"
+install -d -m 0755 "${state}"
+tmp="$(mktemp "${state}/booted-image.XXXXXX")"
 printf '%s\n' "${ref}" > "${tmp}"
 chmod 0644 "${tmp}"
-mv -f "${tmp}" /run/ublue-os/booted-image
+mv -f "${tmp}" "${state}/booted-image"
+
+[ -r "${baked}" ] || exit 0
+
+# Split repo and tag on the last ':' of the final path component, so a
+# registry port (host:5000/repo) is never mistaken for a tag. A digest ref
+# (repo@sha256:...) carries no tag.
+repo="${ref%@*}"
+name="${repo##*/}"
+if [ "${repo}" != "${ref}" ]; then
+    tag=""
+elif [[ "${name}" == *:* ]]; then
+    tag="${name##*:}"
+    repo="${repo%:*}"
+else
+    tag="latest"
+fi
+
+# Keep the transport prefix image-info consumers already expect; uwelcome
+# strips exactly "ostree-image-signed:docker://".
+case "${transport}:${signature}" in
+    registry:insecure) prefix="ostree-unverified-registry:" ;;
+    registry:*) prefix="ostree-image-signed:docker://" ;;
+    *) prefix="${transport}:" ;;
+esac
+
+tmp="$(mktemp "${state}/image-info.XXXXXX")"
+jq --arg tag "${tag}" --arg ref "${prefix}${repo}" \
+    '."image-tag" = $tag | ."image-ref" = $ref' "${baked}" > "${tmp}"
+chmod 0644 "${tmp}"
+mv -f "${tmp}" "${state}/image-info.json"
+
+# Re-running the service must not stack mounts.
+if ! mountpoint -q "${baked}"; then
+    mount --bind "${state}/image-info.json" "${baked}"
+fi

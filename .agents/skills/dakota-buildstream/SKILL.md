@@ -42,6 +42,7 @@ Never translate RPM, DNF, COPR, or Containerfile workflows into this repository.
 - **Source Pinning**: Pin git sources to commit SHAs or release tags. Never track mutable branches in production elements.
 - **Reproducibility**: No network calls, `$(date)`, `$(hostname)`, `whoami`, or random seeds in build commands.
 - **Directory Creation**: Run `mkdir -p` before creating links or writing files into target directories.
+- **Sandbox Shell**: freedesktop-sdk 26.08's `public-stacks/runtime-minimal.bst` ships no shell or coreutils. Any `manual` or `script` element that runs commands without a build-system stack (`buildsystem-autotools`, `buildsystem-meson`, ...) must build-depend on `core/sandbox-tools.bst` at `/`, plus any other tool its commands call (`sed`, `findutils`, `kmod`). Otherwise the build fails with "Staged artifacts do not provide command 'sh'". Dependencies staged at a `location` other than `/` provide no commands.
 - **Generated Cargo Sources**: Generate crate manifests via:
   ```bash
   python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock
@@ -62,6 +63,7 @@ Never translate RPM, DNF, COPR, or Containerfile workflows into this repository.
 - Using `kind: stack` inside `elements/oci/layers/`
 - `ref:` pointing to a branch name instead of a git commit or tag
 - Using `$(date)` or `$(hostname)` in install commands
+- A `manual` or `script` element whose `/`-staged build-depends lack `core/sandbox-tools.bst`
 - Adding patches without an `Upstream-Status:` header and exit condition
 
 ## Verification

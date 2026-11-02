@@ -11,6 +11,28 @@
 | `bcvk` | Ephemeral VM from container | Auto-installed by `just boot-fast` via cargo |
 | ~100 GB disk, ~16 GB RAM | BST cache + parallel builds | — |
 
+### CPU baseline
+
+All x86_64 image variants require **x86-64-v3** (Intel Haswell Core or newer,
+AMD Excavator or newer, including all Ryzen). Check the exact CPU model: many
+Pentium, Celeron, and older Atom processors lack the required features even
+when newer than Haswell. VMs must expose v3 features to the guest. ARM/aarch64
+builds are unchanged.
+
+`project.conf` owns the default for both direct BuildStream use and `just`;
+CI build, export, and validation use that same default. The option is forwarded
+only on x86_64 to GNOME Build Meta and freedesktop-sdk. Expect a substantial
+rebuild when switching from baseline artifacts to v3.
+
+For a local baseline x86_64 build, use
+`BST_FLAGS="-o x86_64_v3 false" just build default` and keep that option for
+subsequent export/checkout commands. Direct BuildStream accepts
+`bst -o x86_64_v3 false ...` as well. This opt-out is not a separately published
+compatibility image.
+
+See [CPU compatibility](https://developers.redhat.com/articles/2024/01/02/exploring-x86-64-v3-red-hat-enterprise-linux-10)
+and [BuildStream project options](https://docs.buildstream.build/master/format_project.html#options).
+
 ## Repo layout
 
 | Path | Purpose |
@@ -51,12 +73,122 @@ just bst shell --build bluefin/tailscale.bst         # sandbox shell
 just bst show --deps all oci/bluefin.bst             # full dependency graph
 ```
 
+## Updating source pins
+
+Run the same source-update logic as CI from a feature branch with a clean working
+tree (based on `upstream/testing` for normal development):
+
+```bash
+just update-sources --list                  # preview the scope, no network or writes
+just update-sources                         # CI-managed sources, kernels, and core junctions
+just update-sources --group bundle          # everything except core junctions
+just update-sources --group core-junctions  # GNOME Build Meta + matching SDK, plugins, patches
+just update-sources --group kernels         # standard + OGC kernel refs and OGC suffix
+just update-sources --element bluefin/gum.bst
+
+git diff
+just validate
+```
+
+The updater needs Python 3, `just`, Podman, `gh` (authenticated for GitHub release
+lookups), and `curl` (Tailscale's package feed and junction/patch sync).
+BuildStream runs in the usual container.
+It edits local files only: no commits, pushes, workflow dispatches, or PRs.
+Run only one updater at a time in a checkout, and avoid editing its target files
+while it runs.
+
+“All” means the sources managed by the tracker, not every element or dependency
+inside upstream junctions. The source list lives in `scripts/update_sources.py`;
+CI reads its matrix from there too. Release assets advance their URLs before
+BuildStream tracks checksums. Tracking explicitly targets **x86_64 only** for now,
+including the OCI source in `brew-tarball.bst`. Architecture-specific ARM URLs and
+checksums stay pinned together, so the two architectures may have different
+versions. Shared sources and junctions still advance; this is not an ARM build
+validation or removal of ARM support. Core updates
+derive the freedesktop-sdk pin from GNOME Build Meta and run `just patch-sync`
+plus `just patch-drift-check`; never track the SDK independently.
+
+### Kernels and the next stream
+
+Both `core/linux-fdsdk.bst` (standard images) and `core/linux-ogc.bst` (gaming)
+are local overrides, not kernel pins inherited from the SDK junction. The default
+pass, `--group bundle`, and CI's shared matrix include them. `--group kernels`
+updates just these elements; `--element core/linux-ogc.bst` works too. Tracking
+preserves the checkout's configured series: testing currently restricts updates
+to `v7.2.*` / `v7.2.*-ogc*`, while next permits `v*` / `v*-ogc*`, including RCs.
+The OGC module-release suffix (`ogc-localversion`) is derived from its tracked tag;
+an unrecognizable tag fails and restores the entire element. After tracking, the
+updater runs `bst source fetch --deps none` for each kernel on x86_64. This fetches
+the complete source set and applies any downstream patch queues before the pin is
+accepted or recorded for CI. A fetch or patch failure restores the element's
+starting contents, including local edits and the OGC suffix, while other updates
+continue. Existing patches are never automatically dropped to make a bump pass.
+
+Shared package updates land through testing and sync to next, but kernels and
+junctions are next-owned. In a separate feature worktree based on `upstream/next`,
+run these once the shared updater is present there:
+
+```bash
+just update-sources --group core-junctions
+just update-sources --group kernels
+```
+
+The next tracker runs both groups into its existing PR. Kernel-containing next
+updates do not enable auto-merge; an existing PR's auto-merge is disabled before
+pushing a kernel change. Junction-only updates retain their existing policy.
+Testing kernel updates remain in the single non-junction bundle, with review notes.
+
+Source fetching is not compilation or hardware validation. Before shipping,
+review the kernel source changes and any downstream patches, then build both
+kernels and their NVIDIA consumers (these builds are **not** run by the updater):
+
+```bash
+just bst build core/linux-fdsdk.bst bluefin-nvidia/nvidia-drivers.bst
+BUILD_GAMING=true just bst build core/linux-ogc.bst bluefin-nvidia/nvidia-drivers.bst
+```
+
+The `build` label is for maintainers only. Contributors should ask a maintainer
+to apply it when CI image builds are needed. Maintainers should inspect each
+relevant variant's result: the build runs a `standard` and a `gaming` job, each
+building the default and NVIDIA images, and only the default image in the
+standard job must succeed. A green aggregate is not proof that the NVIDIA or
+gaming kernels and drivers built; check the job logs. Boot verification
+is still needed before release.
+When the FDSDK junction advances, also compare its kernel recipe, `patches/linux/`,
+`files/linux/config-utils.sh`, and `files/linux/fdsdk-config.sh` with our vendored
+copies. Reconcile changes while preserving Dakota's configuration; the updater
+prints a review reminder but does not overwrite these files automatically.
+
+### Release assets and failures
+
+Tailscale uses `Tarballs.amd64` from its
+[stable package feed](https://pkgs.tailscale.com/stable/?mode=json), not the latest
+GitHub release: a Git tag may exist without a matching Linux archive. The updater
+validates the filename and lets BuildStream track its checksum; a malformed feed
+or unavailable download fails without changing the existing pin.
+
+Ghostty publishes versioned tags but no versioned GitHub releases, so the updater
+reads the newest `vX.Y.Z` tag. Each release changes its Zig dependency graph, so
+`files/scripts/generate_ghostty_sources.py <version>` re-pins the release and every
+package listed in its `build.zig.zon.json` (the graph upstream publishes for
+[packagers](https://github.com/ghostty-org/ghostty/blob/main/PACKAGING.md)). It
+refuses a release whose `minimum_zig_version` is newer than `bluefin/zig.bst`; bump
+Zig first, then rerun the update.
+
+An individual failure restores that update's starting files (the entire element
+or junction/patch group), continues the remaining updates, and causes
+a nonzero exit. Successful updates remain for review. Validation and builds are
+separate; successful [source tracking](https://docs.buildstream.build/master/using_commands.html#bst-source-track)
+alone does not prove that updated sources build or that downstream patches apply.
+`--group tracked` and `--group tarballs` can rerun
+those subsets. `--record-dir` is for CI bundle artifacts, not needed locally.
+
 ## Desktop integrations
 
 Keep the established desktop defaults, with fuzzy application search, Tiling
 Shell, and BudsLink enabled. BudsLink's default panel stays hidden until a
 supported device is present. Syncthing Toggle, Tailscale Quick Settings, the
-extra audio panel/hider/renamer, and Power Status Color are installed but
+extra audio hider/renamer, and Power Status Color are installed but
 opt-in through the Extensions app. Their required backends
 remain available; enabling a control should not require installing missing
 native software.
@@ -118,20 +250,21 @@ modify the same Quick Settings controls.
 its icons/colors in tests. Common updates should carry presentation changes
 without a second sync step.
 
-The temporary `patches/common/0001-fastfetch-install-date.patch` changes only
-the date command to read the first-boot record. Drop it when common supports
-that record through a shared helper. `firstboot-date.bst` owns the runtime
-records, not the presentation; `nerd-fonts-symbols.bst` supplies icon fallback
-without changing the default text font. The existing booted-image helper patch
-in `common.bst` is separate and remains until common supports that record too.
+Common's install-date line reads `/var/lib/ublue-os/install-date` first and
+falls back to `/var/log` only when that record is missing. `firstboot-date.bst`
+owns that runtime record, not the presentation; `nerd-fonts-symbols.bst`
+supplies icon fallback without changing the default text font.
 
-Run `just bst build bluefin/common.bst` to exercise the patch against the pinned
-source. A source rewrite that invalidates the patch must be reviewed, not
+`patches/common/0006-fastfetch-drop-weekly-stats.patch` removes an input Dakota
+cannot provide. It drops the weekly user and Bazaar install count lines,
+because other images fill `fastfetch-user-count` and `bazaar-install-count`
+with a build-time network fetch that Dakota's sandboxed builds cannot make. Do
+not ship placeholder or invented counts in their place.
+
+Run `just bst build bluefin/common.bst` to exercise the patches against the
+pinned source. A source rewrite that invalidates a patch must be reviewed, not
 worked around by restoring a local config. Check glyph rendering in a booted
 image.
-The common source import also does not supply `fastfetch-user-count` or
-`bazaar-install-count`; those weekly-statistics inputs remain a separate parity
-gap, not a reason to fork the config or invent counts.
 
 ## Ghostty theme and configuration defaults
 

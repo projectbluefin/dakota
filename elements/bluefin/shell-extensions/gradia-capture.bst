@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:AlexanderVanhee/gradia-capture.git
   track: master
-  ref: f70a2127d0a9acc3c9d4d8198361fc9f4e14818f
+  ref: 0b7e47e1e5c1e68e234e4d2d24b307e1da1d18a9
 
 build-depends:
 - core/sandbox-tools.bst

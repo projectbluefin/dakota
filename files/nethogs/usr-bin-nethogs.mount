@@ -1,0 +1,17 @@
+# Opt-in per-process network monitoring (Mission Center, nethogs).
+# /usr/bin/nethogs ships without capabilities. Enabling this unit bind-mounts
+# a copy that holds cap_net_raw over it; the copy lives in a root-only
+# directory, so this mount is the only way unprivileged users can run it.
+# Toggle with: ujust toggle-network-monitoring
+[Unit]
+Description=Capability-enabled nethogs for per-process network statistics
+Documentation=man:nethogs(8)
+
+[Mount]
+What=/usr/libexec/dakota-nethogs/nethogs
+Where=/usr/bin/nethogs
+Type=none
+Options=bind,ro
+
+[Install]
+WantedBy=local-fs.target

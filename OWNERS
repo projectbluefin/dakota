@@ -1,0 +1,9 @@
+# Generated from projectbluefin/.project maintainers.yaml by sync-owners.yml.
+# Do not edit here: change maintainers.yaml in projectbluefin/.project.
+approvers:
+  - ahmedadan
+  - bketelsen
+  - castrojo
+  - daegalus
+  - Danathar
+  - hanthor

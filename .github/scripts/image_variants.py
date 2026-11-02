@@ -56,6 +56,12 @@ def validate(declaration: dict) -> list[str]:
     for name, spec in roles.items():
         if not isinstance(spec.get("fields"), list) or not spec["fields"]:
             errors.append(f"role '{name}' must declare a non-empty 'fields' list")
+        if "slots" in spec and (
+            not isinstance(spec["slots"], dict)
+            or not spec["slots"]
+            or not all(isinstance(element, str) and element for element in spec["slots"].values())
+        ):
+            errors.append(f"role '{name}' must map each slot to an element")
         if not isinstance(spec.get("derived"), bool):
             errors.append(f"role '{name}' must declare a boolean 'derived'")
         if not spec.get("consumer"):
@@ -122,6 +128,7 @@ def matrix_for(declaration: dict, role: str) -> list[dict]:
 
     fields = roles[role]["fields"]
     include: list[dict] = []
+    sources: list[dict] = []
     for entry in declaration["variants"]:
         membership = entry.get("roles", {}).get(role)
         if membership is None or "excluded" in membership:
@@ -130,10 +137,42 @@ def matrix_for(declaration: dict, role: str) -> list[dict]:
         # Role-local overrides (e.g. per-role `continue`) win over the
         # variant-level metadata they shadow.
         source = {**entry, **membership}
+        sources.append(source)
         include.append(
             {field: source[field] for field in fields if field in source}
         )
+    if "slots" in roles[role]:
+        return _grouped(role, roles[role]["slots"], sources, include)
     return include
+
+
+def _grouped(role: str, slots: dict, sources: list[dict], include: list[dict]) -> list[dict]:
+    """One entry per gaming value, with one prefixed field set per slot.
+
+    A grouped job builds every slot's element in one BuildStream session
+    (`-o gaming` is project-wide, so each value needs its own job). The job
+    is continue-on-error only when every image in it is.
+    """
+    groups: dict[str, dict] = {}
+    for source, projected in zip(sources, include):
+        gaming = source.get("gaming", "false")
+        name = "gaming" if gaming == "true" else "standard"
+        group = groups.setdefault(name, {"group": name, "gaming": gaming, "continue": True})
+        slot = next((key for key, element in slots.items() if element == source.get("element")), None)
+        if slot is None:
+            raise DeclarationError(
+                f"role '{role}': variant '{source['variant']}' builds "
+                f"{source.get('element')!r}, which is not one of its slots"
+            )
+        if f"{slot}_variant" in group:
+            raise DeclarationError(f"role '{role}': group '{name}' has two '{slot}' variants")
+        group.update({f"{slot}_{field}": value for field, value in projected.items()})
+        group["continue"] = group["continue"] and projected.get("continue") is True
+    for name, group in groups.items():
+        missing = [slot for slot in slots if f"{slot}_variant" not in group]
+        if missing:
+            raise DeclarationError(f"role '{role}': group '{name}' has no {missing} variant")
+    return [groups[name] for name in ("standard", "gaming") if name in groups]
 
 
 def _scalar(raw: str):

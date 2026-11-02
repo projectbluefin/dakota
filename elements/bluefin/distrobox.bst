@@ -1,5 +1,5 @@
 # Override: distrobox next branch (Go port).
-# Replaces gnome-build-meta.bst:gnomeos-deps/distrobox.bst (shell-based).
+# Replaces gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/distrobox.bst (shell-based).
 # Tracks 89luca89/distrobox:next — the full Go rewrite.
 kind: manual
 

@@ -1,0 +1,17 @@
+#!/bin/sh
+# Dakota replacement for tools/hv/hv_get_dhcp_info.sh.
+#
+# hv_kvp_daemon calls this with an interface name and expects "Enabled" or
+# "Disabled". Read the IPv4 method of the interface's active NetworkManager
+# connection instead of network-scripts ifcfg files.
+connection="$(nmcli -g GENERAL.CONNECTION device show "$1" 2>/dev/null)"
+method=""
+if [ -n "$connection" ]; then
+	method="$(nmcli -g ipv4.method connection show id "$connection" 2>/dev/null)"
+fi
+
+if [ "$method" = "auto" ]; then
+	echo "Enabled"
+else
+	echo "Disabled"
+fi

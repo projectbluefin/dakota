@@ -10,12 +10,17 @@
 - [ ] Existing guidance affected by the change is corrected; no unrelated documentation writeback is required
 - [ ] I am using an agent and I take responsibility for this PR
 
+## Secure Boot signing inputs (kernel, modules, shim, systemd-boot, fwupd, junction bumps)
+
+- [ ] A maintainer booted the `:pr-N` image on real hardware with Secure Boot on
+- [ ] `dakota-secure-boot status` and `ujust verify` pass on that boot
+
 ## Junction bumps (`gnome-build-meta.bst` or `freedesktop-sdk.bst`)
 
 - [ ] Only junction `.bst` files changed — no `patches/` modifications in the same commit
 - [ ] All existing patches in the relevant `patches/` directory still apply cleanly
 
-> Junction-only bumps from `mergeraptor[bot]` are pre-approved once `validate` passes and affected elements build cleanly.
+> Junction bumps change Secure Boot signing inputs, so bumps from `mergeraptor[bot]` also need the maintainer boot above and are never auto-merged.
 
 ## Patch additions or removals (`patches/`)
 

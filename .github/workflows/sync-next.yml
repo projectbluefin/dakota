@@ -15,9 +15,10 @@ name: Sync next
 # Anything else on next outside both lists fails the drop guard instead of being
 # deleted.
 
+# Paused until the next GNOME beta: no push trigger, and the workflow is
+# disabled in GitHub. When next returns, restore `push: branches: [testing]`,
+# re-enable it, then run it once by hand.
 on:
-  push:
-    branches: [testing]
   workflow_dispatch:
 
 permissions:
@@ -49,7 +50,7 @@ jobs:
     steps:
       - name: Get mergeraptor token
         id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         with:
           app-id: ${{ secrets.MERGERAPTOR_APP_ID }}
           private-key: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}

@@ -24,6 +24,18 @@ config:
     mkdir -p "%{install-root}/usr/lib/i386-linux-gnu/GL"
     ln -sfn default/vulkan "%{install-root}/usr/lib/i386-linux-gnu/GL/vulkan"
 
+    # Steam's pressure-vessel (steam-runtime-tools) enumerates Vulkan ICDs on
+    # standard Khronos XDG paths (/etc/vulkan/icd.d, /usr/share/vulkan/icd.d)
+    # and does not know about the i686 loader's compiled-in EXTRASYSCONFDIR.
+    # Since compat-vulkan-link.bst symlinks /usr/share/vulkan/icd.d to the
+    # x86_64 GL tree, expose the i686 manifests under /etc/vulkan/icd.d so
+    # pressure-vessel imports 32-bit Vulkan drivers into the container.
+    mkdir -p "%{install-root}/etc/vulkan/icd.d"
+    for icd in intel_hasvk_icd.i686.json intel_icd.i686.json lvp_icd.i686.json nouveau_icd.i686.json radeon_icd.i686.json virtio_icd.i686.json; do
+      ln -sfn "/usr/lib/i386-linux-gnu/GL/default/lib/vulkan/icd.d/${icd}" \
+        "%{install-root}/etc/vulkan/icd.d/${icd}"
+    done
+
 public:
   bst:
     split-rules:
@@ -31,3 +43,4 @@ public:
         (>):
         - /usr/lib/i386-linux-gnu/libbz2.so.1.0
         - /usr/lib/i386-linux-gnu/GL/vulkan
+        - /etc/vulkan/icd.d/**

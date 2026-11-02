@@ -1,121 +1,72 @@
+# The NVIDIA image: the cached base (oci/bluefin-nvidia-base.bst) plus the boot
+# layer (oci/layers/bluefin-nvidia-boot.bst) as one additive top layer. Only
+# the boot layer depends on secure_boot_signing, so the signing pass rebuilds
+# it and this element while the base comes from the cache. See
+# scripts/oci_append_layer.py for why build-oci's parent mode is not used.
 kind: script
 
 build-depends:
-  - gnome-build-meta.bst:freedesktop-sdk.bst:components/fakecap.bst
+  # Shell and coreutils for the commands below; runtime-minimal carries
+  # no shell since freedesktop-sdk 26.08.
+  - core/sandbox-tools.bst
   - gnome-build-meta.bst:freedesktop-sdk.bst:components/oci-builder.bst
-  - freedesktop-sdk.bst:components/glib.bst
-  - gnome-build-meta.bst:core-deps/dconf.bst
-  - gnome-build-meta.bst:freedesktop-sdk.bst:vm/prepare-image.bst
-  - oci/layers/bluefin-nvidia-init-scripts.bst
-  - filename: oci/bluefin.bst
+  - filename: oci/bluefin-nvidia-base.bst
     config:
-      location: /parent
-  - filename: oci/layers/bluefin-nvidia.bst
+      location: /base
+  - filename: oci/layers/bluefin-nvidia-boot.bst
     config:
-      location: /layer
-  - filename: oci/chunkah/bluefin-nvidia.bst
+      location: /boot-layer
+  - filename: oci/chunkah/bluefin-nvidia-boot.bst
     config:
       location: /ownership
   - filename: oci/chunkah-metadata-tool.bst
     config:
       location: /ownership-tool
-
-environment:
-  LD_PRELOAD: /usr/libexec/fakecap/fakecap.so
-  FAKECAP_DB: /fakecap
+  - filename: oci/oci-append-layer-tool.bst
+    config:
+      location: /append-tool
 
 variables:
-  # Distinct from the default Bluefin seed so the two variants don't
-  # share machine IDs / partition UUIDs when both are deployed.
-  sysroot-seed: 7f9c5d11-3a26-4b9e-8e21-1d4f3f9e2c57
-  # Baked into org.opencontainers.image.ref.name: the `bootc upgrade`
-  # origin. Gaming gets its own repo since tags are release channels.
-  image-repo: dakota-nvidia
   ownership-variant: nvidia
+  efi-arch: x64
   (?):
   - gaming == true:
-      image-repo: dakota-nvidia-gaming
       ownership-variant: nvidia-gaming
+  - arch == "aarch64":
+      efi-arch: aa64
 
 config:
   commands:
-    - mkdir /fakecap
     - |
-      python3 /ownership-tool/ownership-tool/ownership_metadata.py verify-basis \
-        --root /layer --basis /ownership/ownership/basis.json
+      python3 /append-tool/oci-append-tool/oci_append_layer.py \
+        --base /base --upper /boot-layer --output "%{install-root}" \
+        --comment "Import Bluefin NVIDIA boot layer"
 
+    # The boot layer may only add the paths below (plus their parent
+    # directories). Keep the list exact: anything that needs a base setup
+    # step (sysusers, ldconfig, schemas, presets) must stay in the base,
+    # because those steps never see this layer. The required base paths
+    # are what dakota-secure-boot runs, since the boot layer carries no
+    # runtime dependencies.
     - |
-      prepare-image.sh \
-         --sysroot /layer \
-         --initscripts /initial_scripts \
-         --seed "%{sysroot-seed}" \
-         --noroot --noboot >/dev/null
-
-    - |
-      systemd-sysusers --root /layer
-
-    - |
-      glib-compile-schemas /layer/usr/share/glib-2.0/schemas
-
-    # bootc images must not have both /etc and /usr/etc.
-    - |
-      if [ -d /layer/usr/etc ]; then
-        mkdir -p /layer/etc
-        cp -a /layer/usr/etc/. /layer/etc/
-        rm -rf /layer/usr/etc
-      fi
-
-    - |
-      dconf update /layer/etc/dconf/db
-
-    - |
-      # FDSDK's Mesa merge path must stay a symlink so libgbm sees both
-      # Mesa's DRI backend and NVIDIA's backend on hybrid systems.
-      GBM_DIR="/layer%{libdir}/GL/lib/gbm"
-      if [ ! -L "$GBM_DIR" ]; then
-        echo "FATAL: $GBM_DIR is not the FDSDK Mesa merge symlink" >&2
-        exit 1
-      fi
-      for backend in dri_gbm.so nvidia-drm_gbm.so; do
-        if [ ! -e "$GBM_DIR/$backend" ]; then
-          echo "FATAL: GBM backend $GBM_DIR/$backend is missing" >&2
-          exit 1
-        fi
-      done
-
-    - |
-      cd "%{install-root}"
-      build-oci <<EOF
-      mode: oci
-      gzip: disabled
-      images:
-      - os: linux
-        architecture: "%{go-arch}"
-        parent:
-          image: /parent
-        layer: /layer
-        comment: "Import Bluefin + NVIDIA layer"
-        config:
-          Labels:
-            'com.github.containers.toolbox': 'true'
-            'org.opencontainers.image.title': 'Bluefin NVIDIA'
-            'org.opencontainers.image.description': 'A custom GNOME-based desktop image with NVIDIA proprietary driver'
-            'org.opencontainers.image.vendor': 'Project Bluefin'
-            'org.opencontainers.image.licenses': 'Apache-2.0 AND LicenseRef-NVIDIA-SLA'
-            'org.opencontainers.image.url': 'https://projectbluefin.io'
-            'org.opencontainers.image.source': 'https://github.com/projectbluefin/dakota'
-            'containers.bootc': '1'
-        index-annotations:
-          'org.opencontainers.image.ref.name': 'ghcr.io/projectbluefin/%{image-repo}:latest'
-      EOF
-
-    # The NVIDIA compose layer is a full-root superset. Snapshot the completed
-    # parent+child OCI archive directly so parent overlays and whiteouts cannot
-    # drift from the sidecar.
-    - |
-      python3 /ownership-tool/ownership-tool/ownership_metadata.py finalize-oci \
-        --layout "%{install-root}" --root /layer \
-        --basis /ownership/ownership/basis.json \
+      python3 /ownership-tool/ownership-tool/ownership_metadata.py finalize-overlay \
+        --layout "%{install-root}" --base-layout /base \
+        --base-sidecar /base/.dakota/ownership-final.json \
+        --overlay-basis /ownership/ownership/basis.json \
+        --allow-prefix /usr/lib/modules \
+        --allow-prefix /usr/lib/dakota/secure-boot \
+        --allow-prefix "%{indep-libdir}/systemd/boot/efi/systemd-boot%{efi-arch}.efi.signed" \
+        --allow-prefix "%{libexecdir}/fwupd/efi/fwupd%{efi-arch}.efi.signed" \
+        --allow-prefix /usr/lib/bootc/kargs.d/20-lockdown.toml \
+        --allow-prefix /usr/libexec/dakota-secure-boot \
+        --allow-prefix /usr/lib/systemd/system/dakota-secure-boot-update.service \
+        --allow-prefix /usr/lib/systemd/system/multi-user.target.wants/dakota-secure-boot-update.service \
+        --require-base-path /usr/bin/mokutil \
+        --require-base-path /usr/bin/openssl \
+        --require-base-path /usr/bin/efibootmgr \
+        --require-base-path /usr/bin/bootctl \
+        --require-base-path /usr/bin/systemd-cryptenroll \
+        --require-base-path /usr/bin/od \
         --arch "%{go-arch}" --variant "%{ownership-variant}" \
         --output /ownership/final.json
       mkdir -p "%{install-root}/.dakota"

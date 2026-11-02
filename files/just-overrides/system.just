@@ -280,6 +280,77 @@ rebase-helper:
     sudo bootc switch "${TARGET}"
     reboot_prompt
 
+# Set up Secure Boot: install the signed boot chain and enroll Dakota's key
+[group('System')]
+enroll-secure-boot-key:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -x /usr/libexec/dakota-secure-boot ]; then
+        echo "This Dakota image is not signed for Secure Boot." >&2
+        exit 1
+    fi
+    if [ ! -t 0 ]; then
+        echo "Interactive terminal required" >&2
+        exit 1
+    fi
+    sudo /usr/libexec/dakota-secure-boot enroll
+
+# Show the Secure Boot setup: shim, boot entry, Dakota's key and lockdown
+[group('System')]
+secure-boot-status:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -x /usr/libexec/dakota-secure-boot ]; then
+        echo "This Dakota image is not signed for Secure Boot." >&2
+        exit 1
+    fi
+    sudo /usr/libexec/dakota-secure-boot status
+
+# Check whether this system meets Easy Anti-Cheat for Linux v2 requirements
+[group('System')]
+check-anticheat:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -x /usr/libexec/dakota-secure-boot ]; then
+        echo "This Dakota image is not signed for Secure Boot." >&2
+        exit 1
+    fi
+    /usr/libexec/dakota-secure-boot check
+
+# Allow per-process network statistics (Mission Center, nethogs) for all users
+[group('System')]
+toggle-network-monitoring:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    UNIT=usr-bin-nethogs.mount
+    if [ ! -t 0 ]; then
+        echo "Interactive terminal required" >&2
+        exit 1
+    fi
+    if systemctl is-enabled --quiet "$UNIT" 2>/dev/null; then
+        echo "Per-process network monitoring is enabled."
+        gum confirm "Disable it?" || exit 0
+        sudo systemctl disable --now "$UNIT"
+        gum style --foreground 245 "Disabled. nethogs now needs sudo; restart Mission Center to apply."
+    else
+        echo "Per-process network monitoring is disabled."
+        echo "Enabling lets every local user run nethogs with packet-capture access (cap_net_raw)."
+        gum confirm "Enable it?" || exit 0
+        sudo systemctl enable --now "$UNIT"
+        gum style --foreground 82 "✓ Enabled. Restart Mission Center to see per-process network usage."
+    fi
+
+# Seal TPM disk unlock to the current boot state, after firmware or Secure Boot changes
+[group('System')]
+reseal-tpm-unlock:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -x /usr/libexec/dakota-secure-boot ]; then
+        echo "This Dakota image is not signed for Secure Boot." >&2
+        exit 1
+    fi
+    sudo /usr/libexec/dakota-secure-boot reseal
+
 # Show current kernel parameters and explain how to add persistent ones
 [group('System')]
 kargs:

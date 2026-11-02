@@ -115,12 +115,15 @@ public:
       # the fdsdk-layout symlinks into lib/ and share/. GL/vulkan itself is
       # created by gaming/steam-libs-i686-compat.bst — the i686 loader's
       # EXTRASYSCONFDIR expects %{libdir}/GL/vulkan/icd.d, and unlike x86_64
-      # no extension glue provides that link for the i386 tree.
+      # no extension glue provides that link for the i386 tree. Also export
+      # /etc/vulkan/icd.d/** so Steam's pressure-vessel discovers the 32-bit
+      # manifests on a standard XDG path.
       - "/usr/lib/i386-linux-gnu/GL/default/lib/libvulkan_*.so*"
       - "/usr/lib/i386-linux-gnu/GL/default/lib/vulkan/**"
       - "/usr/lib/i386-linux-gnu/GL/default/vulkan/**"
       - "/usr/lib/i386-linux-gnu/GL/default/share/vulkan/**"
       - "/usr/lib/i386-linux-gnu/GL/vulkan"
+      - "/etc/vulkan/icd.d/**"
 
       # GLVND/GLX/EGL runtime
       - "/usr/lib/i386-linux-gnu/libEGL.so*"

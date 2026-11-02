@@ -8,24 +8,19 @@ on:
   workflow_dispatch:
     inputs:
       group:
-        description: 'Which element group to track'
+        description: 'What to track'
         required: false
         default: 'all'
         type: choice
         options:
           - all
-          - auto-merge
-          - manual-merge
+          - bundle
           - core-junctions
-          - tarballs
 
 permissions: read-all
 
-# Own group, deliberately NOT dakota-bst-build-global: tracking only queries
-# upstream repos and release URLs to resolve refs — it never builds and never
-# touches the CAS, so it has no reason to wait behind (or contend with)
-# multi-hour BST builds. On 2026-08-22 the scheduled tracker entering the
-# shared build group cancelled the pending next build.
+# Tracking resolves refs and fetches kernel sources to check patch queues,
+# but never builds or publishes. Keep it independent of build concurrency.
 concurrency:
   group: dakota-source-track
   cancel-in-progress: false
@@ -33,293 +28,114 @@ concurrency:
 env:
   BST2_IMAGE: registry.gitlab.com/freedesktop-sdk/infrastructure/freedesktop-sdk-docker-images/bst2
 
+# Every non-junction update lands in ONE bundle PR (auto/track-bundle).
+# Always run a full tracking pass: a partial pass would drop pending updates.
+# Source selection and update logic are shared with `just update-sources`.
+# Recording/composition remain separate in .github/scripts/track_bundle.py.
 jobs:
+  tracking-matrix:
+    if: github.event_name != 'workflow_dispatch' || inputs.group != 'core-junctions'
+    runs-on: ubuntu-26.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Read shared source list
+        id: matrix
+        run: |
+          matrix=$(python3 scripts/update_sources.py --matrix)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   track:
+    needs: tracking-matrix
+    if: github.event_name != 'workflow_dispatch' || inputs.group != 'core-junctions'
     runs-on: ubuntu-26.04
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # ── auto-merge: Bluefin packages ──
-          - group: auto-merge
-            element: bluefin/brew.bst
-            branch: auto/track-brew
-            title: "chore(deps): update brew"
-            base_branch: testing
-          - group: auto-merge
-            element: bluefin/common.bst
-            branch: auto/track-common
-            title: "chore(deps): update common"
-            base_branch: testing
-          - group: auto-merge
-            element: bluefin/jetbrains-mono.bst
-            branch: auto/track-jetbrains-mono
-            title: "chore(deps): update jetbrains-mono"
-            base_branch: testing
-          - group: auto-merge
-            element: bluefin/shell-extensions/app-indicators.bst
-            branch: auto/track-app-indicators
-            title: "chore(deps): update app-indicators extension"
-            base_branch: testing
-          - group: auto-merge
-            element: bluefin/shell-extensions/blur-my-shell.bst
-            branch: auto/track-blur-my-shell
-            title: "chore(deps): update blur-my-shell extension"
-            base_branch: testing
-          - group: auto-merge
-            element: bluefin/shell-extensions/dash-to-dock.bst
-            branch: auto/track-dash-to-dock
-            title: "chore(deps): update dash-to-dock extension"
-            base_branch: testing
-          - group: auto-merge
-            element: bluefin/shell-extensions/gsconnect.bst
-            branch: auto/track-gsconnect
-            title: "chore(deps): update gsconnect extension"
-            base_branch: testing
-          - group: auto-merge
-            element: bluefin/shell-extensions/custom-command-menu.bst
-            branch: auto/track-custom-command-menu
-            title: "chore(deps): update custom-command-menu extension"
-            base_branch: testing
-          - group: auto-merge
-            element: bluefin/efibootmgr.bst
-            branch: auto/track-efibootmgr
-            title: "chore(deps): update efibootmgr"
-            base_branch: testing
-          - group: auto-merge
-            element: bluefin/shell-extensions/caffeine.bst
-            branch: auto/track-caffeine
-            title: "chore(deps): update caffeine extension"
-            base_branch: testing
-          - group: auto-merge
-            element: bluefin/distrobox.bst
-            branch: auto/track-distrobox
-            title: "chore(deps): update distrobox"
-            base_branch: testing
-          - group: auto-merge
-            element: bluefin/xdg-terminal-exec.bst
-            branch: auto/track-xdg-terminal-exec
-            title: "chore(deps): update xdg-terminal-exec"
-            base_branch: testing
-          - group: auto-merge
-            element: bluefin/nautilus-python.bst
-            branch: auto/track-nautilus-python
-            title: "chore(deps): update nautilus-python"
-            base_branch: testing
-          # ── manual-merge: non-junction elements ──
-          # Core junctions (freedesktop-sdk + gnome-build-meta) are tracked atomically
-          # by the separate track-core-junctions job. Use group=core-junctions to
-          # trigger that job manually.
-          - group: manual-merge
-            element: gnomeos-deps/bootc.bst
-            branch: auto/track-bootc
-            title: "chore(deps): update bootc"
-            base_branch: testing
-          - group: manual-merge
-            element: bluefin/sudo-rs.bst
-            branch: auto/track-sudo-rs
-            title: "chore(deps): update sudo-rs"
-            base_branch: testing
-          - group: manual-merge
-            element: bluefin/uutils-coreutils.bst
-            branch: auto/track-uutils-coreutils
-            title: "chore(deps): update uutils-coreutils"
-            base_branch: testing
-          # gradia-capture tracks the master branch head (no upstream tags), so
-          # every bump is unreleased code: manual-merge so it gets a look first.
-          - group: manual-merge
-            element: bluefin/shell-extensions/gradia-capture.bst
-            branch: auto/track-gradia-capture
-            title: "chore(deps): update gradia-capture extension"
-            base_branch: testing
-
+      matrix: ${{ fromJSON(needs.tracking-matrix.outputs.matrix) }}
     steps:
-      - name: Should this group run?
-        id: gate
-        run: |
-          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            # Only track common when triggered by a common publish event
-            if [ "${{ matrix.element }}" = "bluefin/common.bst" ]; then
-              echo "run=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "run=false" >> "$GITHUB_OUTPUT"
-            fi
-          else
-            GROUP="${{ github.event.inputs.group || 'all' }}"
-            if [ "$GROUP" = "all" ] || [ "$GROUP" = "${{ matrix.group }}" ]; then
-              echo "run=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "run=false" >> "$GITHUB_OUTPUT"
-            fi
-          fi
-
-      - name: Get mergeraptor token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
-        with:
-          app-id: ${{ secrets.MERGERAPTOR_APP_ID }}
-          private-key: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}
-
       - name: Setup Just
-        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2
+        uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b # v2
         with:
           tool: just
 
       - name: Checkout repository
-        if: steps.gate.outputs.run == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Pull BuildStream container image
-        if: steps.gate.outputs.run == 'true'
         run: podman pull "$BST2_IMAGE"
 
       - name: Track sources with BuildStream
-        if: steps.gate.outputs.run == 'true'
-        run: |
-          just bst --no-interactive source track "${{ matrix.element }}"
-
-      - name: Check for changes
-        if: steps.gate.outputs.run == 'true'
-        id: changes
-        run: |
-          BST_PATH="elements/${{ matrix.element }}"
-          if git diff --quiet; then
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            echo "No changes detected for ${{ matrix.element }}"
-          else
-            # bst source track can normalize ref format without changing the underlying
-            # commit (e.g. plain SHA -> git-describe "v0.2.13-0-g<sha>").
-            # Compare the set of terminal 40-char hex SHAs from ref: lines in both
-            # the old (HEAD) and new (working tree) file states.  If the sets are
-            # identical, only formatting changed — no real update, skip the PR.
-            OLD_SHAS=$(git show "HEAD:$BST_PATH" | grep -oP '^\s*ref:\s+\K\S+' | grep -oP '[0-9a-f]{40}$' | sort)
-            NEW_SHAS=$(grep -oP '^\s*ref:\s+\K\S+' "$BST_PATH" | grep -oP '[0-9a-f]{40}$' | sort)
-            if [ -n "$OLD_SHAS" ] && [ "$OLD_SHAS" = "$NEW_SHAS" ]; then
-              echo "has_changes=false" >> "$GITHUB_OUTPUT"
-              echo "Ref format normalized but same underlying commit(s) — no update, skipping PR"
-            else
-              echo "has_changes=true" >> "$GITHUB_OUTPUT"
-              echo "Changes detected:"
-              git diff --stat
-            fi
-          fi
-
-      - name: Create PR
-        if: steps.gate.outputs.run == 'true' && steps.changes.outputs.has_changes == 'true'
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ELEMENT: ${{ matrix.element }}
+        run: just update-sources --element "$ELEMENT"
+
+      - name: Record update
+        id: record
+        env:
+          ELEMENT: ${{ matrix.element }}
+          TITLE: ${{ matrix.title }}
+          NOTE: ${{ matrix.note || '' }}
         run: |
-          BRANCH="${{ matrix.branch }}"
-          BASE_TITLE="${{ matrix.title }}"
-          BST_PATH="elements/${{ matrix.element }}"
+          python3 .github/scripts/track_bundle.py record-element \
+            --element "$ELEMENT" --title "$TITLE" --note "$NOTE"
 
-          # Extract old and new refs from the diff for version context
-          OLD_REF=$(git diff -- "$BST_PATH" | grep '^-.*ref:' | grep -oP "ref:\s+\K\S+" || true)
-          NEW_REF=$(git diff -- "$BST_PATH" | grep '^+.*ref:' | grep -oP "ref:\s+\K\S+" || true)
+      - name: Upload update
+        if: steps.record.outputs.slug != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: track-${{ steps.record.outputs.slug }}
+          path: ${{ runner.temp }}/tracked
+          if-no-files-found: error
+          retention-days: 1
 
-          # Strip git-describe suffix (e.g. "v2026.03-17-gabcdef" -> "v2026.03", "4.4.15-3-gabcdef" -> "4.4.15")
-          # Only extract version when ref looks like a tag/describe (contains digits and dots/dashes after an optional "v")
-          # Raw 40-char SHAs are skipped (no version row in the PR body)
-          OLD_VER=$(echo "$OLD_REF" | grep -oP '^v?\d+[\d\.\-]+' | grep '\.' | sed 's/-$//' || true)
-          NEW_VER=$(echo "$NEW_REF" | grep -oP '^v?\d+[\d\.\-]+' | grep '\.' | sed 's/-$//' || true)
-
-          if [ -n "$OLD_VER" ] && [ -n "$NEW_VER" ] && [ "$OLD_VER" != "$NEW_VER" ]; then
-            TITLE="${BASE_TITLE}: ${OLD_VER} -> ${NEW_VER}"
-          else
-            TITLE="$BASE_TITLE"
-          fi
-
-          # Parse upstream GitHub repo from BST source URL (github:ORG/REPO.git)
-          UPSTREAM_SLUG=$(grep -oP 'url:\s+github:\K[^\s.]+(?:\.git)?' "$BST_PATH" | head -1 | sed 's/\.git$//' || true)
-          GITHUB_URL="https://github.com/${UPSTREAM_SLUG}"
-
-          # Extract short SHAs from refs for commit links
-          OLD_SHA=$(echo "$OLD_REF" | grep -oP '(?<=g)[0-9a-f]+$' || echo "$OLD_REF")
-          NEW_SHA=$(echo "$NEW_REF" | grep -oP '(?<=g)[0-9a-f]+$' || echo "$NEW_REF")
-
-          # All auto-merge and manual-merge elements target testing.
-          # testing is the development trunk; main is a release bookmark only.
-          BASE_BRANCH="${{ matrix.base_branch || 'testing' }}"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Stash the BST-tracked changes, switch to the correct target base,
-          # then re-apply so the PR diff is relative to $BASE_BRANCH — not main.
-          git stash push -- elements/
-          git checkout -B "$BRANCH" "origin/$BASE_BRANCH"
-          git stash pop
-
-          git add elements/
-          git commit -m "$TITLE"
-          git push --force-with-lease origin "$BRANCH"
-
-          # Build Renovate-style PR body
-          {
-            echo "## \`${{ matrix.element }}\` update"
-            echo ""
-            if [ -n "$UPSTREAM_SLUG" ]; then
-              echo "| | |"
-              echo "| --- | --- |"
-              echo "| **Source** | [$UPSTREAM_SLUG]($GITHUB_URL) |"
-              if [ -n "$OLD_VER" ] && [ -n "$NEW_VER" ]; then
-                echo "| **Version** | \`$OLD_VER\` → \`$NEW_VER\` |"
-              fi
-              if [ -n "$OLD_SHA" ] && [ -n "$NEW_SHA" ]; then
-                echo "| **Commits** | [\`${OLD_SHA:0:8}\`]($GITHUB_URL/commit/$OLD_SHA) → [\`${NEW_SHA:0:8}\`]($GITHUB_URL/commit/$NEW_SHA) |"
-                echo "| **Compare** | [$GITHUB_URL/compare/${OLD_SHA:0:8}...${NEW_SHA:0:8}]($GITHUB_URL/compare/${OLD_SHA}...${NEW_SHA}) |"
-              fi
-              echo "| **Releases** | [$GITHUB_URL/releases]($GITHUB_URL/releases) |"
-              echo ""
-            fi
-            echo "---"
-            echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
-          } > /tmp/pr-body.md
-
-          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -n "$EXISTING_PR" ]; then
-            echo "Updating existing PR #$EXISTING_PR"
-            gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
-            gh pr edit "$EXISTING_PR" --base "$BASE_BRANCH" 2>/dev/null || true
-            PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
-          else
-            PR_URL=$(gh pr create \
-              --base "$BASE_BRANCH" \
-              --head "$BRANCH" \
-              --title "$TITLE" \
-              --body-file /tmp/pr-body.md)
-          fi
-          echo "PR: $PR_URL"
-
-          if [ "${{ matrix.group }}" = "auto-merge" ] && [ "${{ matrix.base_branch || 'testing' }}" != "testing" ]; then
-            # Direct merge via mergeraptor bypass. --auto uses GitHub's auto-merge
-            # queue which does NOT honour bypass_pull_request_allowances — only
-            # direct merges do. With no required status checks and mergeraptor in
-            # bypass_pull_request_allowances, this merges immediately.
-            # Elements targeting testing are instead handled by renovate-automerge.yml
-            # after CI passes — no direct merge here.
-            gh pr merge "$PR_URL" --squash || echo "::warning::Could not merge PR"
-          fi
-
+  # Release URLs must advance before BuildStream re-pins checksums. The shared
+  # updater continues after individual failures and records only successes.
   track-tarballs:
+    if: github.event_name != 'workflow_dispatch' || inputs.group != 'core-junctions'
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Just
+        uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b # v2
+        with:
+          tool: just
+
+      - name: Update release assets
+        run: just update-sources --group tarballs --record-dir "$RUNNER_TEMP/tracked"
+
+      - name: Upload updates
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: track-tarballs
+          path: ${{ runner.temp }}/tracked
+          if-no-files-found: ignore
+          retention-days: 1
+
+  # ── One bundle PR for every non-junction update ───────────────────────────
+  bundle:
+    needs: [track, track-tarballs]
+    # Runs after partial tracking failures too: the remaining updates still
+    # ship, and the failed element rejoins the bundle on the next run.
+    if: ${{ !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.group != 'core-junctions') }}
     runs-on: ubuntu-26.04
     permissions:
       contents: write
       pull-requests: write
-    if: >-
-      github.event.inputs.group == 'all' ||
-      github.event.inputs.group == 'tarballs' ||
-      github.event_name == 'schedule'
     steps:
       - name: Get mergeraptor token
         id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         with:
           app-id: ${{ secrets.MERGERAPTOR_APP_ID }}
           private-key: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}
@@ -330,404 +146,29 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Setup Just
-        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2
+      - name: Download tracked updates
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          tool: just
+          pattern: track-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/tracked
 
-      - name: Configure git
+      - name: Warn about failed tracking
+        if: needs.track.result != 'success' || needs.track-tarballs.result != 'success'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          echo "::warning::Some elements failed to track (track: ${{ needs.track.result }}, track-tarballs: ${{ needs.track-tarballs.result }}). Their updates are missing from this bundle until a later run succeeds."
 
-      - name: Update brew-tarball
-        continue-on-error: true
+      - name: Compose bundle branch and PR
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # Space-separated element slugs (file basename without .bst) to hold
+          # out of the bundle, e.g. while an upstream regression is fixed.
+          SKIP: ${{ vars.TRACK_BUNDLE_SKIP }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          LATEST_VERSION=$(gh api repos/ublue-os/brew/releases --jq '.[0].tag_name // empty' 2>/dev/null | sed 's/^v//' || true)
-          if [ -z "$LATEST_VERSION" ]; then
-            echo "No ublue-os/brew releases found yet, skipping."
-            exit 0
-          fi
-          echo "Latest brew version: $LATEST_VERSION"
-
-          BST_FILE="elements/bluefin/brew-tarball.bst"
-          # Collect all unique versions present in the file; both arches should always match
-          VERSIONS=$(grep -oP 'download/\K[^/]+' "$BST_FILE" | sort -u)
-          VERSION_COUNT=$(echo "$VERSIONS" | wc -l)
-          if [ "$VERSION_COUNT" -gt 1 ]; then
-            echo "::warning::brew-tarball has mismatched arch versions: $VERSIONS — updating all"
-          fi
-          CURRENT_VERSION=$(echo "$VERSIONS" | head -1)
-          echo "Current version: $CURRENT_VERSION"
-
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
-            echo "brew-tarball is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|download/${CURRENT_VERSION}/|download/${LATEST_VERSION}/|g" "$BST_FILE"
-          just bst -o arch x86_64 source track bluefin/brew-tarball.bst
-          just bst -o arch aarch64 source track bluefin/brew-tarball.bst
-
-          BRANCH="auto/track-brew-tarball"
-          TITLE="chore(deps): update brew-tarball ${CURRENT_VERSION} -> ${LATEST_VERSION}"
-
-          git checkout -B "$BRANCH" origin/testing
-          git add "$BST_FILE"
-          git commit -m "$TITLE"
-          git push --force-with-lease origin "$BRANCH"
-          git checkout -f testing
-
-          {
-            echo "## brew-tarball update: \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`"
-            echo ""
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| **Source** | [ublue-os/brew](https://github.com/ublue-os/brew) |"
-            echo "| **Version** | \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\` |"
-            echo "| **Releases** | [https://github.com/ublue-os/brew/releases](https://github.com/ublue-os/brew/releases) |"
-            echo ""
-            echo "---"
-            echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
-          } > /tmp/pr-body.md
-
-          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -n "$EXISTING_PR" ]; then
-            gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
-            PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
-          else
-            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
-          fi
-          echo "PR: $PR_URL"
-
-      - name: Update wallpapers
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          WALL_RELEASE=$(gh api repos/ublue-os/artwork/releases \
-            --jq '[.[] | select(.tag_name | startswith("bluefin-"))][0].tag_name // empty')
-          echo "Latest wallpaper release: $WALL_RELEASE"
-
-          if [ -z "$WALL_RELEASE" ] || [ "$WALL_RELEASE" = "null" ]; then
-            echo "No bluefin wallpaper releases found, skipping."
-            exit 0
-          fi
-
-          BST_FILE="elements/bluefin/wallpapers.bst"
-          CURRENT_TAG=$(grep -oP 'download/\K[^/]+' "$BST_FILE")
-          echo "Current tag: $CURRENT_TAG"
-
-          if [ "$WALL_RELEASE" = "$CURRENT_TAG" ]; then
-            echo "wallpapers is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_TAG -> $WALL_RELEASE"
-          sed -i "s|download/${CURRENT_TAG}/|download/${WALL_RELEASE}/|" "$BST_FILE"
-          just bst -o arch x86_64 source track bluefin/wallpapers.bst
-
-          BRANCH="auto/track-wallpapers"
-          TITLE="chore(deps): update wallpapers ${CURRENT_TAG} -> ${WALL_RELEASE}"
-
-          git checkout -B "$BRANCH" origin/testing
-          git add "$BST_FILE"
-          git commit -m "$TITLE"
-          git push --force-with-lease origin "$BRANCH"
-          git checkout -f testing
-
-          {
-            echo "## wallpapers update: \`${CURRENT_TAG}\` → \`${WALL_RELEASE}\`"
-            echo ""
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| **Source** | [ublue-os/artwork](https://github.com/ublue-os/artwork) |"
-            echo "| **Tag** | \`${CURRENT_TAG}\` → \`${WALL_RELEASE}\` |"
-            echo "| **Releases** | [https://github.com/ublue-os/artwork/releases](https://github.com/ublue-os/artwork/releases) |"
-            echo ""
-            echo "---"
-            echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
-          } > /tmp/pr-body.md
-
-          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -n "$EXISTING_PR" ]; then
-            gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
-            PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
-          else
-            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
-          fi
-          echo "PR: $PR_URL"
-
-      - name: Update gum
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          LATEST_VERSION=$(gh api repos/charmbracelet/gum/releases/latest --jq '.tag_name' | sed 's/^v//')
-          echo "Latest gum version: $LATEST_VERSION"
-
-          BST_FILE="elements/bluefin/gum.bst"
-          CURRENT_VERSION=$(grep -oP 'download/v\K[0-9.]+' "$BST_FILE" | head -1)
-          echo "Current version: $CURRENT_VERSION"
-
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
-            echo "gum is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|v${CURRENT_VERSION}/gum_${CURRENT_VERSION}|v${LATEST_VERSION}/gum_${LATEST_VERSION}|g" "$BST_FILE"
-          just bst -o arch x86_64 source track bluefin/gum.bst
-          just bst -o arch aarch64 source track bluefin/gum.bst
-
-          BRANCH="auto/track-gum"
-          TITLE="chore(deps): update gum v${CURRENT_VERSION} -> v${LATEST_VERSION}"
-
-          git checkout -B "$BRANCH" origin/testing
-          git add "$BST_FILE"
-          git commit -m "$TITLE"
-          git push --force-with-lease origin "$BRANCH"
-          git checkout -f testing
-
-          {
-            echo "## gum update: \`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\`"
-            echo ""
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| **Source** | [charmbracelet/gum](https://github.com/charmbracelet/gum) |"
-            echo "| **Version** | \`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\` |"
-            echo "| **Changelog** | [https://github.com/charmbracelet/gum/releases/tag/v${LATEST_VERSION}](https://github.com/charmbracelet/gum/releases/tag/v${LATEST_VERSION}) |"
-            echo "| **Compare** | [v${CURRENT_VERSION}...v${LATEST_VERSION}](https://github.com/charmbracelet/gum/compare/v${CURRENT_VERSION}...v${LATEST_VERSION}) |"
-            echo ""
-            echo "---"
-            echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
-          } > /tmp/pr-body.md
-
-          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -n "$EXISTING_PR" ]; then
-            gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
-            PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
-          else
-            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
-          fi
-          echo "PR: $PR_URL"
-
-      - name: Update gtk4-layer-shell
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          LATEST_VERSION=$(gh api repos/wmww/gtk4-layer-shell/releases/latest --jq '.tag_name' | sed 's/^v//')
-          echo "Latest gtk4-layer-shell version: $LATEST_VERSION"
-
-          BST_FILE="elements/bluefin/gtk4-layer-shell.bst"
-          CURRENT_VERSION=$(grep -oP 'tags/v\K[0-9]+\.[0-9]+\.[0-9]+' "$BST_FILE" | head -1)
-          echo "Current version: $CURRENT_VERSION"
-
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
-            echo "gtk4-layer-shell is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|tags/v${CURRENT_VERSION}|tags/v${LATEST_VERSION}|g" "$BST_FILE"
-          just bst source track bluefin/gtk4-layer-shell.bst
-
-          BRANCH="auto/track-gtk4-layer-shell"
-          TITLE="chore(deps): update gtk4-layer-shell v${CURRENT_VERSION} -> v${LATEST_VERSION}"
-
-          git checkout -B "$BRANCH" origin/testing
-          git add "$BST_FILE"
-          git commit -m "$TITLE"
-          git push --force-with-lease origin "$BRANCH"
-          git checkout -f testing
-
-          {
-            echo "## gtk4-layer-shell update: \`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\`"
-            echo ""
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| **Source** | [wmww/gtk4-layer-shell](https://github.com/wmww/gtk4-layer-shell) |"
-            echo "| **Version** | \`v${CURRENT_VERSION}\` → \`v${LATEST_VERSION}\` |"
-            echo "| **Changelog** | [https://github.com/wmww/gtk4-layer-shell/releases/tag/v${LATEST_VERSION}](https://github.com/wmww/gtk4-layer-shell/releases/tag/v${LATEST_VERSION}) |"
-            echo "| **Compare** | [v${CURRENT_VERSION}...v${LATEST_VERSION}](https://github.com/wmww/gtk4-layer-shell/compare/v${CURRENT_VERSION}...v${LATEST_VERSION}) |"
-            echo ""
-            echo "---"
-            echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
-          } > /tmp/pr-body.md
-
-          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -n "$EXISTING_PR" ]; then
-            gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
-            PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
-          else
-            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
-          fi
-          echo "PR: $PR_URL"
-
-      - name: Update tailscale
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          LATEST_VERSION=$(gh api repos/tailscale/tailscale/releases/latest --jq '.tag_name' | sed 's/^v//')
-          echo "Latest tailscale version: $LATEST_VERSION"
-
-          BST_FILE="elements/bluefin/tailscale.bst"
-          CURRENT_VERSION=$(grep -oP 'tailscale_\K[0-9][0-9.]+(?=_amd64)' "$BST_FILE" | head -1)
-          echo "Current version: $CURRENT_VERSION"
-
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
-            echo "tailscale is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|tailscale_${CURRENT_VERSION}_|tailscale_${LATEST_VERSION}_|g" "$BST_FILE"
-          just bst -o arch x86_64 source track bluefin/tailscale.bst
-          just bst -o arch aarch64 source track bluefin/tailscale.bst
-
-          BRANCH="auto/track-tailscale"
-          TITLE="chore(deps): update tailscale ${CURRENT_VERSION} -> ${LATEST_VERSION}"
-
-          git checkout -B "$BRANCH" origin/testing
-          git add "$BST_FILE"
-          git commit -m "$TITLE"
-          git push --force-with-lease origin "$BRANCH"
-          git checkout -f testing
-
-          {
-            echo "## tailscale update: \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`"
-            echo ""
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| **Source** | [tailscale/tailscale](https://github.com/tailscale/tailscale) |"
-            echo "| **Version** | \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\` |"
-            echo "| **Changelog** | [https://github.com/tailscale/tailscale/releases/tag/v${LATEST_VERSION}](https://github.com/tailscale/tailscale/releases/tag/v${LATEST_VERSION}) |"
-            echo "| **Compare** | [v${CURRENT_VERSION}...v${LATEST_VERSION}](https://github.com/tailscale/tailscale/compare/v${CURRENT_VERSION}...v${LATEST_VERSION}) |"
-            echo ""
-            echo "---"
-            echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
-          } > /tmp/pr-body.md
-
-          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -n "$EXISTING_PR" ]; then
-            gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
-            PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
-          else
-            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
-          fi
-          echo "PR: $PR_URL"
-
-      - name: Update uupd
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          LATEST_VERSION=$(gh api repos/ublue-os/uupd/releases/latest --jq '.tag_name')
-          echo "Latest uupd version: $LATEST_VERSION"
-
-          BST_FILE="elements/bluefin/uupd.bst"
-          CURRENT_VERSION=$(grep -oP 'download/\Kv[^/]+' "$BST_FILE" | head -1)
-          echo "Current version: $CURRENT_VERSION"
-
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
-            echo "uupd is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|download/${CURRENT_VERSION}/|download/${LATEST_VERSION}/|g" "$BST_FILE"
-          just bst -o arch x86_64 source track bluefin/uupd.bst
-          just bst -o arch aarch64 source track bluefin/uupd.bst
-
-          BRANCH="auto/track-uupd"
-          TITLE="chore(deps): update uupd ${CURRENT_VERSION} -> ${LATEST_VERSION}"
-
-          git checkout -B "$BRANCH" origin/testing
-          git add "$BST_FILE"
-          git commit -m "$TITLE"
-          git push --force-with-lease origin "$BRANCH"
-          git checkout -f testing
-
-          {
-            echo "## uupd update: \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`"
-            echo ""
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| **Source** | [ublue-os/uupd](https://github.com/ublue-os/uupd) |"
-            echo "| **Version** | \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\` |"
-            echo "| **Changelog** | [https://github.com/ublue-os/uupd/releases/tag/${LATEST_VERSION}](https://github.com/ublue-os/uupd/releases/tag/${LATEST_VERSION}) |"
-            echo "| **Compare** | [${CURRENT_VERSION}...${LATEST_VERSION}](https://github.com/ublue-os/uupd/compare/${CURRENT_VERSION}...${LATEST_VERSION}) |"
-            echo ""
-            echo "---"
-            echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
-          } > /tmp/pr-body.md
-
-          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -n "$EXISTING_PR" ]; then
-            gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
-            PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
-          else
-            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
-          fi
-          echo "PR: $PR_URL"
-
-      - name: Update jetbrains-mono-nerd-font
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          LATEST_VERSION=$(gh api repos/ryanoasis/nerd-fonts/releases/latest --jq '.tag_name')
-          echo "Latest nerd-fonts version: $LATEST_VERSION"
-
-          BST_FILE="elements/bluefin/jetbrains-mono-nerd-font.bst"
-          CURRENT_VERSION=$(grep -oP 'download/\Kv[^/]+' "$BST_FILE" | head -1)
-          echo "Current version: $CURRENT_VERSION"
-
-          if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
-            echo "jetbrains-mono-nerd-font is already up to date."
-            exit 0
-          fi
-
-          echo "Updating: $CURRENT_VERSION -> $LATEST_VERSION"
-          sed -i "s|download/${CURRENT_VERSION}/|download/${LATEST_VERSION}/|g" "$BST_FILE"
-          just bst source track bluefin/jetbrains-mono-nerd-font.bst
-
-          BRANCH="auto/track-jetbrains-mono-nerd-font"
-          TITLE="chore(deps): update jetbrains-mono-nerd-font ${CURRENT_VERSION} -> ${LATEST_VERSION}"
-
-          git checkout -B "$BRANCH" origin/testing
-          git add "$BST_FILE"
-          git commit -m "$TITLE"
-          git push --force-with-lease origin "$BRANCH"
-          git checkout -f testing
-
-          {
-            echo "## jetbrains-mono-nerd-font update: \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\`"
-            echo ""
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| **Source** | [ryanoasis/nerd-fonts](https://github.com/ryanoasis/nerd-fonts) |"
-            echo "| **Version** | \`${CURRENT_VERSION}\` → \`${LATEST_VERSION}\` |"
-            echo "| **Changelog** | [https://github.com/ryanoasis/nerd-fonts/releases/tag/${LATEST_VERSION}](https://github.com/ryanoasis/nerd-fonts/releases/tag/${LATEST_VERSION}) |"
-            echo "| **Compare** | [${CURRENT_VERSION}...${LATEST_VERSION}](https://github.com/ryanoasis/nerd-fonts/compare/${CURRENT_VERSION}...${LATEST_VERSION}) |"
-            echo ""
-            echo "---"
-            echo "*Generated by [Track BuildStream Sources](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*"
-          } > /tmp/pr-body.md
-
-          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -n "$EXISTING_PR" ]; then
-            gh pr edit "$EXISTING_PR" --title "$TITLE" --body-file /tmp/pr-body.md
-            PR_URL=$(gh pr view "$EXISTING_PR" --json url --jq '.url')
-          else
-            PR_URL=$(gh pr create --base testing --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr-body.md)
-          fi
-          echo "PR: $PR_URL"
+          python3 .github/scripts/track_bundle.py compose \
+            --tracked "$RUNNER_TEMP/tracked" --branch auto/track-bundle --base testing \
+            --skip "$SKIP" --run-url "$RUN_URL"
 
   # ── Atomic co-tracking of core junctions ──────────────────────────────────
   # freedesktop-sdk.bst overrides reference gnome-build-meta.bst elements directly.
@@ -744,7 +185,7 @@ jobs:
     steps:
       - name: Get mergeraptor token
         id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         with:
           app-id: ${{ secrets.MERGERAPTOR_APP_ID }}
           private-key: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}
@@ -756,41 +197,15 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Just
-        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2
+        uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b # v2
         with:
           tool: just
 
       - name: Pull BuildStream container image
         run: podman pull "$BST2_IMAGE"
 
-      - name: Track gnome-build-meta, derive freedesktop-sdk from its pin
-        run: |
-          just bst --no-interactive source track gnome-build-meta.bst
-
-          # freedesktop-sdk must match gnome-build-meta's own pin (the junction
-          # overrides and patch queue are only valid against it), so derive the
-          # ref from GBM instead of tracking the fdsdk glob independently.
-          gbm_ref=$(awk '/^[[:space:]]*ref: / { print $2; exit }' elements/gnome-build-meta.bst)
-          if [[ ! "$gbm_ref" =~ -g([0-9a-f]{40})$ ]]; then
-            echo "ERROR: could not extract GBM sha from ref: ${gbm_ref}" >&2
-            exit 1
-          fi
-          gbm_sha="${BASH_REMATCH[1]}"
-
-          files_api="https://gitlab.gnome.org/api/v4/projects/GNOME%2Fgnome-build-meta/repository/files"
-          fdsdk_ref=$(curl -fsSL "${files_api}/elements%2Ffreedesktop-sdk.bst/raw?ref=${gbm_sha}" \
-            | awk '/url: gitlab:freedesktop-sdk/ { found=1 } found && /^[[:space:]]*ref: / { print $2; exit }')
-          if [ -z "$fdsdk_ref" ]; then
-            echo "ERROR: could not read the freedesktop-sdk pin from gnome-build-meta @ ${gbm_sha}" >&2
-            exit 1
-          fi
-          sed -i "0,/^\s*ref:/{s|^\(\s*\)ref:.*|\1ref: ${fdsdk_ref}|}" elements/freedesktop-sdk.bst
-
-          # Mirror gnome-build-meta's fdsdk patch queue and write the offline
-          # drift manifest, then assert it. Failing here means the sync broke
-          # and the PR should not be opened.
-          just patch-sync
-          just patch-drift-check
+      - name: Track gnome-build-meta, derive freedesktop-sdk and plugin pins from it
+        run: just update-sources --group core-junctions
 
       - name: Create or update PR
         env:
@@ -801,7 +216,7 @@ jobs:
 
           git checkout -B auto/track-core-junctions origin/testing
           # patch-sync adds and removes files, so stage first and test the index.
-          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst patches/freedesktop-sdk patches/freedesktop-sdk.manifest.json
+          git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst elements/plugins/buildstream-plugins-community.bst patches/freedesktop-sdk patches/freedesktop-sdk.manifest.json
           git diff --cached --quiet && { echo "No junction updates"; exit 0; }
           git commit -m "chore(deps): update core junctions (gnome-build-meta + freedesktop-sdk)"
           git push --force-with-lease origin auto/track-core-junctions
@@ -815,6 +230,6 @@ jobs:
               --base testing \
               --head auto/track-core-junctions \
               --title "chore(deps): update core junctions (gnome-build-meta + freedesktop-sdk)" \
-              --body "Updates \`gnome-build-meta.bst\`, derives the \`freedesktop-sdk.bst\` pin from it, and re-syncs \`patches/freedesktop-sdk\`. Manual review required — junction bumps can break downstream elements.")
+              --body "Updates \`gnome-build-meta.bst\`, derives the \`freedesktop-sdk.bst\` and \`plugins/buildstream-plugins-community.bst\` pins from it, and re-syncs \`patches/freedesktop-sdk\`. Manual review required — junction bumps can break downstream elements.")
             echo "PR: $PR_URL"
           fi

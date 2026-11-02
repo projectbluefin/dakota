@@ -4,11 +4,7 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/common.git
   track: main
-  ref: v2026.08-207-g725dbf68ccff8ae2ad74300430f984ee9ea8206c
-# Consume common's fastfetch layout directly; only adapt the install-date input.
-# Drop this patch once common provides a shared install-date helper.
-- kind: patch
-  path: patches/common/0001-fastfetch-install-date.patch
+  ref: v2026.11-0-g07d6b3eded1b01236f32344a9a4074e12335c7d4
 # Dakota uses Ghostty as primary terminal: enable dual-theme to track GNOME Dark/Light style.
 # Drop this patch once common ships dual-theme by default.
 - kind: patch
@@ -19,16 +15,28 @@ sources:
   path: patches/common/0003-uwelcome-interactive-only.patch
 - kind: patch
   path: patches/common/0004-policy-drop-redhat-gpg-entries.patch
+# The weekly stats are fetched at build time elsewhere; Dakota builds have no
+# network, so drop the two lines rather than print missing-file errors.
+- kind: patch
+  path: patches/common/0006-fastfetch-drop-weekly-stats.patch
 - kind: git_module
   url: github:projectbluefin/branding/
   path: bluefin-branding
   ref: f5213ca61615bb79a8315fc4c5378a80ca93922e
 - kind: local
   path: files/wallpaper-month
+- kind: remote
+  url: github-raw:projectbluefin/artwork/de74de65647f9109594345fd30966136d70fa458/assets/vector/logos/bluefin/bluefin-logo-light.svg
+  ref: d336d743082bded58c561c2c53baf1896dae87d7346224d9d06512e6c247cf74
+  filename: bluefin-logo-light.svg
+- kind: remote
+  url: github-raw:projectbluefin/artwork/de74de65647f9109594345fd30966136d70fa458/assets/vector/logos/bluefin/bluefin-logo-dark.svg
+  ref: 4ae1d486e6e73743fad1e1ef625615c4a28e72bbcc0a966ba3c5294303e4e380
+  filename: bluefin-logo-dark.svg
 
 build-depends:
 - core/sandbox-tools.bst
-- gnome-build-meta.bst:gnomeos-deps/just.bst
+- gnome-build-meta.bst:freedesktop-sdk-extra.bst:components/just.bst
 
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
@@ -59,35 +67,30 @@ config:
     # detection on Dakota's real /home; common respelled everything to
     # /home/linuxbrew in projectbluefin/common#997. Guard against the bad
     # spelling regressing upstream (.agents/skills/dakota-workstation/references/host-homebrew.md).
-    if grep -rl "/var/home/linuxbrew" system_files/shared system_files/bluefin; then
+    # The sandbox has bash, coreutils and sed but no grep or find
+    # (core/sandbox-tools.bst), so walk the tree with globstar and print
+    # matching files with sed's F command.
+    linuxbrew_refs="$(bash -O globstar -O dotglob -O nullglob -c '
+      for f in system_files/shared/** system_files/bluefin/**; do
+        if [ -f "$f" ] && [ ! -L "$f" ]; then
+          sed -n "\#/var/home/linuxbrew#{F;q}" "$f"
+        fi
+      done')"
+    if [ -n "$linuxbrew_refs" ]; then
+      printf '%s\n' "$linuxbrew_refs" >&2
       echo "ERROR: /var/home/linuxbrew references above break brew bottle-prefix detection — fix them in projectbluefin/common" >&2
       exit 1
     fi
 
-    # Dakota-only: make fastfetch's image line show the real stream tag.
-    # Unprivileged `bootc status` requires root on bootc >= 1.14, so the
-    # script's bootc fallback is dead in user sessions — and Dakota's baked
-    # image-tag is always "latest" because promotion retags the same digest
-    # (unlike Bluefin/LTS/Aurora, which bake the tag per-stream build).
-    # ublue-booted-image.service (bluefin/firstboot-date.bst) records the
-    # booted ref in /run/ublue-os/booted-image at boot; teach the script to
-    # prefer it. Guard so an upstream rewrite of the script fails loudly
-    # here instead of silently shipping an unpatched fastfetch.
-    # NB: the build sandbox has only bash + coreutils + sed (no grep/awk) —
-    # see core/sandbox-tools.bst — so guard and patch are sed/wc based.
-    IMG_INFO="system_files/shared/usr/bin/ublue-image-info.sh"
-    if [ "$(sed -n '/\.status\.booted\.image\.image\.image/p' "$IMG_INFO" | wc -l)" != 1 ]; then
-      echo "ERROR: ublue-image-info.sh changed upstream — re-fit the booted-image patch (see ublue-booted-image.service)" >&2
+    # The Papers Flatpak cannot see the host's /usr/share/doc, so common's
+    # logo-menu Documentation entry opens nothing. Use the image's own Papers
+    # (gnome-build-meta core/papers.bst, pulled in by bluefin/deps.bst).
+    DOC_MENU="system_files/bluefin/etc/dconf/db/distro.d/04-bluefin-custom-command-menu"
+    if [ "$(sed -n '\#flatpak run org\.gnome\.Papers /usr/share/doc/bluefin/bluefin\.pdf#p' "$DOC_MENU" | wc -l)" != 1 ]; then
+      echo "ERROR: common's Documentation menu entry changed upstream — re-fit the host Papers retarget" >&2
       exit 1
     fi
-    sed -i '/\.status\.booted\.image\.image\.image/a \
-    \
-    # Dakota: prefer the boot-time snapshot written by ublue-booted-image.service.\
-    # Unprivileged bootc status fails on bootc >= 1.14, so the query above is dead\
-    # in user sessions, and the baked Dakota tag is always "latest".\
-    if [[ -r /run/ublue-os/booted-image ]]; then\
-    \tread -r BOOTED_REF < /run/ublue-os/booted-image\
-    fi' "$IMG_INFO"
+    sed -i 's#flatpak run org\.gnome\.Papers /usr/share/doc/bluefin/bluefin\.pdf#/usr/bin/papers /usr/share/doc/bluefin/bluefin.pdf#' "$DOC_MENU"
 
     cp -r system_files/bluefin/usr/./ "%{install-root}%{prefix}/"
     cp -r system_files/shared/usr/./ "%{install-root}%{prefix}/"
@@ -114,8 +117,10 @@ config:
     # Map Bluefin icons to GNOME OS expected names
     # About dialog (gnome-control-center reads LOGO=img-logo-icon from os-release,
     # then looks for img-logo-icon-text-dark, img-logo-icon-text, img-logo-icon-dark, img-logo-icon)
-    cp "%{install-root}%{datadir}/pixmaps/fedora-logo-icon.png" "%{install-root}%{datadir}/pixmaps/img-logo-icon.png"
-    cp "%{install-root}%{datadir}/pixmaps/fedora-logo-icon.png" "%{install-root}%{datadir}/pixmaps/img-logo-icon-dark.png"
+    install -Dm644 bluefin-logo-light.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon-text.svg"
+    install -Dm644 bluefin-logo-dark.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon-text-dark.svg"
+    install -Dm644 bluefin-logo-light.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon.svg"
+    install -Dm644 bluefin-logo-dark.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon-dark.svg"
     # Override GNOME OS boot logo with Bluefin branding
     cp "%{install-root}%{datadir}/pixmaps/fedora-gdm-logo.png" "%{install-root}%{datadir}/pixmaps/gnome-boot-logo.png"
     install -Dm755 bluefin-wallpaper-month-sync "%{install-root}%{prefix}/libexec/bluefin-wallpaper-month-sync"
@@ -136,6 +141,14 @@ config:
     # Dakota uses its own ublue-motd (from motd.bst) with a double-display guard.
     # Remove common's umotd.sh hook to prevent dual MOTD on every login.
     rm -f "%{install-root}%{sysconfdir}/profile.d/umotd.sh"
+
+    # System Update, Community and Documentation launchers duplicate Control Center,
+    # which already provides updates, the Community discussions link and the Bluefin
+    # PDF docs on Dakota. Drop the three icons common ships for Bluefin/bluefin-lts.
+    # The `ujust update` command itself is untouched; only the duplicate icons go.
+    rm -f "%{install-root}%{datadir}/applications/system-update.desktop"
+    rm -f "%{install-root}%{datadir}/applications/discourse.desktop"
+    rm -f "%{install-root}%{datadir}/applications/documentation.desktop"
 
     # Add BudsLink to default system flatpaks
     echo 'flatpak "io.github.maniacx.BudsLink"' >> "%{install-root}%{datadir}/ublue-os/homebrew/system-flatpaks.Brewfile"

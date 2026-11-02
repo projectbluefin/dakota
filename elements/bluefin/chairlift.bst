@@ -5,18 +5,18 @@ kind: manual
 # fixed-path privileged helper, its PolicyKit policy, and the GSettings
 # schemas from the same checksummed release archive the cask installs.
 # The helper path is pinned by the policy's exec.path annotation. Keep this
-# release in step with the cask's version (ublue-os/homebrew-tap
+# release in step with the cask's version (projectbluefin/homebrew-tap
 # Casks/chairlift.rb). The bootc policy and /usr/share/chairlift/config.yml
 # come from common.bst.
 sources:
 - kind: tar
   (?):
   - arch == "x86_64":
-      url: github_files:projectbluefin/chairlift/releases/download/v26.09.0-alpha.2/chairlift_26.09.0-alpha.2_linux_amd64.tar.gz
-      ref: 18f630bb7de0e921ba12ae8c0650adf5e550b0cde203938d73d534382f196d08
+      url: github_files:projectbluefin/chairlift/releases/download/v26.10.4/chairlift_26.10.4_linux_amd64.tar.gz
+      ref: be9824c2caa368cdf8f35a99dd18871076fb3db003cfb62e3c63b43439ff834a
   - arch == "aarch64":
-      url: github_files:projectbluefin/chairlift/releases/download/v26.09.0-alpha.2/chairlift_26.09.0-alpha.2_linux_arm64.tar.gz
-      ref: cb64663a0e2ae87b049bacd431de9d9c1925833006559c8310f8bd53ec938a86
+      url: github_files:projectbluefin/chairlift/releases/download/v26.10.4/chairlift_26.10.4_linux_arm64.tar.gz
+      ref: c38a0df47dc107527b3686610192602db1dcff51375cc5874115fcdf47c57028
   base-dir: ""
 
 build-depends:
@@ -32,7 +32,7 @@ variables:
 config:
   install-commands:
   - |
-    install -Dm755 -t "%{install-root}%{bindir}" chairlift-ublue-helper
+    install -Dm755 -t "%{install-root}%{bindir}" chairlift-helper
   - |
     install -Dm644 -t "%{install-root}%{datadir}/polkit-1/actions" \
       data/io.projectbluefin.chairlift.ublue.policy

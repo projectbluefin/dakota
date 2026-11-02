@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:aunetx/blur-my-shell.git
   track: v*
-  ref: v73-0-g425761d5504941899cfb8cda24202d829024c622
+  ref: v77-0-gb1e415cc5ff3dffef72a69b552d8c64ae7d28a45
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-make.bst
@@ -14,6 +14,9 @@ depends:
 - freedesktop-sdk.bst:components/gettext.bst
 - gnome-build-meta.bst:sdk/glib.bst
 - gnome-build-meta.bst:core/gnome-shell.bst
+
+runtime-depends:
+- bluefin/gnome-rounded-blur.bst
 
 variables:
   strip-binaries: ""

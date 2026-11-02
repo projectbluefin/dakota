@@ -283,14 +283,12 @@ class WorkflowContractTests(unittest.TestCase):
     def test_post_release_keeps_digest_checks_and_cleanup(self):
         workflow = (ROOT / ".github/workflows/execute-release.yml").read_text()
         post = workflow.split("\n  post-release-verify:\n", 1)[1]
-        self.assertIn("needs: [freshness-check, execute, create-multiarch-stable]", post)
-        self.assertIn("if: inputs.dry_run != true && needs.execute.result == 'success' && "
-                      "needs.create-multiarch-stable.result == 'success'", post)
+        self.assertIn("needs: [freshness-check, execute]\n", post)
+        self.assertIn("if: inputs.dry_run != true && needs.execute.result == 'success'\n", post)
         self.assertIn("BUILD_SHA: ${{ needs.freshness-check.outputs.build_sha }}", post)
         self.assertEqual(post.split("    steps:\n", 1)[1].splitlines()[0],
                          "      - name: Verify :stable points to promoted digest")
-        self.assertIn("Verify :stable-multiarch exists", post)
-        self.assertIn('|| { echo "::error::stable-multiarch tag missing"; exit 1; }', post)
+        self.assertNotIn("multiarch", workflow)
         self.assertIn("Detect stale auto/* promotion branches", post)
         for image in ["dakota", "dakota-nvidia", "dakota-gaming", "dakota-nvidia-gaming"]:
             self.assertIn(f"      - name: Prune untagged GHCR versions for {image}\n", post)
@@ -363,6 +361,111 @@ class PostReleaseDigestTests(unittest.TestCase):
         for image in self.IMAGES:
             with self.subTest(image=image):
                 result, _ = self.verify(image)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn(f"::error::{image}:stable digest=", result.stdout)
+
+
+@unittest.skipUnless(shutil.which("bash") and shutil.which("jq"),
+                     "bash and jq are required to exercise the workflow steps")
+class RollbackTests(unittest.TestCase):
+    IMAGES = ("dakota", "dakota-nvidia", "dakota-gaming", "dakota-nvidia-gaming")
+    WORKFLOW = ROOT / ".github/workflows/rollback-stable.yml"
+
+    def digest(self, image):
+        return "sha256:" + format(self.IMAGES.index(image) + 1, "x") * 64
+
+    def run_step(self, name, missing="", mismatch="", digests=None):
+        # Exercise the actual workflow step with real jq and a stub skopeo that
+        # logs its calls. No registry access or writes.
+        workflow = self.WORKFLOW.read_text()
+        step = workflow.split(f"      - name: {name}\n", 1)[1]
+        body = step.split("        run: |\n", 1)[1].splitlines(keepends=True)
+        # The run block ends at the first non-blank line indented less than it.
+        end = next((i for i, line in enumerate(body)
+                    if line.strip() and not line.startswith(" " * 10)), len(body))
+        script = textwrap.dedent("".join(body[:end]))
+        images = workflow.split("\n  IMAGES: ", 1)[1].split("\n", 1)[0]
+        stub = f"#!{sys.executable}\n" + textwrap.dedent('''\
+            import json, os, sys
+            from pathlib import Path
+            args = sys.argv[1:]
+            with Path(os.environ["RELEASE_TEST_LOG"]).open("a") as log:
+                log.write(json.dumps(args) + "\\n")
+            digests = json.loads(os.environ["EXPECTED_DIGESTS"])
+            if args[:2] == ["inspect", "--no-tags"] and len(args) == 3:
+                image, tag = args[2].removeprefix("docker://ghcr.io/projectbluefin/").split(":")
+                if image == os.environ["MISSING_IMAGE"]:
+                    print("manifest unknown", file=sys.stderr)
+                    sys.exit(1)
+                wrong = tag == "stable" and image == os.environ["MISMATCH_IMAGE"]
+                print(json.dumps({"Digest": "sha256:" + "f" * 64 if wrong else digests[image]}))
+            elif args[:3] == ["copy", "--preserve-digests", "--all"] and len(args) == 5:
+                pass
+            else:
+                sys.exit(99)
+            ''')
+        expected = {image: self.digest(image) for image in self.IMAGES}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log, output = root / "commands.jsonl", root / "github_output"
+            log.touch()
+            output.touch()
+            skopeo = root / "skopeo"
+            skopeo.write_text(stub)
+            skopeo.chmod(0o700)
+            env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"],
+                       RELEASE_TEST_LOG=str(log), GITHUB_OUTPUT=str(output), IMAGES=images,
+                       TARGET_SHA=SHA, MISSING_IMAGE=missing, MISMATCH_IMAGE=mismatch,
+                       EXPECTED_DIGESTS=json.dumps(expected),
+                       DIGESTS=json.dumps(expected if digests is None else digests))
+            result = subprocess.run(["bash", "-c", script], cwd=root, env=env,
+                                    capture_output=True, text=True, timeout=20)
+            calls = [json.loads(line) for line in log.read_text().splitlines()]
+            outputs = output.read_text()
+        return result, calls, outputs
+
+    def test_rolls_back_the_same_four_variants_promotion_moves(self):
+        rollback = self.WORKFLOW.read_text()
+        promotion = (ROOT / ".github/workflows/execute-release.yml").read_text()
+        self.assertIn("\n  IMAGES: " + " ".join(self.IMAGES) + "\n", rollback)
+        self.assertIn("for image in " + " ".join(self.IMAGES) + "; do", promotion)
+        self.assertNotIn("multiarch", rollback)
+        self.assertNotIn("aarch64", rollback)
+
+    def test_inspect_captures_all_four_digests(self):
+        result, calls, outputs = self.run_step("Inspect SHA-pinned images and capture digests")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([call[-1] for call in calls],
+                         [f"docker://ghcr.io/projectbluefin/{image}:{SHA}" for image in self.IMAGES])
+        self.assertTrue(outputs.startswith("digests="), outputs)
+        self.assertEqual(json.loads(outputs.removeprefix("digests=")),
+                         {image: self.digest(image) for image in self.IMAGES})
+
+    def test_any_missing_variant_refuses_a_partial_set(self):
+        for image in self.IMAGES:
+            with self.subTest(image=image):
+                result, _, outputs = self.run_step("Inspect SHA-pinned images and capture digests",
+                                                   missing=image)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn(f"::error::ghcr.io/projectbluefin/{image}:{SHA} not found", result.stdout)
+                self.assertEqual(outputs, "")
+
+    def test_revert_copies_each_verified_digest_not_the_sha_tag(self):
+        result, calls, _ = self.run_step("Revert :stable tags to the verified digests")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls, [
+            ["copy", "--preserve-digests", "--all",
+             f"docker://ghcr.io/projectbluefin/{image}@{self.digest(image)}",
+             f"docker://ghcr.io/projectbluefin/{image}:stable"]
+            for image in self.IMAGES])
+
+    def test_reverted_digests_must_all_match(self):
+        result, _, _ = self.run_step("Verify reverted :stable digests match target")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for image in self.IMAGES:
+            with self.subTest(image=image):
+                result, _, _ = self.run_step("Verify reverted :stable digests match target",
+                                             mismatch=image)
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertIn(f"::error::{image}:stable digest=", result.stdout)
 

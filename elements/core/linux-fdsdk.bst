@@ -63,7 +63,7 @@ environment:
   # gcc's --with-arch_64 default. KCFLAGS is appended after KBUILD_CFLAGS,
   # so a later -march wins.
   (?):
-  - x86_64_v3:
+  - arch == "x86_64" and x86_64_v3:
       KCFLAGS: "-march=x86-64-v3 -mtune=skylake"
 
 environment-nocache:
@@ -95,7 +95,7 @@ config:
   - |
     # Drop expectations for options this newer stable tree no longer offers.
     # Existing symbols whose dependencies are not met remain hard failures.
-    find . -name 'Kconfig*' -exec grep -h '^\(menu\)\{0,1\}config ' {} + \
+    find . -name 'Kconfig*' -exec grep -h '^[[:space:]]*\(menu\)\{0,1\}config[[:space:]]' {} + \
       | awk '{print $2}' | sort -u > .kconfig-symbols
     cp expected-configs expected-configs.orig
     while IFS= read -r cfg; do
@@ -193,9 +193,12 @@ public:
 sources:
 - kind: git_repo
   url: kernel:linux/kernel/git/stable/linux.git
-  # Testing tracks the 7.2 stable series; rc kernels stay on next.
-  track: v7.2.*
-  ref: v7.2.6-0-g500df175a7f9e6bc1a9c328590ca5150f84f9ff0
+  # Testing tracks the 7.3 stable series; rc kernels stay on next. The
+  # glob also matches the bare v7.3 release tag, so exclude the rcs.
+  track: v7.3*
+  exclude:
+  - v7.3-rc*
+  ref: v7.3.1-0-g79a907609d53d5cd645b42c11550d295d43abf99
 - kind: patch_queue
   path: patches/linux
 - kind: local

@@ -11,8 +11,11 @@ config:
       ln -sr "%{install-root}/usr/bin/uutils-coreutils" "%{install-root}/usr/bin/uutils-${prog}"
       # kill and uptime belong to procps-ng, not coreutils; GNU coreutils
       # does not install them either. Leave procps as their only provider.
+      # env stays GNU: pkexec realpath()s its target, and the multicall
+      # binary dispatches on the executed path, so a symlinked env breaks
+      # `pkexec -u <user> /usr/bin/env <cmd>` (used by uupd).
       case "${prog}" in
-        kill|uptime) continue ;;
+        kill|uptime|env) continue ;;
       esac
       ln -sr "%{install-root}/usr/bin/uutils-coreutils" "%{install-root}/usr/bin/${prog}"
     done
@@ -45,7 +48,6 @@ public:
     - /usr/bin/dirname
     - /usr/bin/du
     - /usr/bin/echo
-    - /usr/bin/env
     - /usr/bin/expand
     - /usr/bin/expr
     - /usr/bin/factor

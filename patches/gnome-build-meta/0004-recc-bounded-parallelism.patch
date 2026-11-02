@@ -1,0 +1,46 @@
+Upstream-Status: Accepted [https://github.com/GNOME/gnome-build-meta/commit/e5048b9b16a931f6c26c57beaad7cbe457ceeb67]
+Exit: Drop when the pinned junction includes these project.conf and include/recc.yml changes.
+Subject: recc: retain LocalCAS without releasing jobserver slots
+
+Backport the project configuration from e5048b9b16a931f6c26c57beaad7cbe457ceeb67.
+Do not backport its CI opt-in: GNOME subsequently removed that opt-in in
+30e84dec77b634bd798aabdc2e4cbdd545d954f7 after its x86_64 runner slowed to a halt.
+https://github.com/GNOME/gnome-build-meta/commit/30e84dec77b634bd798aabdc2e4cbdd545d954f7
+
+Retain compiler-level remote execution and LocalCAS staging, but keep queued
+compiler requests within the build system's job budget. Both settings remain
+in environment-nocache, so this does not invalidate built artifacts.
+
+diff --git a/include/recc.yml b/include/recc.yml
+--- a/include/recc.yml
++++ b/include/recc.yml
+@@ -4,6 +4,7 @@ environment:
+   RECC_DEPS_GLOBAL_PATHS: true
+   RECC_NO_PATH_REWRITE: true
+   RECC_INVALID_INPUT_PATHS_REGEX: .*/CMakeFiles/CMakeScratch/.*,.*/Modules/CMakeCCompilerABI.c,.*/Modules/CMakeCXXCompilerABI.cpp,.*/conftest.*
++  RECC_USE_LOCALCAS: true
+ 
+   (?):
+   - recc == "passthrough":
+@@ -14,7 +15,6 @@ environment:
+       RECC_CACHE_ONLY: true
+       RECC_CACHE_UPLOAD_LOCAL_BUILD: true
+   - recc_optimisations:
+-      RECC_USE_LOCALCAS: true
+       RECC_USE_JOBSERVER: true
+ 
+ environment-nocache:
+diff --git a/project.conf b/project.conf
+--- a/project.conf
++++ b/project.conf
+@@ -86,8 +86,8 @@ options:
+   recc_optimisations:
+     type: bool
+     description: |
+-      whether to use experimental RECC features to improve performance
+-    default: true
++      whether to use experimental RECC features to improve performance with remote execution
++    default: false
+ 
+ # Some overrides to the default sandbox execution environment
+ #
