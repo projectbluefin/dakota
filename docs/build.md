@@ -212,6 +212,9 @@ native software.
   sharing switch independent of login startup. No service is started for every
   user automatically, and no identities, credentials, personal peer settings,
   or user Quadlets are generated during image construction.
+  Pin reviewed source from merged `bluefin-bling` main, not a source-PR head.
+  Rebuild and verify that exact Dakota candidate; a per-user extension overlay
+  is diagnostic evidence, not proof of the packaged image.
 - **Tailscale:** the daemon is enabled in the image, but a fresh installation is
   unauthenticated. The application launcher offers **Tailscale Setup**, as does
   the Quick Settings menu after the user enables that extension. Setup requests administrator
