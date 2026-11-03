@@ -293,46 +293,13 @@ jobs:
             echo "Repo is ready for the next promotion cycle."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  dispatch-iso-build:
-    name: Dispatch Dakota Live ISO build
+  post-release:
+    name: Post-release dispatches
     needs: [freshness-check, execute, post-release-verify]
     if: inputs.dry_run != true && needs.execute.result == 'success' && needs.post-release-verify.result == 'success'
-    runs-on: ubuntu-24.04
     permissions:
       contents: read
-    steps:
-      - name: Resolve promoted dakota-nvidia digest
-        id: resolve-nvidia
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
-          digest=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota-nvidia:stable" | jq -r .Digest)
-          if [[ -z "$digest" || "$digest" == "null" ]]; then
-            echo "::error::Failed to resolve ghcr.io/projectbluefin/dakota-nvidia:stable digest"
-            exit 1
-          fi
-          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
-          echo "Resolved dakota-nvidia:stable digest: ${digest}"
-
-      - name: Get Mergeraptor token for dakota-iso
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
-        with:
-          app-id: ${{ secrets.MERGERAPTOR_APP_ID }}
-          private-key: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}
-          owner: projectbluefin
-          repositories: dakota-iso
-          permission-actions: write
-
-      - name: Dispatch build-iso in projectbluefin/dakota-iso
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          NVIDIA_DIGEST: ${{ steps.resolve-nvidia.outputs.digest }}
-        run: |
-          set -euo pipefail
-          IMAGE_REF="ghcr.io/projectbluefin/dakota-nvidia@${NVIDIA_DIGEST}"
-          echo "Dispatching build-iso.yml in projectbluefin/dakota-iso with image_ref=${IMAGE_REF}"
-          gh workflow run build-iso.yml \
-            --repo projectbluefin/dakota-iso \
-            --ref main \
-            -f image_ref="${IMAGE_REF}"
+    uses: ./.github/workflows/post-release.yml
+    with:
+      build_sha: ${{ needs.freshness-check.outputs.build_sha }}
+    secrets: inherit
