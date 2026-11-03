@@ -295,8 +295,8 @@ jobs:
 
   post-release:
     name: Post-release dispatches
-    needs: [freshness-check, execute, post-release-verify]
-    if: inputs.dry_run != true && needs.execute.result == 'success' && needs.post-release-verify.result == 'success'
+    needs: [freshness-check, execute, post-release-verify, post-release-variants]
+    if: inputs.dry_run != true && needs.execute.result == 'success' && needs.post-release-verify.result == 'success' && needs.post-release-variants.result == 'success'
     permissions:
       contents: read
     uses: ./.github/workflows/post-release.yml
