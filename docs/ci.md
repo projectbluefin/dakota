@@ -175,6 +175,11 @@ default-image digest, and compares it to `:stable`. Missing publication fails
 with a clear error; an already-current stable digest is a successful no-op.
 Wait for the selected SHA's build and publish to finish before cutting stable.
 
+After post-release verification passes, `execute-release.yml` resolves the
+promoted `dakota-nvidia:stable` digest, mints a scoped Mergeraptor GitHub App
+token, and dispatches `build-iso.yml` in `projectbluefin/dakota-iso` carrying
+the exact promoted digest (`image_ref`) so fresh live ISOs are built and
+published automatically on every stable promotion.
 Preflight **does not run the reusable promotion workflow**, including its
 signature checks and full variant resolution. A green preflight is not proof
 that every promotion check passed. On apply, the existing anchored cosign
