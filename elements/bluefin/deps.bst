@@ -26,6 +26,7 @@ depends:
   - bluefin/gum.bst
   - bluefin/tealdeer.bst
   - bluefin/ydotool.bst
+  - bluefin/kanata.bst
   - bluefin/umotd.bst
   - bluefin/uwelcome.bst
 
