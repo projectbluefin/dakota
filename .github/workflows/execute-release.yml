@@ -297,7 +297,7 @@ jobs:
     name: Dispatch Dakota Live ISO build
     needs: [freshness-check, execute, post-release-verify]
     if: inputs.dry_run != true && needs.execute.result == 'success' && needs.post-release-verify.result == 'success'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
