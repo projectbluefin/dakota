@@ -36,6 +36,7 @@ depends:
   - bluefin/zswap-config.bst
   - bluefin/kexec-disable.bst
   - bluefin/swapfile.bst
+  - bluefin/btrfs-compression.bst
   - bluefin/firstboot-date.bst
   - bluefin/firstboot-services.bst
   - bluefin/flatpak-apps.bst
