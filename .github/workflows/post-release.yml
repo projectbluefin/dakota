@@ -1,0 +1,86 @@
+name: Post-release dispatches
+
+on:
+  workflow_call:
+    inputs:
+      build_sha:
+        description: 'Promoted testing commit SHA'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      build_sha:
+        description: 'Promoted testing commit SHA (leave blank to resolve from :stable)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-release
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Post-release dispatches (ISO, docs, website)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve promoted dakota-nvidia digest
+        id: resolve-nvidia
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
+          digest=$(skopeo inspect --no-tags "docker://ghcr.io/projectbluefin/dakota-nvidia:stable" | jq -r .Digest)
+          if [[ -z "$digest" || "$digest" == "null" ]]; then
+            echo "::error::Failed to resolve ghcr.io/projectbluefin/dakota-nvidia:stable digest"
+            exit 1
+          fi
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "Resolved dakota-nvidia:stable digest: ${digest}"
+
+      - name: Get Mergeraptor token for downstream dispatches
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.MERGERAPTOR_APP_ID }}
+          private-key: ${{ secrets.MERGERAPTOR_PRIVATE_KEY }}
+          owner: projectbluefin
+          repositories: |
+            dakota-iso
+            documentation
+            website
+          permission-contents: write
+
+      - name: Dispatch ISO build in projectbluefin/dakota-iso
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          NVIDIA_DIGEST: ${{ steps.resolve-nvidia.outputs.digest }}
+        run: |
+          set -euo pipefail
+          IMAGE_REF="ghcr.io/projectbluefin/dakota-nvidia@${NVIDIA_DIGEST}"
+          echo "Dispatching dakota-release repository_dispatch in projectbluefin/dakota-iso (image_ref=${IMAGE_REF})"
+          gh api --method POST repos/projectbluefin/dakota-iso/dispatches \
+            -f event_type=dakota-release \
+            -F "client_payload[image_ref]=${IMAGE_REF}"
+
+      - name: Dispatch documentation build in projectbluefin/documentation
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          echo "Dispatching dakota-release repository_dispatch in projectbluefin/documentation"
+          gh api --method POST repos/projectbluefin/documentation/dispatches \
+            -f event_type=dakota-release
+
+      - name: Dispatch update-content in projectbluefin/website
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          echo "Dispatching dakota-release repository_dispatch in projectbluefin/website"
+          gh api --method POST repos/projectbluefin/website/dispatches \
+            -f event_type=dakota-release
