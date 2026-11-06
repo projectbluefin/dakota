@@ -138,8 +138,16 @@ class CheckPublishWorkflowTests(unittest.TestCase):
     def test_rejects_optional_default_image(self) -> None:
         result = self.mutate(
             ".github/workflows/build.yml",
-            "            required: oci/bluefin.bst\n",
+            "            required: oci/bluefin.bst bluefin/fedora-shim.bst\n",
             "            required: \"\"\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_uncached_fedora_shim(self) -> None:
+        result = self.mutate(
+            ".github/workflows/build.yml",
+            "            required: oci/bluefin.bst bluefin/fedora-shim.bst\n",
+            "            required: oci/bluefin.bst\n",
         )
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 

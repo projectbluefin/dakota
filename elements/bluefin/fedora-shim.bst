@@ -8,12 +8,19 @@
 # The binaries are used exactly as Fedora signed them; any change would
 # break the Microsoft signature. Pinned by checksum; bump to a newer Fedora
 # build when shim releases or SBAT revocations require it.
+#
+# Pin only builds Bodhi has pushed to a Fedora release (listed at
+# https://bodhi.fedoraproject.org/updates/?packages=shim). Koji
+# garbage-collects untagged builds, and a pinned build that disappears
+# leaves publish unable to fetch the source. The standard build job in
+# .github/workflows/build.yml also builds this element so its source and
+# artifact stay in the project CAS, where the signing jobs pull it.
 kind: manual
 
 sources:
 - kind: remote
-  url: fedora_koji:shim/16.1/9/x86_64/shim-x64-16.1-9.x86_64.rpm
-  ref: eac405fe200847683e72b5bd7424727e034741b4c541f228e80d996c3a032478
+  url: fedora_koji:shim/16.1/7/x86_64/shim-x64-16.1-7.x86_64.rpm
+  ref: 0a119f3488e5da27ca55c1864ee8e131afa5ecf27689385ba09b805eb00dd608
 
 build-depends:
 - core/sandbox-tools.bst
@@ -30,8 +37,8 @@ variables:
 config:
   install-commands:
   - |
-    bsdtar -xf shim-x64-16.1-9.x86_64.rpm
+    bsdtar -xf shim-x64-16.1-7.x86_64.rpm
     for f in shimx64.efi mmx64.efi; do
-      install -Dm644 "usr/lib/efi/shim/16.1-9/EFI/fedora/$f" \
+      install -Dm644 "usr/lib/efi/shim/16.1-7/EFI/fedora/$f" \
         "%{install-root}/usr/lib/dakota/secure-boot/$f"
     done

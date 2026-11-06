@@ -186,7 +186,8 @@ def check_socket_configs(shell: str, errors: list[str]) -> None:
 def check_build_workflow(build: str, errors: list[str]) -> None:
     required = {
         "max-parallel: 2": "concurrent standard and gaming build jobs",
-        "required: oci/bluefin.bst": "a required default image in the standard build job",
+        "required: oci/bluefin.bst bluefin/fedora-shim.bst":
+            "a required default image and Fedora shim in the standard build job",
         'enable-remote-execution: "true"': "fail-closed remote execution",
         'enable-push: "true"': "automatic artifact publication",
         'grep -Fq "Remote Execution Configuration"': "runtime RE evidence check",
