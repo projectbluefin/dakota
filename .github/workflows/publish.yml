@@ -96,16 +96,17 @@ jobs:
     timeout-minutes: 180
     # One job per gaming value, each publishing a base and an NVIDIA image.
     # BuildStream signs both in one session, so the boot set they share (the
-    # signed kernel, modules and initramfs) is built once. The default image
-    # is required; every other image may fail without blocking it, and the
-    # gaming job as a whole is continue-on-error.
+    # signed kernel, modules and initramfs) is built once. Secure Boot signing
+    # is never optional: neither job is continue-on-error, so a failed
+    # signing chain in either one fails the run and blocks promotion. Past
+    # that gate, the default image is required and every other image may
+    # drop out with a warning without blocking it.
     strategy:
       fail-fast: false
       matrix:
         include:
           - group: standard
             gaming: 'false'
-            continue: false
             base_variant: default
             base_image_suffix: ''
             base_continue: false
@@ -114,14 +115,12 @@ jobs:
             nvidia_continue: true
           - group: gaming
             gaming: 'true'
-            continue: true
             base_variant: gaming
             base_image_suffix: '-gaming'
             base_continue: true
             nvidia_variant: nvidia-gaming
             nvidia_image_suffix: '-nvidia-gaming'
             nvidia_continue: true
-    continue-on-error: ${{ matrix.continue }}
     permissions:
       contents: read
       packages: write
@@ -208,10 +207,23 @@ jobs:
           umask 077
           printf '%s\n' "$DAKOTA_SECURE_BOOT_KEY" > files/boot-keys/private/secure-boot.key
 
+      # The whole Secure Boot chain for this job's kernel: shim, signed
+      # systemd-boot and fwupd, the signed kernel and modules, and the signed
+      # NVIDIA modules. This step has no fallback and no continue flag, so
+      # an image can never be dropped, or the run stay green, because its
+      # signing failed.
+      - name: Sign the Secure Boot chain
+        env:
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
+          BUILD_SECURE_BOOT_SIGNING: 'true'
+        run: >-
+          just bst build bluefin/secure-boot.bst bluefin/signed-modules.bst
+          bluefin-nvidia/nvidia-signed-modules.bst
+
       # If the session fails, retry the base image alone: a quick cache check
       # when it already built, a real retry when the NVIDIA failure stopped
       # it. Images that never built fail their export below.
-      - name: Sign boot chain and compose images
+      - name: Compose signed images
         env:
           BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
           BUILD_SECURE_BOOT_SIGNING: 'true'

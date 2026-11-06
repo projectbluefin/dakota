@@ -151,13 +151,15 @@ def _grouped(role: str, slots: dict, sources: list[dict], include: list[dict]) -
 
     A grouped job builds every slot's element in one BuildStream session
     (`-o gaming` is project-wide, so each value needs its own job). The job
-    is continue-on-error only when every image in it is.
+    itself is never continue-on-error: it signs the Secure Boot chain, which
+    is never optional. Each image's own `continue` decides only whether that
+    image may drop out after signing succeeded.
     """
     groups: dict[str, dict] = {}
     for source, projected in zip(sources, include):
         gaming = source.get("gaming", "false")
         name = "gaming" if gaming == "true" else "standard"
-        group = groups.setdefault(name, {"group": name, "gaming": gaming, "continue": True})
+        group = groups.setdefault(name, {"group": name, "gaming": gaming})
         slot = next((key for key, element in slots.items() if element == source.get("element")), None)
         if slot is None:
             raise DeclarationError(
@@ -167,7 +169,6 @@ def _grouped(role: str, slots: dict, sources: list[dict], include: list[dict]) -
         if f"{slot}_variant" in group:
             raise DeclarationError(f"role '{role}': group '{name}' has two '{slot}' variants")
         group.update({f"{slot}_{field}": value for field, value in projected.items()})
-        group["continue"] = group["continue"] and projected.get("continue") is True
     for name, group in groups.items():
         missing = [slot for slot in slots if f"{slot}_variant" not in group]
         if missing:

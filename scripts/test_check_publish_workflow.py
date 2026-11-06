@@ -138,8 +138,16 @@ class CheckPublishWorkflowTests(unittest.TestCase):
     def test_rejects_optional_default_image(self) -> None:
         result = self.mutate(
             ".github/workflows/build.yml",
-            "            required: oci/bluefin.bst\n",
+            "            required: oci/bluefin.bst bluefin/fedora-shim.bst\n",
             "            required: \"\"\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rejects_uncached_fedora_shim(self) -> None:
+        result = self.mutate(
+            ".github/workflows/build.yml",
+            "            required: oci/bluefin.bst bluefin/fedora-shim.bst\n",
+            "            required: oci/bluefin.bst\n",
         )
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -180,6 +188,51 @@ class CheckPublishWorkflowTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("drifted", result.stderr)
+
+    def test_rejects_continue_on_error_signing_job(self) -> None:
+        result = self.mutate(
+            ".github/workflows/publish.yml",
+            "            nvidia_continue: true\n    permissions:\n",
+            "            nvidia_continue: true\n    continue-on-error: true\n    permissions:\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("must not be continue-on-error", result.stderr)
+
+    def test_rejects_missing_secure_boot_gate(self) -> None:
+        result = self.mutate(
+            ".github/workflows/publish.yml",
+            "      - name: Sign the Secure Boot chain\n",
+            "      - name: Build boot pieces\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("must sign the Secure Boot chain", result.stderr)
+
+    def test_rejects_secure_boot_gate_without_nvidia_modules(self) -> None:
+        result = self.mutate(
+            ".github/workflows/publish.yml",
+            "          bluefin-nvidia/nvidia-signed-modules.bst\n",
+            "\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("nvidia-signed-modules.bst", result.stderr)
+
+    def test_rejects_optional_secure_boot_gate(self) -> None:
+        result = self.mutate(
+            ".github/workflows/publish.yml",
+            "          bluefin-nvidia/nvidia-signed-modules.bst\n",
+            "          bluefin-nvidia/nvidia-signed-modules.bst || true\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("must not be optional", result.stderr)
+
+    def test_rejects_optional_pr_image_secure_boot_gate(self) -> None:
+        result = self.mutate(
+            ".github/workflows/build.yml",
+            "      - name: Sign the Secure Boot chain\n",
+            "      - name: Build boot pieces\n",
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("pr-image must sign the Secure Boot chain", result.stderr)
 
     def test_rejects_unwired_optional_image_flag(self) -> None:
         result = self.mutate(
@@ -322,10 +375,12 @@ class ImageVariantsMatrixTests(unittest.TestCase):
 
     def test_only_the_default_image_is_required(self) -> None:
         standard, gaming = self.image_variants.matrix_for(self.declaration, "publish")
-        self.assertIs(standard["continue"], False)
+        self.assertNotIn("continue", standard)
+        self.assertNotIn("continue", gaming)
         self.assertIs(standard["base_continue"], False)
         self.assertIs(standard["nvidia_continue"], True)
-        self.assertIs(gaming["continue"], True)
+        self.assertIs(gaming["base_continue"], True)
+        self.assertIs(gaming["nvidia_continue"], True)
 
     def test_role_projection_omits_undeclared_fields(self) -> None:
         matrix = self.image_variants.matrix_for(self.declaration, "tag_testing")
@@ -341,9 +396,9 @@ class ImageVariantsMatrixTests(unittest.TestCase):
             )
         }
         # Quoting is significant: `gaming: 'true'` is the string consumed by
-        # BUILD_GAMING, while `continue: false` is a real boolean.
+        # BUILD_GAMING, while `base_continue: false` is a real boolean.
         self.assertEqual(matrix["gaming"]["gaming"], "true")
-        self.assertIs(matrix["standard"]["continue"], False)
+        self.assertIs(matrix["standard"]["base_continue"], False)
         self.assertIs(matrix["standard"]["nvidia_continue"], True)
         self.assertEqual(matrix["standard"]["base_image_suffix"], "")
 

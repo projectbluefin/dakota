@@ -95,8 +95,12 @@ jobs:
       matrix:
         include:
           - group: standard
-            elements: oci/bluefin.bst oci/bluefin-nvidia.bst
-            required: oci/bluefin.bst
+            # bluefin/fedora-shim.bst is otherwise reached only by the
+            # push-free signing jobs. Building it here keeps its pinned
+            # upstream source and artifact in the CAS, so publish does
+            # not depend on the upstream URL staying online.
+            elements: oci/bluefin.bst oci/bluefin-nvidia.bst bluefin/fedora-shim.bst
+            required: oci/bluefin.bst bluefin/fedora-shim.bst
             continue: false
           - group: gaming
             elements: oci/bluefin.bst oci/bluefin-nvidia.bst
@@ -189,7 +193,8 @@ jobs:
             # rerun only the required target. It is a cache query when that
             # target already built, and a retry of its failure otherwise.
             echo "::warning::an optional target failed to build; checking ${REQUIRED}"
-            just bst build --deps none "$REQUIRED"
+            # shellcheck disable=SC2086 # REQUIRED is a list of targets
+            just bst build --deps none $REQUIRED
           fi
         timeout-minutes: 330
 
@@ -275,9 +280,19 @@ jobs:
           umask 077
           printf '%s\n' "$DAKOTA_SECURE_BOOT_KEY" > files/boot-keys/private/secure-boot.key
 
+      # The whole Secure Boot chain for this job's kernel, with no fallback:
+      # a PR image is never published with any of it unsigned or missing.
+      - name: Sign the Secure Boot chain
+        env:
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
+          BUILD_SECURE_BOOT_SIGNING: 'true'
+        run: >-
+          just bst build bluefin/secure-boot.bst bluefin/signed-modules.bst
+          bluefin-nvidia/nvidia-signed-modules.bst
+
       # A failed session still leaves whatever it finished in the local
       # cache; images that never built fail their export below.
-      - name: Sign boot chain and compose images
+      - name: Compose signed images
         env:
           BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
           BUILD_SECURE_BOOT_SIGNING: 'true'

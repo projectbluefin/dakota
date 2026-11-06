@@ -186,7 +186,8 @@ def check_socket_configs(shell: str, errors: list[str]) -> None:
 def check_build_workflow(build: str, errors: list[str]) -> None:
     required = {
         "max-parallel: 2": "concurrent standard and gaming build jobs",
-        "required: oci/bluefin.bst": "a required default image in the standard build job",
+        "required: oci/bluefin.bst bluefin/fedora-shim.bst":
+            "a required default image and Fedora shim in the standard build job",
         'enable-remote-execution: "true"': "fail-closed remote execution",
         'enable-push: "true"': "automatic artifact publication",
         'grep -Fq "Remote Execution Configuration"': "runtime RE evidence check",
@@ -205,6 +206,7 @@ def check_build_workflow(build: str, errors: list[str]) -> None:
             errors.append(f"build workflow still contains {description}")
 
     check_signing_scope(build, errors)
+    check_secure_boot_gate(job_body(build, "pr-image") or "", "pr-image", errors)
 
 
 def job_body(workflow: str, job: str) -> str | None:
@@ -323,16 +325,36 @@ def check_publish_workflow(publish: str, errors: list[str]) -> None:
         errors.append("publish export and SBOM jobs must keep remote caches read-only")
     check_runner_pools(publish, ("publish-image",), "publish", errors)
 
-    # The grouped matrix only protects the default image if the job and each
-    # image's signing step actually read its continue flags.
+    # The grouped matrix only protects the default image if each image's
+    # signing step actually reads its continue flags.
     image = job_body(publish, "publish-image") or ""
-    for token in ("continue-on-error: ${{ matrix.continue }}",
-                  "continue-on-error: ${{ matrix.base_continue }}",
+    for token in ("continue-on-error: ${{ matrix.base_continue }}",
                   "continue-on-error: ${{ matrix.nvidia_continue }}",
                   "BASE_CONTINUE: ${{ matrix.base_continue }}",
                   "NVIDIA_CONTINUE: ${{ matrix.nvidia_continue }}"):
         if token not in image:
             errors.append(f"publish-image must wire {token}")
+    check_secure_boot_gate(image, "publish-image", errors)
+
+
+def check_secure_boot_gate(image: str, job: str, errors: list[str]) -> None:
+    """Secure Boot signing is never optional, for any image."""
+    if re.search(r"^    continue-on-error:", image, re.M):
+        errors.append(f"{job} must not be continue-on-error: it signs the Secure Boot chain")
+    gate = re.search(
+        r"^      - name: Sign the Secure Boot chain\n(?P<body>(?:^(?!      - ).*\n)*)",
+        image, re.M)
+    if not gate:
+        errors.append(f"{job} must sign the Secure Boot chain in its own step")
+        return
+    body = gate.group("body")
+    for element in ("bluefin/secure-boot.bst", "bluefin/signed-modules.bst",
+                    "bluefin-nvidia/nvidia-signed-modules.bst"):
+        if element not in body:
+            errors.append(f"{job} Secure Boot signing step must build {element}")
+    for token in ("continue-on-error", "if:", "||"):
+        if token in body:
+            errors.append(f"{job} Secure Boot signing step must not be optional ({token})")
 
 
 def main() -> int:
