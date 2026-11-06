@@ -6,19 +6,48 @@ build-depends:
 
 depends:
 - freedesktop-sdk.bst:public-stacks/runtime-minimal.bst
+# Provides the /dev/uinput udev rule (group input, 0660) and loads the
+# uinput module at boot; kanata.service needs both to create its virtual
+# keyboard.
+- bluefin/ydotool.bst
 
 config:
   build-commands:
   - cargo build --release --frozen --offline --bin kanata
 
-  # Samples are documentation only: no active mapping, service, or input
-  # permission changes are installed.
+  # kanata.service is installed disabled. It runs as a transient
+  # DynamicUser with only the input group, so keyboards are readable by the
+  # remapper and not by every process in the user's session. Users write
+  # /etc/kanata/kanata.kbd and opt in with:
+  # sudo systemctl enable --now kanata
   install-commands:
   - install -Dm755 target/release/kanata "%{install-root}%{bindir}/kanata"
   - install -Dm644 LICENSE "%{install-root}%{datadir}/licenses/kanata/LICENSE"
   - install -Dm644 README.md "%{install-root}%{datadir}/doc/kanata/README.md"
   - install -Dm644 docs/config.adoc "%{install-root}%{datadir}/doc/kanata/config.adoc"
   - install -Dm644 cfg_samples/minimal.kbd "%{install-root}%{datadir}/doc/kanata/examples/minimal.kbd"
+  - |
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system/kanata.service"
+    cat > "%{install-root}%{indep-libdir}/systemd/system/kanata.service" <<'EOF'
+    [Unit]
+    Description=Kanata keyboard remapper
+    Documentation=file:///usr/share/doc/kanata/config.adoc
+
+    [Service]
+    ExecStart=/usr/bin/kanata --cfg /etc/kanata/kanata.kbd
+    DynamicUser=yes
+    SupplementaryGroups=input
+    DevicePolicy=closed
+    DeviceAllow=char-input rw
+    DeviceAllow=/dev/uinput rw
+    PrivateNetwork=yes
+    ProtectHome=yes
+    Restart=on-failure
+    RestartSec=2
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
   - '%{install-extra}'
 
 sources:
