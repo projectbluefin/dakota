@@ -14,7 +14,7 @@ metadata:
 ## When to Use
 
 - Adding, editing, or testing end-user convenience recipes in `files/just-overrides/default.just`
-- Modifying data donation commands (`ujust report`, `ujust confirm`, `ujust verify`)
+- Modifying Dakota-local data donation commands (`ujust confirm`, `ujust verify`); `ujust report` itself ships from common and launches the Report a Problem app
 - Handling CLI interaction tools like Charm `gum`, desktop notifications, or system diagnostics
 
 ## When NOT to Use
