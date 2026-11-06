@@ -98,12 +98,18 @@ its own job. Exports run one at a time (they share `.build-out`), then BuildStre
 local cache is deleted and chunkify and push run both images in parallel.
 Each chunkify holds an overlay copy-up, output and import of an 11 GB image,
 so a signing runner needs about 95 GB free at the peak; the cache-box
-signing VMs have 200 GB disks. In publish, only the default image is
-required: an optional image that fails drops out with a warning and is listed
-as not published in the job summary, and the gaming job is continue-on-error.
+signing VMs have 200 GB disks. Secure Boot signing is never optional: each
+job first builds its kernel's whole signing chain (`bluefin/secure-boot.bst`,
+`bluefin/signed-modules.bst` and `bluefin-nvidia/nvidia-signed-modules.bst`)
+in a step with no fallback, and neither job is continue-on-error, so a signing
+failure in either one fails the run and blocks promotion of every image. The
+PR image job runs the same gate. Past that gate only the default image is
+required: an optional image that fails to compose, export, chunkify or push
+drops out with a warning and is listed as not published in the job summary.
 `.github/image-variants.json` declares the `publish` role with one slot per OCI
 element, and `just check-publish-workflow` fails if the inline matrix drifts
-from it or the job stops reading each image's continue flag.
+from it, the job stops reading each image's continue flag, or the signing gate
+becomes optional.
 
 Publish records the pushed digest and passes that receipt between jobs. Signing,
 attestation, stream-tag promotion, and verification operate on the resolved SHA

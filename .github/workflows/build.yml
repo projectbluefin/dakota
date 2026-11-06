@@ -280,9 +280,19 @@ jobs:
           umask 077
           printf '%s\n' "$DAKOTA_SECURE_BOOT_KEY" > files/boot-keys/private/secure-boot.key
 
+      # The whole Secure Boot chain for this job's kernel, with no fallback:
+      # a PR image is never published with any of it unsigned or missing.
+      - name: Sign the Secure Boot chain
+        env:
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
+          BUILD_SECURE_BOOT_SIGNING: 'true'
+        run: >-
+          just bst build bluefin/secure-boot.bst bluefin/signed-modules.bst
+          bluefin-nvidia/nvidia-signed-modules.bst
+
       # A failed session still leaves whatever it finished in the local
       # cache; images that never built fail their export below.
-      - name: Sign boot chain and compose images
+      - name: Compose signed images
         env:
           BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
           BUILD_SECURE_BOOT_SIGNING: 'true'

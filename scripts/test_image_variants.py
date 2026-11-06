@@ -249,19 +249,20 @@ def grouped_declaration() -> dict:
 class GroupedMatrixTests(unittest.TestCase):
     def test_one_entry_per_gaming_value_with_prefixed_slots(self) -> None:
         self.assertEqual(image_variants.matrix_for(grouped_declaration(), "publish"), [
-            {"group": "standard", "gaming": "false", "continue": False,
+            {"group": "standard", "gaming": "false",
              "base_variant": "default", "base_continue": False,
              "nvidia_variant": "nvidia", "nvidia_continue": True},
-            {"group": "gaming", "gaming": "true", "continue": True,
+            {"group": "gaming", "gaming": "true",
              "base_variant": "gaming", "base_continue": True,
              "nvidia_variant": "nvidia-gaming", "nvidia_continue": True},
         ])
 
-    def test_group_is_required_when_any_image_is(self) -> None:
-        decl = grouped_declaration()
-        decl["variants"][3]["roles"]["publish"]["continue"] = False
-        gaming = image_variants.matrix_for(decl, "publish")[1]
-        self.assertIs(gaming["continue"], False)
+    def test_groups_are_never_continue_on_error(self) -> None:
+        # Each job signs the Secure Boot chain, which is never optional, so
+        # no group carries a job-level continue flag even when every image
+        # in it is optional.
+        for group in image_variants.matrix_for(grouped_declaration(), "publish"):
+            self.assertNotIn("continue", group)
 
     def test_element_outside_the_slots_is_rejected(self) -> None:
         decl = grouped_declaration()
