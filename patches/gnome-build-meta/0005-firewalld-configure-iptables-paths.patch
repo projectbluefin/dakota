@@ -1,0 +1,30 @@
+Upstream-Status: Pending
+Exit: Drop when the pinned GNOME Build Meta junction declares firewalld's iptables dependency and command paths.
+Subject: firewalld: provide iptables at build and runtime
+
+Without iptables in the build sandbox, configure substitutes /bin/false for
+its IPv4 and IPv6 commands, breaking direct rules used by Docker even with
+the default nftables backend. Keep that backend and existing firewall policy.
+Select the nft-compatible iptables executables explicitly rather than relying
+on the generic aliases, which can select legacy binaries in older artifacts.
+
+diff --git a/elements/gnomeos-deps/firewalld.bst b/elements/gnomeos-deps/firewalld.bst
+--- a/elements/gnomeos-deps/firewalld.bst
++++ b/elements/gnomeos-deps/firewalld.bst
+@@ -17,8 +17,16 @@ build-depends:
+ - freedesktop-sdk.bst:components/libxslt.bst
+ 
+ depends:
++- freedesktop-sdk.bst:components/iptables.bst
+ - freedesktop-sdk.bst:components/python3-nftables.bst
+ - freedesktop-sdk.bst:components/python3.bst
+ 
++variables:
++  conf-local: >-
++    --with-iptables=/usr/bin/iptables-nft
++    --with-iptables-restore=/usr/bin/iptables-nft-restore
++    --with-ip6tables=/usr/bin/ip6tables-nft
++    --with-ip6tables-restore=/usr/bin/ip6tables-nft-restore
++
+ environment:
+   ACLOCAL_PATH: /usr/share/gettext/m4
