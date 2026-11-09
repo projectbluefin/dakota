@@ -21,6 +21,17 @@ depends:
     depends:
       (>):
       - gaming/deps.bst
+# freedesktop-sdk's platform.bst pulls in components/libgamemode.bst, but the
+# gamemoded daemon only ships with the gaming stack. Without it the client is
+# dead weight and `gamemoderun` fails on D-Bus activation, so drop the whole
+# client set from non-gaming images. Flatpak apps use their own runtime copy.
+- gaming == false:
+    public:
+      bst:
+        integration-commands:
+          (>):
+          - rm -fv %{bindir}/gamemoderun %{libdir}/libgamemode.so* %{libdir}/libgamemodeauto.so*
+          - rm -rfv %{datadir}/licenses/freedesktop-sdk/gamemode
 
 public:
   bst:
