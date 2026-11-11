@@ -87,6 +87,8 @@ TRACKED = [
     # bluefin-bling is a monorepo: a layout change upstream breaks the install.
     ("bluefin/shell-extensions/syncthing-toggle.bst", "syncthing-toggle extension",
      "review: unreleased branch head; bluefin-bling layout changes break the install"),
+    ("gaming/gamescope.bst", "gamescope",
+     "review: a submodule added, removed, or moved upstream needs the element's list edited"),
     ("gaming/gamescope-session.bst", "gamescope-session", "review: unreleased branch head"),
     ("gaming/luajit.bst", "LuaJIT", "review: unreleased v2.1 branch head"),
     # libiio.so.0 is what InputPlumber's release binary links (through 0.77).
@@ -142,9 +144,6 @@ DERIVED = {
 # missing updater.
 PINNED = {
     "bluefin/fedora-shim.bst": "Secure Boot trust: a shim change alters what firmware will boot",
-    # Upstream replaced the vendored submodule set and deleted the pinned
-    # commit; tracking cannot add or drop git_module sources.
-    "gaming/gamescope.bst": "the submodule list must be rewritten by hand for the next release",
     # Upstream's desktop-mode fallback now calls steamosctl, whose session
     # switching only writes SDDM configuration; Dakota uses GDM.
     "gaming/gamescope-session-steam.bst": "newer sessions need steamos-manager, which supports only SDDM",
@@ -321,6 +320,32 @@ def run(*args: str, capture: bool = False) -> str:
 def track(element: str) -> None:
     run("just", "bst", "--no-interactive", "-o", "arch", "x86_64",
         "source", "track", element)
+
+
+# Meson wraps a tracked element stages as git_repo sources at
+# subprojects/<name>: after tracking, copy each wrap's pinned revision from the
+# tracked commit, so the wraps move with the project that declares them.
+WRAPS = {"gaming/gamescope.bst": ("OpenGamingCollective/gamescope", ("glm", "stb"))}
+
+
+def sync_wraps(element: str) -> None:
+    repo, names = WRAPS[element]
+    path = ROOT / "elements" / element
+    text = path.read_text()
+    commit = re.search(r"^  ref: (?:\S+-g)?([0-9a-f]{40})$", text, re.MULTILINE)
+    if not commit:
+        raise ValueError(f"{element}: cannot read the tracked commit")
+    for name in names:
+        wrap = run("curl", "-fsSL", f"https://raw.githubusercontent.com/{repo}/{commit[1]}"
+                   f"/subprojects/{name}.wrap", capture=True)
+        revision = re.search(r"^revision = ([0-9a-f]{40})$", wrap, re.MULTILINE)
+        if not revision:
+            raise ValueError(f"{element}: {name}.wrap pins no commit revision")
+        text, count = re.subn(rf"(\n  ref: )[0-9a-f]{{40}}(\n  directory: subprojects/{name}\n)",
+                              lambda m: f"{m[1]}{revision[1]}{m[2]}", text)
+        if count != 1:
+            raise ValueError(f"{element}: expected one source staged at subprojects/{name}")
+    path.write_text(text)
 
 
 PATCHED = re.compile(r"^\s*- kind:\s*(patch|patch_queue)\s*$", re.MULTILINE)
@@ -656,6 +681,8 @@ def update(element: str, out: Path | None) -> None:
             update_release(element, out)
         else:
             track(element)
+            if element in WRAPS:
+                sync_wraps(element)
             if element == "core/linux-ogc.bst":
                 path = paths[0]
                 path.write_text(sync_ogc_localversion(path.read_text()))

@@ -308,6 +308,10 @@ elif name == "curl" and any(k in args[-1] for k in FEEDS):
     if os.environ.get("FAIL_FEED"):
         sys.exit(22)
     print(os.environ.get("FEED_BODY", next(v for k, v in FEEDS.items() if k in args[-1])))
+elif name == "curl" and args[-1].startswith("https://raw.githubusercontent.com/OpenGamingCollective/gamescope/"):
+    assert "/" + "b" * 40 + "/subprojects/" in args[-1]
+    wrap = args[-1].rsplit("/", 1)[1].removesuffix(".wrap")
+    print(os.environ.get("WRAP_BODY", f"[wrap-git]\ndirectory = {wrap}\nrevision = " + ("1" if wrap == "glm" else "2") * 40))
 elif name == "curl" and "core-deps%2Fvte.bst" in args[-1]:
     print(os.environ.get("UPSTREAM_VTE", "kind: meson\nsources:\n- kind: tar\n  url: gnome_downloads:vte/99.88/vte-99.88.77.tar.xz\n  ref: " + "a" * 64 + "\nbuild-depends:\n"))
 elif name == "curl" and "alsa-lib.bst" in args[-1]:
@@ -340,6 +344,8 @@ elif name == "just" and args[0] == "bst":
         ref = os.environ.get("OGC_REF", "v7.2.7-ogc2-0-g" + "b" * 40)
     elif args[-1] == "core/linux-fdsdk.bst":
         ref = os.environ.get("KERNEL_REF", "v7.2.7-0-g" + "b" * 40)
+    elif args[-1] == "gaming/gamescope.bst":
+        ref = "b" * 40
     else:
         ref = "d" * 64
     assert args[args.index("arch") + 1] == "x86_64"
@@ -771,6 +777,20 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), updater.PINNED)
         self.assertFalse(self.log.exists())
+
+    def test_tracked_wraps_follow_the_tracked_commit(self):
+        path = self.root / "elements/gaming/gamescope.bst"
+        result = self.cli("--element", "gaming/gamescope.bst")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = path.read_text()
+        self.assertIn("ref: " + "1" * 40 + "\n  directory: subprojects/glm\n", text)
+        self.assertIn("ref: " + "2" * 40 + "\n  directory: subprojects/stb\n", text)
+        before = self.snapshot()
+        for body in ("[wrap-git]\nrevision = main\n", "[wrap-file]\n"):
+            with self.subTest(body=body):
+                result = self.cli("--element", "gaming/gamescope.bst", WRAP_BODY=body)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(self.snapshot(), before)
 
     def test_failed_release_does_not_drop_other_records(self):
         result = self.cli("--group", "tarballs", "--record-dir", "tracked",

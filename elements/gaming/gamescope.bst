@@ -3,19 +3,21 @@
 # This is the real /usr/bin/gamescope host binary used by SteamOS/Bazzite-style
 # game mode. We use OpenGamingCollective's fork to match the OGC session stack
 # already installed in gaming/gamescope-session*.bst. Upstream requires exact
-# fallback copies of wlroots/libliftoff/vkroots, so they are vendored here as
-# git modules instead of using arbitrary system versions.
+# fallback copies of its git submodules, so each is vendored as a git_module;
+# tracking moves their refs to the tracked tag's gitlinks, but a submodule
+# added, removed, or re-homed upstream needs this list edited by hand.
+# subprojects/openvr is left out: the build disables OpenVR.
 kind: manual
 
 sources:
 - kind: git_repo
   url: github:OpenGamingCollective/gamescope.git
-  track: ogc
-  ref: 4a55229f24a9b0596ac48ee3fb60f9550203807e
+  track: '[0-9]*-ogc[0-9]*'
+  ref: 3.17.0-ogc1-0-g4246b87f49d6116d5f863131dcc401fc52840644
 - kind: git_module
   path: subprojects/wlroots
-  url: github:Joshua-Ashton/wlroots.git
-  ref: c08d99437ec8bb56a703f04ad1ef199502c62d10
+  url: freedesktop:wlroots/wlroots.git
+  ref: d783533489e1f75d6886c2ab5c5960090ef268f8
 - kind: git_module
   path: subprojects/libliftoff
   url: freedesktop:emersion/libliftoff.git
@@ -23,11 +25,11 @@ sources:
 - kind: git_module
   path: subprojects/vkroots
   url: github:Joshua-Ashton/vkroots.git
-  ref: 5106d8a0df95de66cc58dc1ea37e69c99afc9540
+  ref: 20733b938267dcac60f6ac105dbb757f9cc8df9c
 - kind: git_module
   path: subprojects/libdisplay-info
   url: freedesktop:emersion/libdisplay-info.git
-  ref: 47a5590e9c4eb35d67651b8c05a55f1a48259329
+  ref: c67a3e9bedb05ab61c7443704a1a107e76254595
 - kind: git_module
   path: src/reshade
   url: github:Joshua-Ashton/reshade.git
@@ -36,14 +38,17 @@ sources:
   path: thirdparty/SPIRV-Headers
   url: github:KhronosGroup/SPIRV-Headers.git
   ref: d790ced752b5bfc06b6988baadef6eb2d16bdf96
-- kind: git_module
-  path: subprojects/glm
+# glm and stb are Meson wraps, not submodules: their revisions come from
+# subprojects/{glm,stb}.wrap, which scripts/update_sources.py copies here
+# after tracking.
+- kind: git_repo
   url: github:g-truc/glm.git
   ref: 0af55ccecd98d4e5a8d1fad7de25ba429d60e863
-- kind: git_module
-  path: subprojects/stb
+  directory: subprojects/glm
+- kind: git_repo
   url: github:nothings/stb.git
   ref: 5736b15f7ea0ffb08dd38af21067c314d6a3aae9
+  directory: subprojects/stb
 
 build-depends:
 # gamescope src/meson.build shells out to git for its version stamp.
