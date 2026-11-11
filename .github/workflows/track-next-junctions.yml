@@ -76,6 +76,7 @@ jobs:
 
           git checkout -B auto/track-next-junction origin/next
           git add elements/gnome-build-meta.bst elements/freedesktop-sdk.bst patches/freedesktop-sdk patches/freedesktop-sdk.manifest.json \
+            elements/bluefin/vte.bst elements/bluefin/alsa-utils.bst \
             elements/core/linux-fdsdk.bst elements/core/linux-ogc.bst
 
           if git diff --cached --quiet; then

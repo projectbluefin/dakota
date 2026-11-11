@@ -7,8 +7,9 @@ description: |
   Hardware: Turing+ only (GTX 16xx, RTX 20xx-50xx, datacenter A/H/L/B).
   Pascal and earlier need the closed-source kernel module we don't ship.
 
-  To bump version: change url, ref (sha256), filename, and nvidia-version
-  below. Latest at https://www.nvidia.com/en-us/drivers/unix/.
+  scripts/update_sources.py moves url, ref, filename, and nvidia-version
+  to each point release of this driver branch; changing branch is a hand edit
+  of the same four fields.
 
 build-depends:
 - freedesktop-sdk.bst:bootstrap/coreutils.bst

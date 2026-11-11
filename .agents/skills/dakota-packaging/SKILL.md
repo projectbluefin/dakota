@@ -34,7 +34,7 @@ Package software as BuildStream elements. Dakota builds natively from source and
    ```bash
    python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock
    ```
-6. **Register for Updates**: Add the element to `TRACKED` (git sources with a `track:` tag glob or branch) or `RELEASES` (versioned release asset URLs) in `scripts/update_sources.py`. If no updater fits, add it to `PINNED` with the reason. `scripts/test_update_sources.py` fails on any element with a network source that is in none of them; an unregistered element stays at the version it was added with.
+6. **Register for Updates**: Prefer a source kind BuildStream tracks by itself: `git_repo` with a `track:` tag glob, or `anitya` (`project-id` from release-monitoring.org and a `{version}` URL template) for a release tarball. Then add the element to `scripts/update_sources.py`: `TRACKED` for those kinds, `RELEASES` only for what they cannot express (several assets per release, asset names with a build number, a `series` to stay on, a version `feed` outside release-monitoring.org), or `DERIVED` when the pin must equal another component's. Keep the version only in source URLs and keys the updater rewrites (`url`, `filename`, a named variable), never in install commands. `PINNED` is for a decision that blocks updates, not a missing updater. `scripts/test_update_sources.py` fails on any element with a network source that is in none of them; an unregistered element stays at the version it was added with.
 7. **Validate and Build**:
    ```bash
    just validate

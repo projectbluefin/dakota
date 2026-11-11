@@ -100,9 +100,17 @@ while it runs.
 “All” means the sources managed by the tracker, not every element or dependency
 inside upstream junctions. The source list lives in `scripts/update_sources.py`;
 CI reads its matrix from there too. Every element with a network source must be
-in `TRACKED`, `KERNELS`, or `RELEASES`, or in `PINNED` with the reason no updater
-moves it; the updater tests enforce this. Release assets advance their URLs before
-BuildStream tracks checksums. Tracking explicitly targets **x86_64 only** for now,
+in `TRACKED`, `KERNELS`, `RELEASES`, or `DERIVED` (a pin that must equal another
+component's, moved by that component's updater), or in `PINNED` with the decision
+that blocks it; the updater tests enforce this. A missing updater is not a pin
+reason. Prefer a source kind BuildStream tracks by itself, as freedesktop-sdk and
+gnome-build-meta do: `git_repo` with a tag glob, or `anitya` for a release tarball
+listed on release-monitoring.org; those elements go in `TRACKED`. `RELEASES` is
+for what a source kind cannot express: several assets per release, asset names
+that embed a build number, packages that must stay on a series, or a version feed
+outside release-monitoring.org. Release assets advance their URLs before
+BuildStream tracks checksums, and an element with local patches is staged to
+prove they still apply before its update is recorded. Tracking explicitly targets **x86_64 only** for now,
 including the OCI source in `brew-tarball.bst`. Architecture-specific ARM URLs and
 checksums stay pinned together, so the two architectures may have different
 versions. Shared sources and junctions still advance; this is not an ARM build

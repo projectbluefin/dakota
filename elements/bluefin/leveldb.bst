@@ -3,6 +3,7 @@ kind: cmake
 sources:
 - kind: git_repo
   url: github:google/leveldb.git
+  track: '[0-9]*'
   ref: 99b3c03b3284f5886f9ef9a4ef703d57373e61be
 
 build-depends:

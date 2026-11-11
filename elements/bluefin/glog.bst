@@ -3,6 +3,9 @@ kind: cmake
 sources:
 - kind: git_repo
   url: github:google/glog.git
+  track: 'v[0-9]*'
+  exclude:
+  - '*-rc*'
   ref: 7b134a5c82c0c0b5698bb6bf7a835b230c5638e4
 
 build-depends:

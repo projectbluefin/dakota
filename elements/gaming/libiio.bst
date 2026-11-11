@@ -8,7 +8,7 @@ kind: cmake
 sources:
 - kind: git_repo
   url: github:analogdevicesinc/libiio.git
-  track: v0.26
+  track: 'v0.*'
   ref: v0.26-0-ga0eca0d2bf10326506fb762f0eec14255b27bef5
 
 build-depends:

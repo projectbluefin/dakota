@@ -3,6 +3,7 @@ kind: cmake
 sources:
 - kind: git_repo
   url: github:rime/ibus-rime.git
+  track: '[0-9]*'
   ref: 3c73b2cf80685e75ed42c7631790936fb4f6b4b2
 
 build-depends:

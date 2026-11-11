@@ -3,7 +3,10 @@ kind: cmake
 sources:
 - kind: git_repo
   url: github:BYVoid/OpenCC.git
-  ref: 025f371dc76b598d77384fbdab90c937471844d8 # ver.1.4.2
+  track: 'ver.*'
+  exclude:
+  - '*.pre.*'
+  ref: 025f371dc76b598d77384fbdab90c937471844d8
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-cmake.bst

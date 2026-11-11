@@ -24,7 +24,7 @@ config:
   - |
     mkdir -p deb data "%{install-root}/usr/lib/i386-linux-gnu"
     cd deb
-    ar x ../libgtk2.0-0_2.24.33-2+deb12u1_i386.deb
+    ar x ../libgtk2.0-0_*_i386.deb
     cd ..
     tar -xf deb/data.tar.xz -C data
 

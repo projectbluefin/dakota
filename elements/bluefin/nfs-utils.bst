@@ -4,9 +4,12 @@ description: |
   nfsidmap, nfsconf, and systemd generator/units) supporting NFSv3 and NFSv4.
 
 sources:
-- kind: tar
-  url: kernel_pub:linux/utils/nfs-utils/3.1.1/nfs-utils-3.1.1.tar.xz
-  ref: 7dbc05eb8b32828b322872b759a62cb3979cb4118f344dd8616813d1390e84e0
+- kind: anitya
+  project-id: 2081
+  url: kernel_pub:linux/utils/nfs-utils/{version}/nfs-utils-{version}.tar.xz
+  ref:
+    version: 3.1.1
+    sha256sum: 7dbc05eb8b32828b322872b759a62cb3979cb4118f344dd8616813d1390e84e0
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-autotools.bst

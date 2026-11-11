@@ -3,6 +3,7 @@ kind: cmake
 sources:
 - kind: git_repo
   url: github:jbeder/yaml-cpp.git
+  track: 'yaml-cpp-[0-9]*'
   ref: 2f86d13775d119edbb69af52e5f566fd65c6953b
 
 build-depends:

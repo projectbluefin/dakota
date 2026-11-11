@@ -1,9 +1,12 @@
 kind: manual
 
 sources:
-- kind: tar
-  url: sourceforge:nicstat/nicstat-1.95.tar.gz
-  ref: c4cc33f8838f4523f27c3d7584eedbe59f4c587f0821612f5ac2201adc18b367
+- kind: anitya
+  project-id: 10373
+  url: sourceforge:nicstat/nicstat-{version}.tar.gz
+  ref:
+    version: '1.95'
+    sha256sum: c4cc33f8838f4523f27c3d7584eedbe59f4c587f0821612f5ac2201adc18b367
 - kind: patch_queue
   path: patches/nicstat
 
