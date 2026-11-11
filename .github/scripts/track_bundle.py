@@ -34,6 +34,8 @@ BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 REF_LINE = re.compile(r"^\s*ref:\s+(\S+)", re.MULTILINE)
 REF_VALUE_LINE = re.compile(r"^([ \t]*ref:)[^\n]*$", re.MULTILINE)
 DIFF_REF = re.compile(r"ref:\s+(\S+)")
+# anitya refs are a mapping; its `version:` line carries the release.
+DIFF_REF_VERSION = re.compile(r"^[-+]\s+version:\s+'?([^'\s]+)")
 SHA40 = re.compile(r"[0-9a-f]{40}$")
 DESCRIBE_SHA = re.compile(r"(?<=g)[0-9a-f]+$")
 VERSION = re.compile(r"v?\d+[\d.\-]+")
@@ -98,7 +100,7 @@ def diff_refs(diff: str) -> tuple[str, str]:
     for line in diff.splitlines():
         if line.startswith(("---", "+++")):
             continue
-        m = DIFF_REF.search(line)
+        m = DIFF_REF.search(line) or DIFF_REF_VERSION.search(line)
         if not m:
             continue
         if line.startswith("-") and not old:
@@ -184,7 +186,21 @@ def set_output(name: str, value: str) -> None:
             f.write(f"{name}={value}\n")
 
 
-def render_body(updates: list[Update], run_url: str) -> str:
+def load_failures(tracked: Path) -> dict[str, str]:
+    """Elements whose update failed in this run, with the reason."""
+    failures = {}
+    for path in sorted((tracked / "failed").glob("*.json")):
+        record = json.loads(path.read_text())
+        failures[record["element"]] = record["error"]
+    return failures
+
+
+def cell(text: str) -> str:
+    return " ".join(text.split()).replace("|", "\\|")
+
+
+def render_body(updates: list[Update], run_url: str, failures: dict[str, str] | None = None,
+                held: list[str] | None = None, pinned: dict[str, str] | None = None) -> str:
     lines = [
         "## BuildStream source updates",
         "",
@@ -195,6 +211,23 @@ def render_body(updates: list[Update], run_url: str) -> str:
     ]
     if any(u.note for u in updates):
         lines += ["> [!IMPORTANT]", "> Rows with a note need review before this merges.", ""]
+    # Everything that did not move, so a stuck element is visible here rather
+    # than only in the workflow log.
+    if failures:
+        lines += ["### Not updated", "",
+                  "These elements failed to update in this run and keep their current pin.", "",
+                  "| Element | Reason |", "| --- | --- |",
+                  *(f"| `{element}` | {cell(error)} |" for element, error in failures.items()),
+                  ""]
+    if held:
+        lines += ["### Held out", "",
+                  "Held by `TRACK_BUNDLE_SKIP`: " + ", ".join(f"`{slug}`" for slug in held) + ".",
+                  ""]
+    if pinned:
+        lines += ["<details><summary>Pinned on purpose</summary>", "",
+                  "| Element | Reason |", "| --- | --- |",
+                  *(f"| `{element}` | {cell(reason)} |" for element, reason in pinned.items()),
+                  "", "</details>", ""]
     lines += [
         "Each element is its own commit. To hold one out, add its slug to the",
         "`TRACK_BUNDLE_SKIP` repository variable and re-run the tracker.",
@@ -230,8 +263,9 @@ def bundle_changed(repo: Path, base: str, branch: str) -> bool:
 
 
 def compose(tracked: Path, branch: str, base: str, skip: set[str], run_url: str,
-            repo: Path = Path(".")) -> ComposeResult:
+            repo: Path = Path("."), pinned: dict[str, str] | None = None) -> ComposeResult:
     result = ComposeResult()
+    held: list[str] = []
     git("config", "user.name", BOT_NAME, cwd=repo)
     git("config", "user.email", BOT_EMAIL, cwd=repo)
     git("checkout", "-B", branch, f"{REMOTE}/{base}", cwd=repo)
@@ -242,6 +276,7 @@ def compose(tracked: Path, branch: str, base: str, skip: set[str], run_url: str,
     for update in load_records(tracked):
         if update.slug in skip:
             print(f"{update.slug}: held out by TRACK_BUNDLE_SKIP")
+            held.append(update.slug)
             continue
         for path in update.files:
             target = repo / path
@@ -271,7 +306,8 @@ def compose(tracked: Path, branch: str, base: str, skip: set[str], run_url: str,
 
     # The body is refreshed even without a push, so rows for updates that
     # already landed on the base branch drop out.
-    title, body = bundle_title(bundled), render_body(bundled, run_url)
+    title = bundle_title(bundled)
+    body = render_body(bundled, run_url, load_failures(tracked), held, pinned)
     if existing:
         gh("pr", "edit", existing, "--title", title, "--body-file", "-", input=body, cwd=repo)
         result.pr = existing
@@ -319,7 +355,9 @@ def cmd_record(args: argparse.Namespace) -> int:
 
 
 def cmd_compose(args: argparse.Namespace) -> int:
-    compose(args.tracked, args.branch, args.base, set(args.skip.split()), args.run_url)
+    pinned = json.loads(args.pinned.read_text()) if args.pinned else None
+    compose(args.tracked, args.branch, args.base, set(args.skip.split()), args.run_url,
+            pinned=pinned)
     return 0
 
 
@@ -350,6 +388,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--base", default="testing")
     p.add_argument("--skip", default="", help="space-separated slugs to hold out")
     p.add_argument("--run-url", required=True)
+    p.add_argument("--pinned", type=Path,
+                   help="JSON of deliberately pinned elements and reasons, listed in the PR")
     p.set_defaults(func=cmd_compose)
 
     args = parser.parse_args(argv)

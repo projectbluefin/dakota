@@ -3,7 +3,7 @@ kind: meson
 sources:
 - kind: git_repo
   url: gnome:gnome-epub-thumbnailer.git
-  track: "1.8"
+  track: '[0-9]*.[0-9]*'
   ref: 1.8-0-g64912a3a75a9dffd9db107d948336060837cc273
 
 build-depends:

@@ -3,9 +3,11 @@ kind: cmake
 sources:
 - kind: git_repo
   url: github:rime/librime.git
+  track: '[0-9]*'
   ref: 33e78140250125871856cdc5b42ddc6a5fcd3cd4
 - kind: git_repo
   url: github:hchunhui/librime-lua.git
+  track: 'master'
   ref: ad1e4a6c98abf634dd34242a747f9b1d5d069fbe
   directory: plugins/lua
 

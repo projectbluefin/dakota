@@ -2,9 +2,12 @@
 kind: manual
 
 sources:
-- kind: tar
-  url: boost:release/1.90.0/source/boost_1_90_0.tar.bz2
-  ref: 49551aff3b22cbc5c5a9ed3dbc92f0e23ea50a0f7325b0d198b705e8ee3fc305
+- kind: anitya
+  project-id: 6845
+  url: boost:release/{version}/source/boost_{major}_{minor}_{patch}.tar.bz2
+  ref:
+    version: 1.90.0
+    sha256sum: 49551aff3b22cbc5c5a9ed3dbc92f0e23ea50a0f7325b0d198b705e8ee3fc305
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-make.bst

@@ -3,7 +3,7 @@ kind: manual
 sources:
 - kind: git_repo
   url: codeberg:mkhl/gnome-shell-extension-fuzzy-application-search.git
-  track: v2
+  track: 'v[0-9]*'
   ref: 864bf0ca6a3963e93cde7d5fd4fba8fb37cf0f49
 
 build-depends:

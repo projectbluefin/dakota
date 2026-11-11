@@ -5,7 +5,7 @@ kind: cmake
 sources:
 - kind: git_repo
   url: github:ReimuNotMoe/ydotool.git
-  track: v1.0.4
+  track: 'v[0-9]*.[0-9]*.[0-9]*'
   ref: v1.0.4-0-g57ba7d0af525e82da2de0e275d169477f293b197
 
 build-depends:

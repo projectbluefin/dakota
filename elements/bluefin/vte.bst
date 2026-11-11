@@ -6,12 +6,12 @@
 # GTK3 ABI (Vte-2.91) and cannot load. See projectbluefin/dakota#1022.
 #
 # Upstream core-deps/vte.bst builds GTK4-only (-Dgtk3=false). ddterm binds the
-# GTK3 typelib, so this element rebuilds the identical 0.84.0 source with BOTH
-# ABIs and stages the pair the image otherwise lacks:
+# GTK3 typelib, so this element rebuilds the identical source with BOTH ABIs
+# and stages the pair the image otherwise lacks:
 #   Vte-2.91 + libvte-2.91.so.0        (GTK3, what ddterm needs)
 #   Vte-3.91 + libvte-2.91-gtk4.so.0   (GTK4, for parity with upstream)
-# The 0.84.0 source/ref MUST stay in lockstep with the gnome-build-meta
-# junction's core-deps/vte.bst -- bump both together to avoid two VTE ABIs.
+# The source/ref MUST stay in lockstep with the gnome-build-meta junction's
+# core-deps/vte.bst to avoid two VTE ABIs: the core-junctions update copies it.
 kind: meson
 
 sources:

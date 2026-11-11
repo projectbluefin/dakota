@@ -1,6 +1,7 @@
 """Offline coverage for the shared local/CI source updater."""
 
 import contextlib
+import importlib.util
 import io
 import json
 import os
@@ -74,7 +75,7 @@ class SelectionTests(unittest.TestCase):
 
     def test_matrix_preserves_review_notes_and_adds_oci_source(self):
         items = {x["element"]: x for x in updater.matrix()["include"]}
-        self.assertEqual(len(items), 24)
+        self.assertEqual(len(items), len(updater.TRACKED) + len(updater.KERNELS))
         for kernel, _, _ in updater.KERNELS:
             self.assertIn("NVIDIA build", items[kernel]["note"])
         self.assertIn("bluefin/brew-tarball.bst", items)
@@ -83,6 +84,32 @@ class SelectionTests(unittest.TestCase):
                          "review: unreleased branch head")
         for element in items:
             self.assertTrue((REPOSITORY / "elements" / element).is_file())
+
+    def test_every_network_source_has_an_updater_or_a_pin_reason(self):
+        # Every source kind is a network source unless it is local content
+        # or a dependency list that moves with the element owning it, so a
+        # kind nobody listed here still needs an updater.
+        network = re.compile(r"^\s*- kind:\s*(?!(?:local|patch|patch_queue|cargo2|registry|go_module"
+                             r"|gen_cargo_lock)\s*$)\S+\s*$", re.MULTILINE)
+        updated = ({x[0] for x in updater.TRACKED + updater.KERNELS} | set(updater.RELEASES)
+                   | {"gnome-build-meta.bst", "freedesktop-sdk.bst",
+                      "plugins/buildstream-plugins-community.bst"})
+        self.assertFalse(updated & set(updater.DERIVED), "element is both updated and derived")
+        for element, owner in updater.DERIVED.items():
+            self.assertTrue(owner == updater.CORE or element in updater.RELEASES[owner].derived,
+                            f"{owner} does not move {element}")
+        updated |= set(updater.DERIVED)
+        self.assertFalse(updated & set(updater.PINNED), "element is both updated and pinned")
+        unclassified = []
+        for path in sorted((REPOSITORY / "elements").rglob("*.bst")):
+            element = str(path.relative_to(REPOSITORY / "elements"))
+            if network.search(path.read_text()) and element not in updated | set(updater.PINNED):
+                unclassified.append(element)
+        self.assertEqual(unclassified, [], "add each element to TRACKED or RELEASES, "
+                         "or to PINNED with the reason it cannot be updated")
+        for element, reason in updater.PINNED.items():
+            self.assertTrue((REPOSITORY / "elements" / element).is_file(), element)
+            self.assertTrue(reason.strip(), element)
 
     def test_hyperv_daemons_tracks_the_kernel_source(self):
         # Hyper-V daemons build from the kernel's tools/hv. Sharing url, track
@@ -98,6 +125,18 @@ class SelectionTests(unittest.TestCase):
                          git_source("core/linux-fdsdk.bst"))
 
 
+# A tag and asset name each release's patterns accept, newer than any pin.
+SAMPLE_TAGS = ("v99.88.77", "99.88.77", "stable-99.88.77", "a" * 40, "99999", "999.88.77",
+               "2.24.99-9+deb12u9", "99.88.77.66")
+SAMPLE_ASSETS = ("open-vm-tools-99.88.77-12345.tar.gz", "MangoHud-99.88.77.r0.gabcdef0.tar.gz")
+
+
+def sample(release):
+    tag = next(t for t in SAMPLE_TAGS if re.fullmatch(release.tag_pattern, t))
+    asset = next((a for a in SAMPLE_ASSETS if re.fullmatch(release.asset, a)), "") if release.asset else ""
+    return tag, asset
+
+
 class RewriteTests(unittest.TestCase):
     def test_every_release_updates_only_urls_and_is_idempotent(self):
         for element, release in updater.RELEASES.items():
@@ -105,14 +144,44 @@ class RewriteTests(unittest.TestCase):
                 continue
             with self.subTest(element=element):
                 original = (REPOSITORY / "elements" / element).read_text()
-                tag = "v99.88.77" if re.fullmatch(release.tag_pattern, "v99.88.77") else "99.88.77"
-                updated, old = updater.rewrite_release(original, release, tag)
+                tag, asset = sample(release)
+                updated, old = updater.rewrite_release(original, release, tag, asset)
                 self.assertNotEqual(updated, original)
                 self.assertTrue(old)
+                self.assertEqual(updater.pinned_version(original, release), old.split(", ")[0])
+                keys = ("url:",) + tuple(f"{key}:" for key in release.keys)
                 unchanged = lambda text: [line for line in text.splitlines()
-                                           if not line.lstrip().startswith("url:")]
+                                           if not line.lstrip().startswith(keys)]
                 self.assertEqual(unchanged(updated), unchanged(original))
-                self.assertEqual(updater.rewrite_release(updated, release, tag)[0], updated)
+                self.assertEqual(updater.rewrite_release(updated, release, tag, asset)[0], updated)
+
+    def test_repeated_version_keys_move_with_the_url(self):
+        release = updater.RELEASES["bluefin-nvidia/nvidia-drivers.bst"]
+        text = (REPOSITORY / "elements/bluefin-nvidia/nvidia-drivers.bst").read_text()
+        old = updater.pinned_version(text, release)
+        updated, _ = updater.rewrite_release(text, release, "999.88.77")
+        self.assertIn("Linux-x86_64/999.88.77/NVIDIA-Linux-x86_64-999.88.77.run", updated)
+        self.assertIn("filename: NVIDIA-Linux-x86_64-999.88.77.run", updated)
+        self.assertIn("nvidia-version: '999.88.77'", updated)
+        self.assertNotIn(old, re.sub(r"(?m)^\s*#.*$", "", updated))
+
+    def test_multi_asset_release_moves_together_and_skips_paused_arm(self):
+        release = updater.RELEASES["bluefin/tealdeer.bst"]
+        text = (REPOSITORY / "elements/bluefin/tealdeer.bst").read_text()
+        old = updater.pinned_version(text, release)
+        updated, _ = updater.rewrite_release(text, release, "v99.88.77")
+        self.assertEqual(updated.count("download/v99.88.77/"), 4)
+        self.assertIn(f"download/{old}/tealdeer-linux-aarch64-musl", updated)
+        fonts = updater.RELEASES["bluefin/nerd-fonts-symbols.bst"]
+        text = (REPOSITORY / "elements/bluefin/nerd-fonts-symbols.bst").read_text()
+        self.assertEqual(updater.rewrite_release(text, fonts, "v99.88.77")[0].count("/v99.88.77/"), 4)
+
+    def test_asset_names_are_validated(self):
+        release = updater.RELEASES["bluefin/open-vm-tools.bst"]
+        text = (REPOSITORY / "elements/bluefin/open-vm-tools.bst").read_text()
+        for asset in ("", "open-vm-tools-1.2.3-4.tar.gz/../evil", "other-1.2.3-4.tar.gz"):
+            with self.subTest(asset=asset), self.assertRaises(ValueError):
+                updater.rewrite_release(text, release, "stable-1.2.3", asset)
 
     def test_older_arm_version_is_left_alone(self):
         release = updater.RELEASES["bluefin/gum.bst"]
@@ -204,10 +273,37 @@ args = sys.argv[1:]
 name = pathlib.Path(sys.argv[0]).name
 with open(os.environ["CALL_LOG"], "a") as log:
     log.write(json.dumps([name, *args]) + "\n")
+# Newer than every pin, in the shape of each feed outside GitHub.
+FEEDS = {
+    "extensions.gnome.org": '{"version_tag": 99999, "version": 77}',
+    # Only the pinned 615 branch qualifies; 999 is another driver branch.
+    "download.nvidia.com": "href='615.99.77/' href='999.1.2/' href='615.1.2/'",
+    "steampowered.com": "Filename: pool/steam/s/steam/steam-launcher_99.88.77.66_amd64.deb",
+    "ftp-master.debian.org": '[{"libgtk2.0-0": {"oldstable": {"2.24.99-9+deb12u9": {}}}}]',
+    "alsa-project.org": "alsa-utils-9.8.7.tar.bz2 alsa-utils-9.8.8.tar.bz2 alsa-utils-1.2.14.tar.bz2",
+}
+ASSETS = {
+    "repos/vmware/open-vm-tools/": "stable-99.88.77\nopen-vm-tools-99.88.77-12345.tar.gz\nother.zip",
+    "repos/flightlessmango/MangoHud/": "v99.88.77\nMangoHud-99.88.77.r0.gabcdef0.tar.gz\nMangoHud-v99.88.77-Source.tar.xz",
+}
 if name == "gh":
     assert args[0] == "api" and args[1].startswith("repos/")
-    default = "99.88.77" if args[1].startswith("repos/projectbluefin/documentation/") else "v99.88.77"
+    unprefixed = ("repos/projectbluefin/documentation/", "repos/libimobiledevice/ifuse/")
+    default = "99.88.77" if args[1].startswith(unprefixed) else "v99.88.77"
+    if args[1].endswith("/commits/master"):
+        default = "a" * 40
+    if ".assets" in args[-1]:
+        default = next(v for k, v in ASSETS.items() if args[1].startswith(k))
     print(os.environ.get("RELEASE_TAG", default))
+elif name == "curl" and any(k in args[-1] for k in FEEDS):
+    if os.environ.get("FAIL_FEED"):
+        sys.exit(22)
+    print(os.environ.get("FEED_BODY", next(v for k, v in FEEDS.items() if k in args[-1])))
+elif name == "curl" and "core-deps%2Fvte.bst" in args[-1]:
+    print(os.environ.get("UPSTREAM_VTE", "kind: meson\nsources:\n- kind: tar\n  url: gnome_downloads:vte/99.88/vte-99.88.77.tar.xz\n  ref: " + "a" * 64 + "\nbuild-depends:\n"))
+elif name == "curl" and "alsa-lib.bst" in args[-1]:
+    assert "ref=" + "c" * 40 in args[-1]
+    print(os.environ.get("UPSTREAM_ALSA", "sources:\n- kind: git_repo\n  url: github:alsa-project/alsa-lib.git\n  track: v*.*.*\n  ref: v9.8.7.1-0-g" + "a" * 40))
 elif name == "curl" and args[-1] == "https://pkgs.tailscale.com/stable/?mode=json":
     if os.environ.get("FAIL_FEED"):
         sys.exit(22)
@@ -223,6 +319,14 @@ elif name == "just" and args[0] == "bst" and "fetch" in args:
     assert args[-1] in ("core/linux-fdsdk.bst", "core/linux-ogc.bst")
     if os.environ.get("FAIL_FETCH") == args[-1]:
         print("Failed to apply kernel patches", file=sys.stderr)
+        sys.exit(1)
+elif name == "just" and args[0] == "bst" and "checkout" in args:
+    assert args[:9] == ["bst", "--no-interactive", "-o", "arch", "x86_64",
+                        "source", "checkout", "--deps", "none"]
+    assert args[9] == "--directory" and args[10].startswith(".source-check/")
+    pathlib.Path(args[10]).mkdir(parents=True)
+    if os.environ.get("FAIL_CHECKOUT") == args[-1]:
+        print("Failed to apply patches", file=sys.stderr)
         sys.exit(1)
 elif name == "just" and args[0] == "bst":
     assert "source" in args and "track" in args
@@ -285,7 +389,7 @@ class CliTests(unittest.TestCase):
         shutil.copy2(REPOSITORY / ".github/scripts/track_bundle.py", self.root / ".github/scripts")
         paths = [x[0] for x in updater.TRACKED + updater.KERNELS] + list(updater.RELEASES)
         paths += ["gnome-build-meta.bst", "freedesktop-sdk.bst",
-                  "plugins/buildstream-plugins-community.bst"]
+                  "plugins/buildstream-plugins-community.bst", *updater.DERIVED]
         for element in paths:
             dest = self.root / "elements" / element
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -368,7 +472,7 @@ class CliTests(unittest.TestCase):
                 result = self.cli("--element", "bluefin/ghostty.bst", "--record-dir", "tracked", **env)
                 self.assertEqual(result.returncode, 0 if "RELEASE_TAG" in env and env["RELEASE_TAG"] == tag else 1)
                 self.assertEqual(self.snapshot(), before)
-                self.assertFalse((self.root / "tracked").exists())
+                self.assertFalse((self.root / "tracked/meta").exists())
                 if "FAIL_GENERATOR" not in env:
                     self.assertEqual([c[0] for c in self.calls()], ["gh"])
 
@@ -380,7 +484,7 @@ class CliTests(unittest.TestCase):
                           FAIL_ELEMENT="bluefin/gum.bst")
         self.assertEqual(result.returncode, 1)
         self.assertEqual(self.snapshot(), before)
-        self.assertFalse((self.root / "tracked").exists())
+        self.assertFalse((self.root / "tracked/meta").exists())
 
     def test_oci_source_tracks_only_x86_without_release_lookup(self):
         path = self.root / "elements/bluefin/brew-tarball.bst"
@@ -390,7 +494,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(len(self.calls()), 1)
         self.assertEqual([c[c.index("arch") + 1] for c in self.calls()], ["x86_64"])
         self.assertIn(arm_block, path.read_text())
-        self.assertFalse((self.root / "tracked").exists())
+        self.assertFalse((self.root / "tracked/meta").exists())
 
     def test_unchanged_release_does_not_track(self):
         path = self.root / "elements/bluefin/gum.bst"
@@ -412,7 +516,8 @@ class CliTests(unittest.TestCase):
         ])
         text = (self.root / "elements/core/linux-ogc.bst").read_text()
         self.assertIn("ogc-localversion: '-ogc2'", text)
-        self.assertIn("track: v7.2.*-ogc*", text)
+        self.assertIn(re.search(r"track: .*", (REPOSITORY / "elements/core/linux-ogc.bst").read_text())[0],
+                      text)
         self.assertIn("NVIDIA", result.stdout)
         self.assertNotIn("gh", [call[0] for call in self.calls()])
 
@@ -457,7 +562,7 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 1, result.stdout)
                 self.assertIn("Failed to apply kernel patches", result.stderr)
                 self.assertEqual(self.snapshot(), before)
-                self.assertFalse((self.root / "tracked").exists())
+                self.assertFalse((self.root / "tracked/meta").exists())
 
     def test_kernel_fetch_failure_keeps_and_records_other_successful_kernel(self):
         self.init_recording_repo()
@@ -504,7 +609,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("already up to date", result.stdout)
         self.assertEqual(self.calls(), [["curl", "-fsSL", updater.TAILSCALE_FEED]])
         self.assertEqual(self.snapshot(), before)
-        self.assertFalse((self.root / "tracked").exists())
+        self.assertFalse((self.root / "tracked/meta").exists())
 
     def test_tailscale_new_package_tracks_checksum_and_preserves_arm(self):
         path = self.root / "elements/bluefin/tailscale.bst"
@@ -534,7 +639,7 @@ class CliTests(unittest.TestCase):
                 result = self.cli("--element", "bluefin/tailscale.bst", "--record-dir", "tracked", **env)
                 self.assertEqual(result.returncode, 1)
                 self.assertEqual(self.snapshot(), before)
-                self.assertFalse((self.root / "tracked").exists())
+                self.assertFalse((self.root / "tracked/meta").exists())
                 self.assertNotIn("gh", [c[0] for c in self.calls()])
                 if "FAIL_ELEMENT" not in env:
                     self.assertEqual(len(self.calls()), 1)
@@ -547,7 +652,18 @@ class CliTests(unittest.TestCase):
         self.assertIn(f"ref={SHA}", calls[1][-1])
         self.assertIn("elements%2Fplugins%2Fbuildstream-plugins-community.bst", calls[2][-1])
         self.assertIn(f"ref={SHA}", calls[2][-1])
-        self.assertEqual(calls[3:], [["just", "patch-sync"], ["just", "patch-drift-check"]])
+        self.assertIn("elements%2Fcore-deps%2Fvte.bst", calls[3][-1])
+        self.assertIn(f"ref={SHA}", calls[3][-1])
+        self.assertIn("elements%2Fcomponents%2Falsa-lib.bst", calls[4][-1])
+        self.assertEqual(calls[5][-1], updater.ALSA_UTILS.feed)
+        self.assertEqual(calls[6], ["just", "bst", "--no-interactive", "-o", "arch", "x86_64",
+                                    "source", "track", "bluefin/alsa-utils.bst"])
+        self.assertEqual(calls[7:], [["just", "patch-sync"], ["just", "patch-drift-check"]])
+        vte = (self.root / "elements/bluefin/vte.bst").read_text()
+        self.assertIn("url: gnome_downloads:vte/99.88/vte-99.88.77.tar.xz\n  ref: " + "a" * 64, vte)
+        # The alsa-lib 9.8.7.1 hotfix pairs with alsa-utils 9.8.7, never 9.8.8.
+        alsa = (self.root / "elements/bluefin/alsa-utils.bst").read_text()
+        self.assertIn("url: alsa_project:utils/alsa-utils-9.8.7.tar.bz2\n", alsa)
         self.assertIn("sdk-99-0-g" + "c" * 40,
                       (self.root / "elements/freedesktop-sdk.bst").read_text())
         plugins = (self.root / "elements/plugins/buildstream-plugins-community.bst").read_text()
@@ -573,14 +689,94 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
         self.assertEqual(len(self.calls()), 3)
 
+    def test_core_rejects_unreadable_derived_pins_and_restores_everything(self):
+        before = self.snapshot()
+        for env in ({"UPSTREAM_VTE": "kind: meson\nsources:\n- kind: git_repo\n"},
+                    {"UPSTREAM_ALSA": "sources:\n- kind: git_repo\n  ref: main\n"},
+                    {"UPSTREAM_ALSA": "  ref: v5.5.5-0-g" + "a" * 40 + "\n"}):
+            with self.subTest(env=env):
+                result = self.cli("--group", "core-junctions", **env)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(self.snapshot(), before)
+
+    def test_feed_release_tracks_newest_in_series_and_never_moves_backwards(self):
+        path = self.root / "elements/bluefin-nvidia/nvidia-drivers.bst"
+        result = self.cli("--element", "bluefin-nvidia/nvidia-drivers.bst", "--record-dir", "tracked")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("nvidia-version: '615.99.77'", path.read_text())
+        meta = json.loads((self.root / "tracked/meta/nvidia-drivers.json").read_text())
+        self.assertIn("-> 615.99.77", meta["title"])
+        self.assertIn("NVIDIA kernel modules", meta["note"])
+        before = self.snapshot()
+        for body in ("href='615.1.2/'", '{"version_tag": 1}'):
+            for element in ("bluefin-nvidia/nvidia-drivers.bst",
+                            "bluefin/shell-extensions/tilingshell.bst"):
+                result = self.cli("--element", element, FEED_BODY=body)
+                if (body.startswith("href")) == ("nvidia" in element):
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn("keeping it", result.stdout)
+                else:
+                    self.assertEqual(result.returncode, 1)
+                self.assertEqual(self.snapshot(), before)
+
+    def test_ego_feed_asks_for_the_shipped_shell_version(self):
+        result = self.cli("--element", "bluefin/shell-extensions/tilingshell.bst")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        shell = re.search(r"track: gnome-([0-9]+)",
+                          (self.root / "elements/gnome-build-meta.bst").read_text())[1]
+        self.assertTrue(self.calls()[0][-1].endswith(f"&shell_version={shell}"))
+        self.assertIn("version_tag=99999",
+                      (self.root / "elements/bluefin/shell-extensions/tilingshell.bst").read_text())
+
+    def test_patched_elements_must_still_apply_their_patches(self):
+        for element in ("bluefin/open-vm-tools.bst", "bluefin/shell-extensions/tailscale-qs.bst"):
+            with self.subTest(element=element):
+                path = self.root / "elements" / element
+                path.write_text(path.read_text() + "\n# local edit\n")
+                before = self.snapshot()
+                self.log.unlink(missing_ok=True)
+                result = self.cli("--element", element, "--record-dir", "tracked",
+                                  FAIL_CHECKOUT=element)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("checkout", self.calls()[-1])
+                self.assertEqual(self.snapshot(), before)
+                self.assertFalse((self.root / "tracked/meta").exists())
+                self.assertFalse((self.root / ".source-check").exists())
+        result = self.cli("--element", "bluefin/open-vm-tools.bst")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("open-vm-tools-99.88.77-12345.tar.gz",
+                      (self.root / "elements/bluefin/open-vm-tools.bst").read_text())
+        self.assertFalse((self.root / ".source-check").exists())
+
+    def test_failures_are_recorded_for_the_bundle_pr(self):
+        result = self.cli("--element", "bluefin/gum.bst", "--record-dir", "tracked",
+                          RELEASE_TAG="not-a-tag")
+        self.assertEqual(result.returncode, 1)
+        record = json.loads((self.root / "tracked/failed/gum.json").read_text())
+        self.assertEqual(record["element"], "bluefin/gum.bst")
+        self.assertIn("Unexpected release tag", record["error"])
+        # The matrix records updates in a later step, so it names the directory itself.
+        result = self.cli("--element", "bluefin/brlaser.bst", "--failure-dir", "elsewhere",
+                          FAIL_ELEMENT="bluefin/brlaser.bst")
+        self.assertEqual(result.returncode, 1)
+        record = json.loads((self.root / "elsewhere/failed/brlaser.json").read_text())
+        self.assertIn("exited 1", record["error"])
+        self.assertFalse((self.root / "tracked/failed/brlaser.json").exists())
+
+    def test_pinned_reasons_are_printed_offline(self):
+        result = self.cli("--pinned")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), updater.PINNED)
+        self.assertFalse(self.log.exists())
+
     def test_failed_release_does_not_drop_other_records(self):
         result = self.cli("--group", "tarballs", "--record-dir", "tracked",
                           FAIL_ELEMENT="bluefin/tailscale.bst")
         self.assertEqual(result.returncode, 1)
         # Tailscale simulates a 404; every other release is still recorded.
         self.assertEqual(sorted(p.stem for p in (self.root / "tracked/meta").glob("*.json")),
-                         ["bluefin-docs", "ghostty", "gtk4-layer-shell", "gum",
-                          "jetbrains-mono-nerd-font", "uupd"])
+                         sorted(Path(e).stem
+                                for e in updater.RELEASES if e != "bluefin/tailscale.bst"))
 
 
 class NextKernelPolicyTests(unittest.TestCase):
@@ -657,12 +853,46 @@ if name == "gh":
         self.assertFalse(any(call[:2] == ["git", "push"] for call in calls))
 
 
+class GhosttyZigTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location(
+            "generate_ghostty_sources", REPOSITORY / "files/scripts/generate_ghostty_sources.py")
+        self.gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.gen)
+
+    def entry(self, version, sha="e" * 64):
+        return {"x86_64-linux": {"tarball": f"https://ziglang.org/download/{version}/"
+                                            f"zig-x86_64-linux-{version}.tar.xz", "shasum": sha}}
+
+    def test_zig_follows_the_newest_patch_of_ghosttys_minor(self):
+        index = {"master": {}, **{v: self.entry(v) for v in ("0.17.0", "0.17.2", "0.18.0", "0.16.9")}}
+        self.assertEqual(self.gen.zig_for("0.17.0", index), ("0.17.2", "e" * 64))
+        self.assertEqual(self.gen.zig_for("0.16.0", index)[0], "0.16.9")
+        for bad in ({"0.19.0": self.entry("0.19.0", "not-a-sha")},
+                    {"0.19.0": {"x86_64-linux": {"tarball": "https://evil.invalid/zig.tar.xz",
+                                                 "shasum": "e" * 64}}}, {}):
+            with self.subTest(index=bad), self.assertRaises(ValueError):
+                self.gen.zig_for("0.19.0", bad)
+
+    def test_only_the_x86_zig_pin_moves(self):
+        text = (REPOSITORY / "elements/bluefin/zig.bst").read_text()
+        arm = re.search(r'(?m)^  - arch == "aarch64":\n(?:^ {4,}[^\n]*\n)+', text)[0]
+        updated = self.gen.pin_zig(text, "9.8.7", "f" * 64)
+        self.assertIn("url: ziglang:download/9.8.7/zig-x86_64-linux-9.8.7.tar.xz\n      ref: " + "f" * 64,
+                      updated)
+        self.assertIn(arm, updated)
+        with self.assertRaises(ValueError):
+            self.gen.pin_zig("kind: manual\n", "9.8.7", "f" * 64)
+
+
 class WiringTests(unittest.TestCase):
     def test_ci_uses_shared_updater_and_keeps_partial_artifacts(self):
         text = (REPOSITORY / ".github/workflows/track-bst-sources.yml").read_text()
         self.assertIn("python3 scripts/update_sources.py --matrix", text)
         self.assertIn("fromJSON(needs.tracking-matrix.outputs.matrix)", text)
-        self.assertIn('just update-sources --element "$ELEMENT"', text)
+        self.assertIn('just update-sources --element "$ELEMENT" --failure-dir "$RUNNER_TEMP/tracked"', text)
+        self.assertIn("name: track-failed-${{ strategy.job-index }}", text)
+        self.assertIn('--pinned "$RUNNER_TEMP/pinned.json"', text)
         self.assertIn('just update-sources --group tarballs --record-dir "$RUNNER_TEMP/tracked"', text)
         self.assertIn("- name: Upload updates\n        if: ${{ !cancelled() }}", text)
         self.assertNotIn("source track", text)

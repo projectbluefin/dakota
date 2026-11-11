@@ -4,9 +4,12 @@ description: |
   required for NFSv3 mounts and NSM locking (rpc.statd).
 
 sources:
-- kind: tar
-  url: sourceforge:project/rpcbind/rpcbind/1.2.7/rpcbind-1.2.7.tar.bz2
-  ref: f6edf8cdf562aedd5d53b8bf93962d61623292bfc4d47eedd3f427d84d06f37e
+- kind: anitya
+  project-id: 4212
+  url: sourceforge:project/rpcbind/rpcbind/{version}/rpcbind-{version}.tar.bz2
+  ref:
+    version: 1.2.7
+    sha256sum: f6edf8cdf562aedd5d53b8bf93962d61623292bfc4d47eedd3f427d84d06f37e
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-autotools.bst

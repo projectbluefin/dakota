@@ -109,6 +109,16 @@ class DescribeTests(unittest.TestCase):
         self.assertEqual(u.links, "")
         self.assertTrue(u.row().endswith("| review: x |"))
 
+    def test_anitya_release_uses_the_ref_version(self):
+        diff = ("   ref:\n-    version: 1.90.0\n-    sha256sum: " + "a" * 64 +
+                "\n+    version: 1.92.0\n+    sha256sum: " + "b" * 64 + "\n")
+        u = track_bundle.describe_element_update(
+            "boost", "chore(deps): update boost", "elements/bluefin/boost.bst",
+            "sources:\n- kind: anitya\n  project-id: 6845\n", diff)
+        self.assertEqual(u.title, "chore(deps): update boost: 1.90.0 -> 1.92.0")
+        self.assertEqual(u.change, "`1.90.0` → `1.92.0`")
+        self.assertEqual(u.links, "")
+
     def test_same_version_new_commit_uses_commits(self):
         u = self.describe(f"v1.2-0-g{SHA_A}", f"v1.2-0-g{SHA_B}")
         self.assertEqual(u.title, "chore(deps): update widget")
@@ -123,6 +133,26 @@ class BodyTests(unittest.TestCase):
     def test_callout_only_with_notes(self):
         self.assertNotIn("[!IMPORTANT]", track_bundle.render_body(self.updates("", ""), "u"))
         self.assertIn("[!IMPORTANT]", track_bundle.render_body(self.updates("", "review"), "u"))
+
+    def test_stuck_and_pinned_elements_are_listed(self):
+        body = track_bundle.render_body(
+            self.updates(""), "u", failures={"bluefin/a.bst": "patch | failed\nto apply"},
+            held=["b"], pinned={"bluefin/c.bst": "a decision"})
+        self.assertIn("### Not updated", body)
+        self.assertIn("| `bluefin/a.bst` | patch \\| failed to apply |", body)
+        self.assertIn("Held by `TRACK_BUNDLE_SKIP`: `b`.", body)
+        self.assertIn("| `bluefin/c.bst` | a decision |", body)
+        plain = track_bundle.render_body(self.updates(""), "u")
+        for heading in ("Not updated", "Held out", "Pinned on purpose"):
+            self.assertNotIn(heading, plain)
+
+    def test_failures_load_from_the_tracked_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tracked = Path(tmp)
+            self.assertEqual(track_bundle.load_failures(tracked), {})
+            (tracked / "failed").mkdir()
+            (tracked / "failed/a.json").write_text('{"element": "bluefin/a.bst", "error": "boom"}')
+            self.assertEqual(track_bundle.load_failures(tracked), {"bluefin/a.bst": "boom"})
 
     def test_title(self):
         self.assertEqual(track_bundle.bundle_title(self.updates("")), "chore(deps): update e0")

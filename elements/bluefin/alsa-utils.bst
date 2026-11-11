@@ -18,16 +18,13 @@ description: |
 
 sources:
 - kind: tar
-  # Canonical upstream release tarball (alsa-project.org). ref is the sha256
-  # of alsa-utils-1.2.14.tar.bz2, verified by fetching the tarball and running
-  # sha256sum.
+  # Canonical upstream release tarball (alsa-project.org).
   #
   # LOCKSTEP CONSTRAINT: alsa-utils and alsa-lib release together and the utils
-  # require the matching libasound ABI/API. This MUST track fdsdk's alsa-lib
-  # (freedesktop-sdk.bst:components/alsa-lib.bst), currently 1.2.14. Building a
-  # newer alsa-utils against 1.2.14 fails (e.g. 1.2.16 needs snd_lib_log_*
-  # from alsa-lib 1.2.16). Bump this in the same change as any fdsdk alsa-lib
-  # bump, never independently.
+  # require the matching libasound ABI/API (1.2.16 needs snd_lib_log_* from
+  # alsa-lib 1.2.16). This follows fdsdk's alsa-lib
+  # (freedesktop-sdk.bst:components/alsa-lib.bst): the core-junctions update
+  # selects the alsa-utils release of the same series and re-pins it.
   url: alsa_project:utils/alsa-utils-1.2.14.tar.bz2
   ref: 0794c74d33fed943e7c50609c13089e409312b6c403d6ae8984fc429c0960741
 

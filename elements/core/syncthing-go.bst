@@ -4,9 +4,12 @@
 kind: manual
 
 sources:
-- kind: tar
-  url: https://go.dev/dl/go1.26.6.src.tar.gz
-  ref: a0721c54c688901448d77ad9b3ec7ea7c474730755ff891382e92ecb93ff2cb1
+- kind: anitya
+  project-id: 1227
+  url: https://go.dev/dl/go{version}.src.tar.gz
+  ref:
+    version: 1.26.6
+    sha256sum: a0721c54c688901448d77ad9b3ec7ea7c474730755ff891382e92ecb93ff2cb1
 
 build-depends:
 - core/sandbox-tools.bst

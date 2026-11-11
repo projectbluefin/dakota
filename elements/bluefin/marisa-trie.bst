@@ -3,6 +3,7 @@ kind: cmake
 sources:
 - kind: git_repo
   url: github:s-yata/marisa-trie.git
+  track: 'v*'
   ref: 3e87d53b78e15f2f43783d5e376561a8c9722051
 
 build-depends:

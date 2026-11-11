@@ -31,3 +31,6 @@ files/fakecap/fakecap.so
 # Secure Boot signing key, written by CI or just secure-boot-keygen
 files/boot-keys/private/*
 !files/boot-keys/private/.keep
+
+# scripts/update_sources.py stages patched sources here to check them.
+/.source-check/

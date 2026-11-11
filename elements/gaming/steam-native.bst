@@ -11,7 +11,7 @@ kind: manual
 # 1.0.0.87 release changed its content under our pinned sha256 and broke
 # every fetch (testing CI, 2026-08-03). The apt pool serves the identical
 # payload at a versioned path that never changes once published, so pin
-# that instead; bumps are an explicit url+ref+filename change here.
+# that instead; scripts/update_sources.py moves url, filename and ref together.
 sources:
 - kind: remote
   url: steam-repo:steam/pool/steam/s/steam/steam-launcher_1.0.0.87_amd64.deb
@@ -64,7 +64,7 @@ config:
   - |
     mkdir -p deb data "%{install-root}"
     cd deb
-    ar x ../steam-launcher_1.0.0.87_amd64.deb
+    ar x ../steam-launcher_*_amd64.deb
     cd ..
     tar -xf deb/data.tar.xz -C data
 
