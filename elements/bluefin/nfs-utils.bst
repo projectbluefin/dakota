@@ -33,6 +33,8 @@ variables:
     --disable-sbin-override
     --with-systemd=%{indep-libdir}/systemd/system
     --with-statedir=/var/lib/nfs
+    --with-statdpath=/var/lib/nfs/statd
+    --with-pluginpath=%{libdir}/libnfsidmap
     --with-statduser=rpcuser
     --with-start-statd=%{bindir}/start-statd
     --enable-libmount-mount
@@ -66,10 +68,14 @@ config:
       d /var/lib/nfs/rpc_pipefs 0755 root root -
       d /var/lib/nfs/v4recovery 0700 root root -
       EOF
+    # Dakota's presets have no catch-all `disable *`, so the server units would
+    # be enabled and start statd/idmapd at boot. Only the client is wanted.
     - |
       install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system-preset/80-nfs-client.preset"
       cat > "%{install-root}%{indep-libdir}/systemd/system-preset/80-nfs-client.preset" <<'EOF'
       enable nfs-client.target
+      disable nfs-server.service
+      disable fsidd.service
       EOF
     - |
       # Clean up files created during make install in /var
