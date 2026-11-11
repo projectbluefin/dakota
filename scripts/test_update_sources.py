@@ -74,7 +74,7 @@ class SelectionTests(unittest.TestCase):
 
     def test_matrix_preserves_review_notes_and_adds_oci_source(self):
         items = {x["element"]: x for x in updater.matrix()["include"]}
-        self.assertEqual(len(items), 24)
+        self.assertEqual(len(items), len(updater.TRACKED) + len(updater.KERNELS))
         for kernel, _, _ in updater.KERNELS:
             self.assertIn("NVIDIA build", items[kernel]["note"])
         self.assertIn("bluefin/brew-tarball.bst", items)
@@ -83,6 +83,26 @@ class SelectionTests(unittest.TestCase):
                          "review: unreleased branch head")
         for element in items:
             self.assertTrue((REPOSITORY / "elements" / element).is_file())
+
+    def test_every_network_source_has_an_updater_or_a_pin_reason(self):
+        # Sources fetched from the network; dependency lists such as cargo2
+        # move with the element that owns them.
+        network = re.compile(r"^\s*- kind:\s*(git_repo|git_module|tar|zip|remote|docker)\s*$",
+                             re.MULTILINE)
+        updated = ({x[0] for x in updater.TRACKED + updater.KERNELS} | set(updater.RELEASES)
+                   | {"gnome-build-meta.bst", "freedesktop-sdk.bst",
+                      "plugins/buildstream-plugins-community.bst"})
+        self.assertFalse(updated & set(updater.PINNED), "element is both updated and pinned")
+        unclassified = []
+        for path in sorted((REPOSITORY / "elements").rglob("*.bst")):
+            element = str(path.relative_to(REPOSITORY / "elements"))
+            if network.search(path.read_text()) and element not in updated | set(updater.PINNED):
+                unclassified.append(element)
+        self.assertEqual(unclassified, [], "add each element to TRACKED or RELEASES, "
+                         "or to PINNED with the reason it cannot be updated")
+        for element, reason in updater.PINNED.items():
+            self.assertTrue((REPOSITORY / "elements" / element).is_file(), element)
+            self.assertTrue(reason.strip(), element)
 
     def test_hyperv_daemons_tracks_the_kernel_source(self):
         # Hyper-V daemons build from the kernel's tools/hv. Sharing url, track
@@ -206,7 +226,8 @@ with open(os.environ["CALL_LOG"], "a") as log:
     log.write(json.dumps([name, *args]) + "\n")
 if name == "gh":
     assert args[0] == "api" and args[1].startswith("repos/")
-    default = "99.88.77" if args[1].startswith("repos/projectbluefin/documentation/") else "v99.88.77"
+    unprefixed = ("repos/projectbluefin/documentation/", "repos/libimobiledevice/ifuse/")
+    default = "99.88.77" if args[1].startswith(unprefixed) else "v99.88.77"
     print(os.environ.get("RELEASE_TAG", default))
 elif name == "curl" and args[-1] == "https://pkgs.tailscale.com/stable/?mode=json":
     if os.environ.get("FAIL_FEED"):
@@ -579,8 +600,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         # Tailscale simulates a 404; every other release is still recorded.
         self.assertEqual(sorted(p.stem for p in (self.root / "tracked/meta").glob("*.json")),
-                         ["bluefin-docs", "ghostty", "gtk4-layer-shell", "gum",
-                          "jetbrains-mono-nerd-font", "uupd"])
+                         sorted(Path(e).stem
+                                for e in updater.RELEASES if e != "bluefin/tailscale.bst"))
 
 
 class NextKernelPolicyTests(unittest.TestCase):

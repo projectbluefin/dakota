@@ -52,6 +52,46 @@ TRACKED = [
     # to the same stable tag on the same run.
     ("bluefin/hyperv-daemons.bst", "Hyper-V daemons",
      "review: tools/hv from the core/linux-fdsdk.bst tree"),
+    ("bluefin/brlaser.bst", "brlaser", ""),
+    ("bluefin/fastfetch.bst", "fastfetch", ""),
+    ("bluefin/gnome-epub-thumbnailer.bst", "gnome-epub-thumbnailer", ""),
+    ("bluefin/kanata.bst", "kanata", ""),
+    ("bluefin/libtracefs.bst", "libtracefs", ""),
+    ("bluefin/libvirt.bst", "libvirt", "review: libvirt and its git submodule"),
+    ("bluefin/lm-sensors.bst", "lm-sensors", ""),
+    # The track pattern keeps the LV2 build on the 1.1 series.
+    ("bluefin/lsp-plugins-lv2.bst", "lsp-plugins-lv2", ""),
+    ("bluefin/nethogs.bst", "nethogs", ""),
+    ("bluefin/nspawn.bst", "nspawn",
+     "review: CLI, D-Bus, and polkit changes across major versions"),
+    ("bluefin/sysstat.bst", "sysstat", ""),
+    ("bluefin/trace-cmd.bst", "trace-cmd", ""),
+    ("bluefin/virtiofsd.bst", "virtiofsd", ""),
+    ("bluefin/ydotool.bst", "ydotool", ""),
+    ("bluefin/shell-extensions/fuzzy-application-search.bst",
+     "fuzzy-application-search extension", "review: major tags follow GNOME Shell releases"),
+    ("bluefin/shell-extensions/tailscale-qs.bst", "tailscale-qs extension",
+     "review: local patch still applies"),
+    ("bluefin-nvidia/nvidia-container-toolkit.bst", "nvidia-container-toolkit", ""),
+    ("bluefin-nvidia/nvidia-vaapi-driver.bst", "nvidia-vaapi-driver", ""),
+    ("gaming/xorg-lib-xmu.bst", "libXmu", ""),
+    ("gaming/xorg-lib-xres.bst", "libXres", ""),
+    # Branch heads: every update is unreleased code.
+    ("bluefin/gnome-ponytail-daemon.bst", "gnome-ponytail-daemon",
+     "review: unreleased branch head"),
+    ("bluefin/usbmuxd.bst", "usbmuxd", "review: unreleased branch head"),
+    ("bluefin/shell-extensions/bazaar-companion.bst", "bazaar-companion extension",
+     "review: unreleased branch head"),
+    ("bluefin/shell-extensions/budslink-companion.bst", "budslink-companion extension",
+     "review: unreleased branch head; local patch still applies"),
+    # bluefin-bling is a monorepo: a layout change upstream breaks the install.
+    ("bluefin/shell-extensions/syncthing-toggle.bst", "syncthing-toggle extension",
+     "review: unreleased branch head; bluefin-bling layout changes break the install"),
+    ("gaming/gamescope.bst", "gamescope",
+     "review: unreleased OGC branch head and its git submodules"),
+    ("gaming/gamescope-session.bst", "gamescope-session", "review: unreleased branch head"),
+    ("gaming/gamescope-session-steam.bst", "gamescope-session-steam",
+     "review: unreleased branch head"),
 ]
 
 
@@ -63,6 +103,50 @@ KERNELS = [
     ("core/linux-ogc.bst", "OGC kernel",
      "review: OGC patches and gaming NVIDIA build"),
 ]
+
+
+# Elements with network sources that no updater moves, and why. The tests fail
+# on any element with a network source that is neither updated nor listed here,
+# so a new element cannot silently freeze at the version it was added with.
+PINNED = {
+    # Deliberate pins.
+    "bluefin/fedora-shim.bst": "released Fedora shim build; changing it affects Secure Boot enrollment",
+    "bluefin-nvidia/nvidia-drivers.bst": "driver branch is chosen and validated by hand",
+    "core/syncthing-go.bst": "Go toolchain must satisfy bluefin/syncthing.bst's go.mod",
+    "gaming/libiio.bst": "libiio 1.x breaks the 0.x API that consumers build against",
+    "gaming/luajit.bst": "rolling v2.1 branch pinned to a bare commit after upstream deleted ROLLING",
+    "gaming/steam-native.bst": "versioned pool .deb; the CDN reuses unversioned URLs",
+    "gaming/gtk2-i686.bst": "Debian stable i386 package for 32-bit Steam",
+    "gaming/sdl-gamecontrollerdb.bst": "raw file at a commit; upstream publishes no releases",
+    # Pinned to bare commits with no track pattern yet.
+    "bluefin/gnome-rounded-blur.bst": "bare commit with a local patch; needs a track pattern",
+    "bluefin/glog.bst": "bare commit in the IBus Rime stack; needs a track pattern",
+    "bluefin/ibus-rime.bst": "bare commit in the IBus Rime stack; needs a track pattern",
+    "bluefin/leveldb.bst": "bare commit in the IBus Rime stack; needs a track pattern",
+    "bluefin/librime.bst": "bare commit in the IBus Rime stack; needs a track pattern",
+    "bluefin/marisa-trie.bst": "bare commit in the IBus Rime stack; needs a track pattern",
+    "bluefin/opencc.bst": "bare commit in the IBus Rime stack; needs a track pattern",
+    "bluefin/yaml-cpp.bst": "bare commit in the IBus Rime stack; needs a track pattern",
+    # Release assets the release updater cannot rewrite yet.
+    "bluefin/nerd-fonts-symbols.bst": "several versioned assets per release",
+    "bluefin/tealdeer.bst": "several versioned assets per release",
+    "bluefin/open-vm-tools.bst": "asset name embeds a build number",
+    "gaming/mangohud.bst": "asset name embeds a commit hash",
+    "bluefin/shell-extensions/quicksettings-audio-devices-hider.bst": "extensions.gnome.org zip",
+    "bluefin/shell-extensions/quicksettings-audio-devices-renamer.bst": "extensions.gnome.org zip",
+    "bluefin/shell-extensions/tilingshell.bst": "extensions.gnome.org zip",
+    # Tarballs outside GitHub releases.
+    "bluefin/alsa-utils.bst": "alsa-project.org tarball",
+    "bluefin/boost.bst": "archives.boost.io tarball",
+    "bluefin/nfs-utils.bst": "kernel.org tarball",
+    "bluefin/nicstat.bst": "SourceForge tarball",
+    "bluefin/rpcbind.bst": "SourceForge tarball",
+    "bluefin/tiptop.bst": "Inria tarball",
+    "bluefin/vte.bst": "download.gnome.org tarball",
+    "bluefin/zig.bst": "ziglang.org tarball",
+    # Junction outside the core-junctions update.
+    "plugins/buildstream-plugins.bst": "PyPI junction carrying a local patch queue",
+}
 
 
 @dataclass(frozen=True)
@@ -107,6 +191,31 @@ RELEASES = {
         query='[.[].name | select(test("^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+$"))]'
               ' | sort_by(ltrimstr("v") | split(".") | map(tonumber)) | last',
         generator="files/scripts/generate_ghostty_sources.py"),
+    "bluefin/chairlift.bst": Release(
+        "projectbluefin/chairlift", r"download/(?P<version>v[0-9.]+)/chairlift_[0-9.]+_",
+        "download/{tag}/chairlift_{version}_", x86_asset_suffix="_linux_amd64.tar.gz"),
+    "bluefin/umotd.bst": Release(
+        "projectbluefin/umotd", r"download/(?P<version>v[0-9.]+)/umotd_[0-9.]+_",
+        "download/{tag}/umotd_{version}_", x86_asset_suffix="_linux_amd64"),
+    "bluefin/uwelcome.bst": Release(
+        "projectbluefin/uwelcome", r"download/(?P<version>v[0-9.]+)/uwelcome_[0-9.]+_",
+        "download/{tag}/uwelcome_{version}_", x86_asset_suffix="_linux_amd64"),
+    # The source archive vendors Go modules; core/syncthing-go.bst may need to follow.
+    "bluefin/syncthing.bst": Release(
+        "syncthing/syncthing",
+        r"download/(?P<version>v[0-9.]+)/syncthing-source-v[0-9.]+\.tar\.gz",
+        "download/{tag}/syncthing-source-{tag}.tar.gz"),
+    "bluefin/ifuse.bst": Release(
+        "libimobiledevice/ifuse", r"download/(?P<version>[0-9.]+)/ifuse-[0-9.]+\.tar",
+        "download/{tag}/ifuse-{version}.tar", tag_pattern=r"[0-9]+\.[0-9]+\.[0-9]+"),
+    "bluefin/powertop.bst": Release(
+        "fenrus75/powertop", r"tags/(?P<version>v[0-9.]+)\.tar\.gz", "tags/{tag}.tar.gz"),
+    "gaming/inputplumber.bst": Release(
+        "ShadowBlip/InputPlumber", r"download/(?P<version>v[0-9.]+)/inputplumber-x86_64",
+        "download/{tag}/inputplumber-x86_64"),
+    "gaming/vkbasalt.bst": Release(
+        "DadSchoorse/vkBasalt", r"download/(?P<version>v[0-9.]+)/vkBasalt-[0-9.]+\.tar",
+        "download/{tag}/vkBasalt-{version}.tar", tag_pattern=r"v[0-9]+(?:\.[0-9]+){2,3}"),
 }
 
 

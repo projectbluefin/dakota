@@ -34,12 +34,13 @@ Package software as BuildStream elements. Dakota builds natively from source and
    ```bash
    python3 files/scripts/generate_cargo_sources.py path/to/Cargo.lock
    ```
-6. **Validate and Build**:
+6. **Register for Updates**: Add the element to `TRACKED` (git sources with a `track:` tag glob or branch) or `RELEASES` (versioned release asset URLs) in `scripts/update_sources.py`. If no updater fits, add it to `PINNED` with the reason. `scripts/test_update_sources.py` fails on any element with a network source that is in none of them; an unregistered element stays at the version it was added with.
+7. **Validate and Build**:
    ```bash
    just validate
    just bst build bluefin/<name>.bst
    ```
-7. **Inspect Output**: Check installed paths and permissions inside the artifact before expanding layer filters.
+8. **Inspect Output**: Check installed paths and permissions inside the artifact before expanding layer filters.
 
 ## Language Invariants
 

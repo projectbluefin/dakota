@@ -99,7 +99,9 @@ while it runs.
 
 “All” means the sources managed by the tracker, not every element or dependency
 inside upstream junctions. The source list lives in `scripts/update_sources.py`;
-CI reads its matrix from there too. Release assets advance their URLs before
+CI reads its matrix from there too. Every element with a network source must be
+in `TRACKED`, `KERNELS`, or `RELEASES`, or in `PINNED` with the reason no updater
+moves it; the updater tests enforce this. Release assets advance their URLs before
 BuildStream tracks checksums. Tracking explicitly targets **x86_64 only** for now,
 including the OCI source in `brew-tarball.bst`. Architecture-specific ARM URLs and
 checksums stay pinned together, so the two architectures may have different
