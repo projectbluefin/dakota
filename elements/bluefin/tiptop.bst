@@ -1,9 +1,12 @@
 kind: autotools
 
 sources:
-- kind: tar
-  url: inria:pacap/tiptop/tiptop-2.3.2.tar.gz
-  ref: a14b1b59ea4856844e27bc4e22129b7906b8815afaf50a25ac60998dafcc93a7
+# Upstream tags no releases and its tarball host blocks listing, so follow the
+# repository; it commits configure and the generated parser, as the tarball had.
+- kind: git_repo
+  url: inria_gitlab:rohou/tiptop.git
+  track: master
+  ref: e91f7d6099c1f97f6492237cad7addea591b530b
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-autotools.bst

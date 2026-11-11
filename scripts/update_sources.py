@@ -100,6 +100,9 @@ TRACKED = [
     ("bluefin/marisa-trie.bst", "marisa-trie", ""),
     ("bluefin/opencc.bst", "OpenCC", ""),
     ("bluefin/yaml-cpp.bst", "yaml-cpp", ""),
+    ("bluefin/gnome-rounded-blur.bst", "gnome-rounded-blur extension",
+     "review: built against the shipped Mutter; local patch still applies"),
+    ("bluefin/tiptop.bst", "tiptop", "review: unreleased branch head"),
     # anitya sources: release-monitoring.org names the newest stable release.
     ("bluefin/boost.bst", "boost", ""),
     ("bluefin/nfs-utils.bst", "nfs-utils", ""),
@@ -144,10 +147,6 @@ PINNED = {
     # Upstream replaced the vendored submodule set and deleted the pinned
     # commit; tracking cannot add or drop git_module sources.
     "gaming/gamescope.bst": "the submodule list must be rewritten by hand for the next release",
-    # The next release contains part of the local Mutter patch.
-    "bluefin/gnome-rounded-blur.bst": "local patch must be rebased onto the next release",
-    # Upstream tags no releases and its tarball host blocks listing.
-    "bluefin/tiptop.bst": "following upstream means adopting its git host as a source",
     # Upstream's desktop-mode fallback now calls steamosctl, whose session
     # switching only writes SDDM configuration; Dakota uses GDM.
     "gaming/gamescope-session-steam.bst": "newer sessions need steamos-manager, which supports only SDDM",

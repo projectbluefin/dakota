@@ -6,9 +6,10 @@ kind: meson
 sources:
 - kind: git_repo
   url: github:kancko/gnome-rounded-blur.git
-  ref: f3bfcc796e1214c1e1d4287ee35cb132ad8133f0
+  track: 'v*'
+  ref: v1.0.2-0-ga4db9e5947b1cea0a05c57768356921420f91293
 - kind: patch
-  path: patches/gnome-rounded-blur/0001-mutter-51-support.patch
+  path: patches/gnome-rounded-blur/0001-bind-detected-mutter.patch
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-meson.bst

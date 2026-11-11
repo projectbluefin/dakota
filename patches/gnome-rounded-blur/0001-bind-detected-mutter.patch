@@ -1,0 +1,66 @@
+From: Dakota maintainers
+Subject: Bind rounded blur to the detected Mutter release's libraries and GIR
+Upstream-Status: Inappropriate [Dakota layout]
+
+Upstream detects the Mutter API version since v1.0.2. Dakota additionally
+requires every Mutter dependency to come from that release (>= N.0, < N+1.0),
+and uses Mutter's exported private-library and GIR directories for the
+installed library's runtime path and for introspection.
+
+diff --git a/meson.build b/meson.build
+index c06e832..10f11ab 100644
+--- a/meson.build
++++ b/meson.build
+@@ -39,7 +39,9 @@ endif
+ mutter_api_version = libmutter_pc.split('libmutter-')[1]
+ message('Detected mutter API version: ' + mutter_api_version)
+ 
+-mutter_req = '>= 50.0'
++# Dakota: every Mutter dependency must come from the detected release.
++mutter_req = ['>= ' + mutter_api_version + '.0',
++              '< ' + (mutter_api_version.to_int() + 1).to_string() + '.0']
+ 
+ clutter_pc = 'mutter-clutter-' + mutter_api_version
+ cogl_pc = 'mutter-cogl-' + mutter_api_version
+@@ -47,14 +49,12 @@ cogl_pc = 'mutter-cogl-' + mutter_api_version
+ # Dependencies
+ glib_dep = dependency('glib-2.0', version: '>= 2.66')
+ gobject_dep = dependency('gobject-2.0', version: '>= 2.66')
+-clutter_dep = dependency(clutter_pc, version: mutter_req,
+-  required: false,
+-)
++clutter_dep = dependency(clutter_pc, version: mutter_req)
+ 
+-cogl_dep = dependency(cogl_pc, version: mutter_req,
+-  required: false,
+-)
+-libmutter_dep = dependency(libmutter_pc)
++cogl_dep = dependency(cogl_pc, version: mutter_req)
++libmutter_dep = dependency(libmutter_pc, version: mutter_req)
++mutter_libdir = libmutter_dep.get_variable(pkgconfig: 'pkglibdir')
++mutter_girdir = libmutter_dep.get_variable(pkgconfig: 'girdir')
+ 
+ # Required dependencies
+ deps = [
+diff --git a/src/meson.build b/src/meson.build
+index 826567e..89ef63b 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -24,6 +24,7 @@ gnome_rounded_blur = shared_library(
+   soversion: major_version,
+   install: true,
+   install_dir: libdir,
++  install_rpath: mutter_libdir,
+ )
+ 
+ # Install headers
+@@ -40,7 +41,8 @@ gnome_rounded_blur_gir = gnome.generate_gir(
+   namespace: 'Blur',
+   symbol_prefix: 'gb',
+   identifier_prefix: 'Gb',
+-  includes: ['GObject-2.0'],
++  includes: ['GObject-2.0', 'Clutter-' + mutter_api_version],
++  include_directories: [mutter_girdir],
+   install: true,
+   install_dir_gir: join_paths(datadir, 'gir-1.0'),
+   install_dir_typelib: join_paths(libdir, 'girepository-1.0'),

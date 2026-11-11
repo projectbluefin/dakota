@@ -40,7 +40,6 @@ aliases:
   gnupg_ftp: https://www.gnupg.org/ftp/
   gstreamer: https://gstreamer.freedesktop.org/
   infradead: https://www.infradead.org/
-  inria: https://files.inria.fr/
   kerberos: https://kerberos.org/
   kernel_pub: https://www.kernel.org/pub/
   kldp: https://kldp.net/
@@ -87,6 +86,7 @@ aliases:
   gitlab: https://gitlab.com/
   gnome: https://gitlab.gnome.org/GNOME/
   gnome_gitlab: https://gitlab.gnome.org/
+  inria_gitlab: https://gitlab.inria.fr/
   kernel: https://git.kernel.org/pub/scm/
   lovelyhq: https://dev.lovelyhq.com/
   matrix: https://gitlab.matrix.org/
