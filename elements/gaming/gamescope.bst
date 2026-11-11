@@ -112,6 +112,7 @@ config:
       --buildtype=plain \
       --wrap-mode=nodownload \
       -Denable_openvr_support=false \
+      -Denable_tests=false \
       -Dbenchmark=disabled \
       -Dpipewire=enabled \
       -Ddrm_backend=enabled \
