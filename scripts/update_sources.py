@@ -659,19 +659,15 @@ def update(element: str, out: Path | None) -> None:
             update_release(element, out)
         else:
             track(element)
-            if element not in {item[0] for item in KERNELS}:
-                check_patches(element)
             if element == "core/linux-ogc.bst":
                 path = paths[0]
                 path.write_text(sync_ogc_localversion(path.read_text()))
+            # Tracking a git ref does not apply subsequent patch sources, and
+            # neither does fetching: only staging runs them. Stage before
+            # accepting the pin, inside the rollback boundary.
+            check_patches(element)
             if element in {item[0] for item in KERNELS}:
-                # Tracking a git ref does not apply subsequent patch_queue
-                # sources. Fetch the complete element before accepting the pin,
-                # inside the rollback boundary and before recording it for CI.
-                print(f"Checking kernel sources and patches: {element}", flush=True)
-                run("just", "bst", "--no-interactive", "-o", "arch", "x86_64",
-                    "source", "fetch", "--deps", "none", element)
-                print(f"REVIEW: {element}: sources fetched; build the kernel "
+                print(f"REVIEW: {element}: patches apply; build the kernel "
                       "and corresponding NVIDIA drivers before shipping.")
             if out is not None:
                 item = next(item for item in matrix()["include"] if item["element"] == element)

@@ -19,7 +19,7 @@ on:
 
 permissions: read-all
 
-# Tracking resolves refs and fetches kernel sources to check patch queues,
+# Tracking resolves refs and stages patched sources to check their patches,
 # but never builds or publishes. Keep it independent of build concurrency.
 concurrency:
   group: dakota-source-track
