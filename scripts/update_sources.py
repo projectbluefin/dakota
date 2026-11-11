@@ -43,6 +43,8 @@ TRACKED = [
     # No release tags: every update is unreleased code.
     ("bluefin/shell-extensions/gradia-capture.bst", "gradia-capture extension",
      "review: unreleased branch head"),
+    ("bluefin/shell-extensions/power-status-color.bst", "power-status-color extension",
+     "review: unreleased branch head; bluefin-bling layout changes break the install"),
     # Despite its name this is a docker source, not a release tarball.
     ("bluefin/brew-tarball.bst", "brew-tarball", ""),
     ("bluefin/wallpapers.bst", "wallpapers", ""),

@@ -92,7 +92,7 @@ class DesktopDefaultsTests(unittest.TestCase):
             "tailscale-gnome-qs@tailscale-qs.github.io",
             "quicksettings-audio-devices-hider@marcinjahn.com",
             "quicksettings-audio-devices-renamer@marcinjahn.com",
-            "power-status-color@local",
+            "power-status-color@projectbluefin.io",
         ):
             self.assertNotIn(uuid, enabled)
         self.assertIn("bluefin/syncthing.bst", (ROOT / "elements/bluefin/shell-extensions/syncthing-toggle.bst").read_text())
