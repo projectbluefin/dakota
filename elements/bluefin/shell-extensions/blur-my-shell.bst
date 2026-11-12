@@ -15,9 +15,6 @@ depends:
 - gnome-build-meta.bst:sdk/glib.bst
 - gnome-build-meta.bst:core/gnome-shell.bst
 
-runtime-depends:
-- bluefin/gnome-rounded-blur.bst
-
 variables:
   strip-binaries: ""
 

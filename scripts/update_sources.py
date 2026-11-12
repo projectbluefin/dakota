@@ -100,8 +100,6 @@ TRACKED = [
     ("bluefin/marisa-trie.bst", "marisa-trie", ""),
     ("bluefin/opencc.bst", "OpenCC", ""),
     ("bluefin/yaml-cpp.bst", "yaml-cpp", ""),
-    ("bluefin/gnome-rounded-blur.bst", "gnome-rounded-blur extension",
-     "review: built against the shipped Mutter; local patch still applies"),
     ("bluefin/tiptop.bst", "tiptop", "review: unreleased branch head"),
     # anitya sources: release-monitoring.org names the newest stable release.
     ("bluefin/boost.bst", "boost", ""),
