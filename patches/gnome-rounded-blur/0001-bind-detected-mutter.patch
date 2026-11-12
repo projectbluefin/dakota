@@ -4,14 +4,26 @@ Upstream-Status: Inappropriate [Dakota layout]
 
 Upstream detects the Mutter API version since v1.0.2. Dakota additionally
 requires every Mutter dependency to come from that release (>= N.0, < N+1.0),
-and uses Mutter's exported private-library and GIR directories for the
+skips Mutter's libmutter-test-N.pc when detecting that release, and uses
+Mutter's exported private-library and GIR directories for the
 installed library's runtime path and for introspection.
 
 diff --git a/meson.build b/meson.build
-index c06e832..10f11ab 100644
+index c06e832..62155ae 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -39,7 +39,9 @@ endif
+@@ -28,7 +28,9 @@ pkg_config_bin = find_program('pkg-config', 'pkgconf')
+ libmutter_pc = ''
+ foreach line : run_command(pkg_config_bin, '--list-all', check: true).stdout().split('\n')
+   tokens = line.strip().split(' ')
+-  if tokens.length() > 0 and tokens[0].startswith('libmutter-')
++  # Dakota: Mutter also installs libmutter-test-N.pc, which is not a release.
++  if (tokens.length() > 0 and tokens[0].startswith('libmutter-')
++      and not tokens[0].startswith('libmutter-test-'))
+     libmutter_pc = tokens[0]
+   endif
+ endforeach
+@@ -39,7 +41,9 @@ endif
  mutter_api_version = libmutter_pc.split('libmutter-')[1]
  message('Detected mutter API version: ' + mutter_api_version)
  
@@ -22,7 +34,7 @@ index c06e832..10f11ab 100644
  
  clutter_pc = 'mutter-clutter-' + mutter_api_version
  cogl_pc = 'mutter-cogl-' + mutter_api_version
-@@ -47,14 +49,12 @@ cogl_pc = 'mutter-cogl-' + mutter_api_version
+@@ -47,14 +51,12 @@ cogl_pc = 'mutter-cogl-' + mutter_api_version
  # Dependencies
  glib_dep = dependency('glib-2.0', version: '>= 2.66')
  gobject_dep = dependency('gobject-2.0', version: '>= 2.66')
