@@ -1,0 +1,26 @@
+#!/usr/bin/bash
+# Record the installation date, once, after the clock has been synchronized.
+# ublue-firstboot-date.path starts this only when systemd-timesyncd reports a
+# sync, so the date written here is always a real one.
+#
+# A sane record is never rewritten. A record dated 2011 is not sane: images
+# whose systemd time epoch was BuildStream's SOURCE_DATE_EPOCH (2011-11-11)
+# booted with the clock reset to that day and recorded it. No Dakota install
+# predates 2026, so a 2011 record is replaced with today's date. That is the
+# closest recoverable value: /var/log, the fallback fastfetch would use if the
+# record were removed, was created under the same wrong clock.
+set -euo pipefail
+
+record=/var/lib/ublue-os/install-date
+
+if [ -s "${record}" ]; then
+    read -r recorded <"${record}" || true
+    case "${recorded}" in
+        2011-*) echo "replacing install date ${recorded} written before the clock was set" ;;
+        *) exit 0 ;;
+    esac
+fi
+
+install -d -m 0755 "${record%/*}"
+date +%Y-%m-%d >"${record}.tmp"
+mv -f "${record}.tmp" "${record}"

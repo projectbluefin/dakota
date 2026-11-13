@@ -1,12 +1,12 @@
 [Unit]
 Description=Record Dakota first-boot installation date
-ConditionPathExists=!/var/lib/ublue-os/install-date
 After=local-fs.target
 
+# Started by ublue-firstboot-date.path, never directly at boot: the date is
+# only trustworthy after the clock has been synchronized. The script leaves a
+# sane record alone, so running on every boot is a no-op. RemainAfterExit
+# keeps the unit active so the path unit does not start it again.
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c 'mkdir -p /var/lib/ublue-os && date +%%Y-%%m-%%d > /var/lib/ublue-os/install-date'
+ExecStart=/usr/bin/ublue-firstboot-date
 RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target

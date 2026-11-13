@@ -1,0 +1,27 @@
+Upstream-Status: Accepted [https://gitlab.gnome.org/GNOME/gnome-build-meta/-/commit/58930ccc3a95bec3a9978c2abf072cd042dd2b0e]
+Exit: Drop when the pinned junction's core-deps/systemd-base.bst sets -Dtime-epoch itself.
+Subject: core-deps/systemd-base.bst: explicitly set the time epoch
+
+Backport of 58930ccc3a95bec3a9978c2abf072cd042dd2b0e from gnome-build-meta
+master (merge request 5222); the gnome-51 branch does not carry it.
+
+The time epoch defaults to SOURCE_DATE_EPOCH, which BuildStream sets to
+2011-11-11. systemd refuses a clock more than 15 years past its time epoch
+and resets it to the epoch, so from 2026-11-11 every boot starts in 2011
+until NTP corrects it.
+
+Set the time epoch to the date of the latest git tag, which is what systemd
+would use if SOURCE_DATE_EPOCH were not set. The value is a function of the
+pinned systemd ref, so it stays reproducible and advances with every bump.
+
+diff --git a/elements/core-deps/systemd-base.bst b/elements/core-deps/systemd-base.bst
+--- a/elements/core-deps/systemd-base.bst
++++ b/elements/core-deps/systemd-base.bst
+@@ -117,6 +117,7 @@ variables:
+     -Dkernel-install=true
+     -Dvmlinux-h=provided
+     -Dvmlinux-h-path='%{includedir}/%{gcc_triplet}/linux/vmlinux.h'
++    -Dtime-epoch=$(git log --no-show-signature -1 --format=%at $(git describe --abbrev=0 --tags))
+ 
+ public:
+   cpe:
