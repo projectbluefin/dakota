@@ -18,13 +18,7 @@ body:
         |---|---|---|
         | Specific report | "Screen blanks on suspend on AMD ZBook, `journalctl` shows `amdgpu: failed to idle ring`" | Goes to **Ready** — an agent can pick this up today |
 
-        **Run this before filling out the form:**
-
-        ```bash
-        ujust report
-        ```
-
-        It captures your image, kernel, extensions, hardware, and failed units. You review everything before it uploads. Paste the gist URL below and we likely have everything we need — no follow-up questions.
+        **Prefer the built-in reporter.** `ujust report` (or **Report a Problem** from the app grid) captures your image, kernel, extensions, hardware, and failed units, shows you the report, and files the issue for you. If it already filed an issue on your behalf, add a comment there instead of opening a second one. Use this form when the reporter is unavailable.
 
   - type: markdown
     attributes:
@@ -43,17 +37,6 @@ body:
       options:
         - label: "I searched existing issues and this is not a duplicate"
           required: true
-        - label: "I ran ujust report (or am about to — paste the URL below)"
-          required: false
-
-  - type: input
-    id: report-link
-    attributes:
-      label: "ujust report gist URL"
-      description: "Paste the URL here. This single link gives us your exact image digest, kernel version, hardware, extensions, and any failed units — everything we need to triage without asking follow-up questions."
-      placeholder: "https://gist.github.com/..."
-    validations:
-      required: false
 
   - type: textarea
     id: what-happened

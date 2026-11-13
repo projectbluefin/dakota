@@ -23,11 +23,11 @@ Dakota doesn't eat tickets; it treats them as evidence. Every user running Dakot
 
 | Command | What it does |
 |---|---|
-| `ujust report` | Captures your system state and opens a pre-filled issue. One command instead of a wall of "please attach logs." |
+| `ujust report` | Captures your system state, shows you the report, and files the issue for you. One command instead of a wall of "please attach logs." |
 | `ujust confirm <issue>` | Tells the team your hardware hits the same bug. Adds a hardware fingerprint to the issue — no duplicate filing. |
 | `ujust verify <issue>` | After a fix ships in a nightly, confirms it works on your machine. Closes the loop with evidence. |
 
-No telemetry. No phone-home. You review every report before it leaves your machine. Reports live in gists you own and can delete at any time.
+No telemetry. No phone-home. You review every report before it leaves your machine. The app publishes it with your own GitHub login and attaches it to the issue; a secret gist is used only as a fallback.
 
 ## Image streams
 

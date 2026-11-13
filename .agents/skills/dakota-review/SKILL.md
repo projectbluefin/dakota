@@ -10,7 +10,7 @@ Review pull requests and issues with high discipline: minimal diff, correct targ
 ## When to Use
 
 - Performing code or architecture reviews on PRs in `projectbluefin/dakota`
-- Triaging issues, user-donated diagnostic gists (`ujust report`), or verification comments
+- Triaging issues, user-donated diagnostic reports (`ujust report`), or verification comments
 - Enforcing contributor guidelines, PR checklists, and commit hygiene
 
 ## When NOT to Use
@@ -30,7 +30,7 @@ Review pull requests and issues with high discipline: minimal diff, correct targ
    - Ensure layer additions use `kind: compose` (never `kind: stack`).
    - Check that third-party GitHub Actions are pinned to full commit SHAs.
 4. **Evaluate Evidence**:
-   - For bugs, check for attached gists from `ujust report`.
+   - For bugs, check for the `systemd-report.json` artifact attached by `ujust report`.
    - Verify that claimed test results were actually executed (`just validate`, `just boot-test`, etc.).
 5. **Constructive Feedback**:
    - If asked to post feedback, compose at most one concise, actionable comment.
@@ -57,7 +57,7 @@ Review pull requests and issues with high discipline: minimal diff, correct targ
 - Pull requests with `Co-authored-by:` trailers in commit messages
 - PRs targeting `main` instead of `testing`
 - Suggesting fixes or workarounds inside `ublue-os/*` repositories
-- Closing an issue with `report: attached` without checking the gist
+- Closing an issue with `report: attached` without checking the report
 - Restating check statuses or queue positions in review comments
 
 ## Verification

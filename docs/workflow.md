@@ -22,7 +22,7 @@
 - Post-fix evidence on hardware (`ujust verify`) helps maintainers confirm bug resolution
 ### Data donation pattern
 
-`ujust report` is a deliberate data donation. The reporter reviews the gist before filing, keeps ownership of it, and can delete it later. That is not telemetry.
+`ujust report` is a deliberate data donation. The Report a Problem app shows you the scrubbed payload before anything is published, then files the issue itself with your `gh` login and attaches the report to it (a secret gist only when GitHub refuses the artifact). That is not telemetry.
 
 `ujust confirm` adds another hardware instance without opening a duplicate. `ujust verify` adds post-fix evidence on real hardware and moves the issue toward closure.
 
@@ -69,7 +69,6 @@ Copy `files/hive/hive-project.yaml.example` to `/etc/hive/hive-project.yaml` and
 | `flow/agent-donation` | Investigation request — report comment, not code |
 | `flow/project-report` / `flow/issue-review` / `flow/pr-review` | Hive scanner flow routing |
 | `needs-human/agent-oops` | Agent error — do not touch; humans only |
-| `stream/next` / `stream/testing` | Set by `ujust report` from booted image tag |
 
 ## Image stream and branch model
 

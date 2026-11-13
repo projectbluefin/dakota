@@ -9,10 +9,11 @@ by a human who reviews it first and owns it afterward.
 
 ## The Data Donation Principle
 
-A `ujust report` submission is a deliberate, informed data donation. The user
-reviews the gist before the issue is filed. The gist belongs to them. They
-control what leaves their machine and can delete it afterward. This is not
-telemetry. It is a voluntary act of trust.
+A `ujust report` submission is a deliberate, informed data donation. The Report
+a Problem app shows the scrubbed payload for review before the issue is filed,
+then publishes the issue itself with the user's `gh` login and attaches the
+report to it (a secret gist only as a fallback). The user controls what leaves
+their machine. This is not telemetry. It is a voluntary act of trust.
 
 Automation exists to serve that donation. Without it, a maintainer spends the
 first round of triage asking the same questions every time: can you reproduce
@@ -28,12 +29,12 @@ visible, more valued, and more likely to result in a fix? If the answer is no,
 it should not exist.
 
 That is why the pipeline widget shows `report: attached` so the reporter can
-see that their gist was received. It shows `confirms:` so they can see community
+see that their report was received. It shows `confirms:` so they can see community
 signal and know they are not alone. It shows `verified: N/3` so closure is tied
 to observed fixes, not assumption. It shows `next action:` so the loop always
 ends with a concrete command, not guesswork.
 
-The multiplier effect is the point. One `ujust report` gist removes five or
+The multiplier effect is the point. One `ujust report` submission removes five or
 more rounds of back-and-forth. One `ujust confirm` adds new hardware coverage
 without opening a duplicate issue. One `ujust verify` closes the issue with
 fresh evidence after the fix ships. The automation turns individual data
@@ -49,7 +50,7 @@ This also defines what agents and automation must not do:
   more hardware.
 - Treat `report: attached` as meaning full structured evidence is already
   available. Do not ask the reporter to re-describe what is already in the
-  gist.
+  attached report.
 
 ---
 
@@ -98,9 +99,9 @@ This also defines what agents and automation must not do:
 
 | Verb | When | Evidence produced |
 |------|------|-------------------|
-| `ujust report` | Hit a bug | System state → gist → issue |
+| `ujust report` | Hit a bug | System state → reviewed report → issue |
 | `ujust confirm <issue>` | Same bug, different hardware | Hardware fingerprint → issue comment |
-| `ujust verify <issue>` | Fix shipped, testing | Attestation + system context → gist + issue comment |
+| `ujust verify <issue>` | Fix shipped, testing | Attestation + system context → issue comment |
 
 Users are the ground truth. They have the hardware the lab doesn't. Their
 reports tell us what works and what doesn't across the real fleet.
@@ -136,7 +137,7 @@ The `validate.yml` workflow gates PR merges. Full builds and publications run af
 ```
 Stage              User evidence          Contributor evidence     CI evidence
 ─────              ──────────────         ────────────────────     ───────────
-Bug filed          ujust report gist      —                        —
+Bug filed          ujust report issue     —                        —
 Discussion         ujust confirm (me too) —                        —
 Fix in PR          —                      just validate/build/test CI validate
 Merged             —                      —                        —
