@@ -125,6 +125,15 @@ class SelectionTests(unittest.TestCase):
                          git_source("core/linux-fdsdk.bst"))
 
 
+    def test_ogc_kernel_follows_the_stable_kernel_series(self):
+        # Gaming images must not stay a kernel series behind the others.
+        def series(element, suffix):
+            text = (REPOSITORY / "elements" / element).read_text()
+            return re.search(rf"^  track: v([0-9]+\.[0-9]+){suffix}$", text, re.MULTILINE)[1]
+        self.assertEqual(series("core/linux-ogc.bst", r"\.\*-ogc\*"),
+                         series("core/linux-fdsdk.bst", r"\*"))
+
+
 # A tag and asset name each release's patterns accept, newer than any pin.
 SAMPLE_TAGS = ("v99.88.77", "99.88.77", "stable-99.88.77", "a" * 40, "99999", "999.88.77",
                "2.24.99-9+deb12u9", "99.88.77.66")
@@ -313,13 +322,6 @@ elif name == "curl" and "buildstream-plugins-community" in args[-1]:
     print(os.environ.get("UPSTREAM_PLUGINS", "kind: junction\n\nsources:\n- kind: tar\n  url: pypi:12/34/" + "e" * 60 + "/buildstream_plugins_community-9.9.9.tar.gz\n  ref: " + "f" * 64))
 elif name == "curl":
     print(os.environ.get("UPSTREAM_FDSDK", "kind: junction\nsources:\n- kind: git_repo\n  url: gitlab:freedesktop-sdk/freedesktop-sdk.git\n  track: stable\n  ref: sdk-99-0-g" + "c" * 40))
-elif name == "just" and args[0] == "bst" and "fetch" in args:
-    assert args == ["bst", "--no-interactive", "-o", "arch", "x86_64",
-                    "source", "fetch", "--deps", "none", args[-1]]
-    assert args[-1] in ("core/linux-fdsdk.bst", "core/linux-ogc.bst")
-    if os.environ.get("FAIL_FETCH") == args[-1]:
-        print("Failed to apply kernel patches", file=sys.stderr)
-        sys.exit(1)
 elif name == "just" and args[0] == "bst" and "checkout" in args:
     assert args[:9] == ["bst", "--no-interactive", "-o", "arch", "x86_64",
                         "source", "checkout", "--deps", "none"]
@@ -512,7 +514,8 @@ class CliTests(unittest.TestCase):
             ["just", "bst", "--no-interactive", "-o", "arch", "x86_64",
              "source", *command, element]
             for element, _, _ in updater.KERNELS
-            for command in (["track"], ["fetch", "--deps", "none"])
+            for command in (["track"], ["checkout", "--deps", "none", "--directory",
+                                         f".source-check/{Path(element).stem}"])
         ])
         text = (self.root / "elements/core/linux-ogc.bst").read_text()
         self.assertIn("ogc-localversion: '-ogc2'", text)
@@ -549,7 +552,7 @@ class CliTests(unittest.TestCase):
         self.assertIn(f"v7.2.7-0-g{SHA}",
                       (self.root / "elements/core/linux-fdsdk.bst").read_text())
 
-    def test_kernel_fetch_failure_restores_local_edits_and_records_nothing(self):
+    def test_kernel_patch_failure_restores_local_edits_and_records_nothing(self):
         for element, _, _ in updater.KERNELS:
             with self.subTest(element=element):
                 path = self.root / "elements" / element
@@ -558,18 +561,18 @@ class CliTests(unittest.TestCase):
                     path.write_text(path.read_text().replace("'-ogc2'", "'-ogc1'"))
                 before = self.snapshot()
                 result = self.cli("--element", element, "--record-dir", "tracked",
-                                  FAIL_FETCH=element)
+                                  FAIL_CHECKOUT=element)
                 self.assertEqual(result.returncode, 1, result.stdout)
-                self.assertIn("Failed to apply kernel patches", result.stderr)
+                self.assertIn("Failed to apply patches", result.stderr)
                 self.assertEqual(self.snapshot(), before)
                 self.assertFalse((self.root / "tracked/meta").exists())
 
-    def test_kernel_fetch_failure_keeps_and_records_other_successful_kernel(self):
+    def test_kernel_patch_failure_keeps_and_records_other_successful_kernel(self):
         self.init_recording_repo()
         ogc = self.root / "elements/core/linux-ogc.bst"
         before = ogc.read_bytes()
         result = self.cli("--group", "kernels", "--record-dir", "tracked",
-                          FAIL_FETCH="core/linux-ogc.bst")
+                          FAIL_CHECKOUT="core/linux-ogc.bst")
         self.assertEqual(result.returncode, 1, result.stdout)
         self.assertEqual(ogc.read_bytes(), before)
         recorded = self.root / "tracked/files/elements/core"
@@ -582,17 +585,17 @@ class CliTests(unittest.TestCase):
         ref = re.search(r"^  ref: (\S+)$", path.read_text(), re.MULTILINE)[1]
         before = self.snapshot()
         result = self.cli("--element", "core/linux-ogc.bst", OGC_REF=ref,
-                          FAIL_FETCH="core/linux-ogc.bst")
+                          FAIL_CHECKOUT="core/linux-ogc.bst")
         self.assertEqual(result.returncode, 1, result.stdout)
-        self.assertIn("fetch", self.calls()[-1])
+        self.assertIn("checkout", self.calls()[-1])
         self.assertEqual(self.snapshot(), before)
 
-    def test_successful_kernel_fetch_records_synchronized_suffix(self):
+    def test_successful_kernel_check_records_synchronized_suffix(self):
         self.init_recording_repo()
         result = self.cli("--element", "core/linux-ogc.bst", "--record-dir", "tracked",
                           OGC_REF=f"v7.2.9-ogc3-0-g{SHA}")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("fetch", self.calls()[-1])
+        self.assertIn("checkout", self.calls()[-1])
         recorded = self.root / "tracked/files/elements/core/linux-ogc.bst"
         self.assertIn("ogc-localversion: '-ogc3'", recorded.read_text())
         self.assertEqual(recorded.read_bytes(),
