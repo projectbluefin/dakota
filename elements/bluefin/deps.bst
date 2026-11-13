@@ -58,6 +58,7 @@ depends:
   - bluefin/sudo-linuxbrew-path.bst
   - bluefin/fprintd-system-auth.bst
   - bluefin/fprintd-fingerprint-auth.bst
+  - bluefin/oo7-passwd-pam.bst
   # efibootmgr and mokutil stay in every image: the Secure Boot tools in
   # the boot layer (oci/layers/boot-stack.bst) run them but cannot carry them.
   - bluefin/efibootmgr.bst
