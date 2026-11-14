@@ -121,6 +121,8 @@ config:
     install -Dm644 bluefin-logo-dark.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon-text-dark.svg"
     install -Dm644 bluefin-logo-light.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon.svg"
     install -Dm644 bluefin-logo-dark.svg "%{install-root}%{datadir}/pixmaps/img-logo-icon-dark.svg"
+    # Match Bluefin's subtle greeter footprint without resizing the About artwork.
+    sed 's/width="[^"]*" height="[^"]*"/width="150" height="61"/' bluefin-logo-dark.svg > "%{install-root}%{datadir}/pixmaps/bluefin-gdm-wordmark.svg"
     # Override GNOME OS boot logo with Bluefin branding
     cp "%{install-root}%{datadir}/pixmaps/fedora-gdm-logo.png" "%{install-root}%{datadir}/pixmaps/gnome-boot-logo.png"
     install -Dm755 bluefin-wallpaper-month-sync "%{install-root}%{prefix}/libexec/bluefin-wallpaper-month-sync"
@@ -131,6 +133,9 @@ config:
     # Create dconf profile so the distro system database is read
     mkdir -p "%{install-root}%{sysconfdir}/dconf/profile"
     printf 'user-db:user\nsystem-db:distro\n' > "%{install-root}%{sysconfdir}/dconf/profile/user"
+
+    # Match Bluefin/Fedora's login-screen schema default; GDM positions it bottom-center.
+    printf "[org.gnome.login-screen]\nlogo='%{datadir}/pixmaps/bluefin-gdm-wordmark.svg'\n" > "%{install-root}%{datadir}/glib-2.0/schemas/zz1-bluefin-gdm.gschema.override"
 
     # Dakota is a fresh BuildStream image — users never migrate from legacy-rechunk.
     # Remove the rechunker-group-fix migration aid that common ships for Bluefin/LTS.
