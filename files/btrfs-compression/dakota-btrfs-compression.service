@@ -1,0 +1,28 @@
+# Opt-in transparent zstd compression for the Btrfs root filesystem.
+# /var, /etc and /sysroot share one Btrfs superblock, so remounting /var turns
+# on compression for eligible new writes. A rootflags= karg would do the same,
+# but makes a non-Btrfs root fail to mount; here a non-Btrfs /var skips the
+# unit and a failed remount leaves compression off without affecting boot.
+# Existing files are not rewritten.
+# Toggle with: ujust toggle-btrfs-compression
+#
+# DefaultDependencies=no so it runs as early as possible: /var is already
+# mounted by the initramfs, and writes before this unit don't get compressed.
+[Unit]
+Description=Enable Btrfs zstd compression on the root filesystem
+Documentation=https://github.com/projectbluefin/dakota/issues/1294
+DefaultDependencies=no
+RequiresMountsFor=/var
+After=systemd-remount-fs.service
+Before=local-fs.target
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecCondition=/usr/bin/findmnt --noheadings --mountpoint /var --types btrfs
+ExecStart=/usr/bin/mount -o remount,compress=zstd:1 /var
+
+[Install]
+WantedBy=local-fs.target
