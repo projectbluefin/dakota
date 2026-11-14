@@ -42,6 +42,7 @@ Workflow YAML in `.github/workflows/` is the current source of truth. Do not rel
 - **e2e Workflow Gate**: `e2e.yml` runs only via `workflow_dispatch` against an already-published tag. It does **not** gate PRs.
 - **Atomic Matrices**: Do not cancel or serialize matrix siblings (the `standard` and `gaming` jobs in `build`, `pr-image` and `publish-image`) without explicit human approval. Each job covers two variants, so a job's result alone does not show which of its images built or published; read the step logs and the publish job summary.
 - **Truth in Reporting**: Never report CI as green while workflows are pending, queued, or skipped.
+- **Native common candidates**: `candidate-common.yml` accepts source-only common commits on trusted target `testing`. Verify common in a credential-free temporary checkout outside the target workspace and remove it before generating CAS config or signing keys. Adapt only the first common git source ref; preserve downstream patches and branding pins. All four native variants are mandatory. Remote builds push to CAS; signing runs locally with remote execution and pushes disabled, and the key remains until both exports complete. Candidate tags are run-scoped; manifests and E2E use immutable GHCR digests and identical pinned testsuite workflow/test commits. Runtime compatibility skips and hardware-blocked NVIDIA suites are real coverage gates, not evidence of equivalent common coverage.
 
 ## Common Rationalizations
 

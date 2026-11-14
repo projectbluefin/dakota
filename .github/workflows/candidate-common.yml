@@ -1,0 +1,251 @@
+name: Native common candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      common_sha:
+        description: Exact projectbluefin/common source commit
+        required: true
+        type: string
+      testsuite_sha:
+        description: Exact pinned testsuite workflow and test commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# The run ID gives each dispatch its own immutable candidate namespace.
+concurrency:
+  group: candidate-common-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  COMMON_SHA: ${{ inputs.common_sha }}
+  TESTSUITE_SHA: ${{ inputs.testsuite_sha }}
+
+jobs:
+  validate:
+    if: github.repository == 'projectbluefin/dakota' && github.ref == 'refs/heads/testing'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate immutable inputs
+        shell: bash
+        env:
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$COMMON_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$TESTSUITE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$TESTSUITE_SHA" == 948274b7bd76db65f1c69e4b5aab2bec0d63e8eb ]]
+          # Re-dispatch for a new tag; reruns must never replace a candidate.
+          test "$RUN_ATTEMPT" = 1
+
+  build:
+    needs: validate
+    runs-on: ${{ vars.DAKOTA_BUILD_RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        gaming: ['false', 'true']
+    env:
+      BUILD_GAMING: ${{ matrix.gaming }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify and adapt common source
+        run: |
+          set -euo pipefail
+          python3 -m pip install PyYAML==6.0.3
+          SOURCE=$(mktemp -d "$RUNNER_TEMP/common.XXXXXX")
+          trap 'rm -rf "$SOURCE"' EXIT
+          git -C "$SOURCE" init
+          git -C "$SOURCE" remote add origin https://github.com/projectbluefin/common.git
+          git -C "$SOURCE" fetch --depth=1 origin "$COMMON_SHA"
+          git -C "$SOURCE" checkout --detach FETCH_HEAD
+          python3 scripts/candidate_common.py "$COMMON_SHA" "$TESTSUITE_SHA" --source "$SOURCE" --output provenance.json
+      - uses: projectbluefin/actions/bootc-build/setup-runner@v1
+        with:
+          storage-backend: ${{ vars.DAKOTA_BUILD_RUNNER && 'none' || 'btrfs' }}
+          update-podman: true
+          native-overlay: true
+          install-tools: '["just"]'
+      - uses: ./.github/actions/generate-bst-ci-config
+        env:
+          CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
+          CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
+        with:
+          enable-remote-execution: 'true'
+          enable-push: 'true'
+      - name: Require both native images and shim
+        env:
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
+        run: |
+          set -euo pipefail
+          just bst build --deps none oci/bluefin.bst oci/bluefin-nvidia.bst bluefin/fedora-shim.bst 2>&1 | tee logs/candidate-build.log
+          grep -Fq 'Remote Execution Configuration' logs/candidate-build.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: candidate-build-${{ matrix.gaming }}
+          path: |
+            logs/
+            provenance.json
+          if-no-files-found: error
+
+  sign-export:
+    needs: build
+    runs-on: ${{ vars.DAKOTA_SIGN_RUNNER || 'ubuntu-26.04' }}
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        gaming: ['false', 'true']
+    env:
+      BUILD_GAMING: ${{ matrix.gaming }}
+      BUILD_SECURE_BOOT_SIGNING: 'true'
+      BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
+      OCI_IMAGE_REVISION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify and adapt common source
+        run: |
+          set -euo pipefail
+          python3 -m pip install PyYAML==6.0.3
+          SOURCE=$(mktemp -d "$RUNNER_TEMP/common.XXXXXX")
+          trap 'rm -rf "$SOURCE"' EXIT
+          git -C "$SOURCE" init
+          git -C "$SOURCE" remote add origin https://github.com/projectbluefin/common.git
+          git -C "$SOURCE" fetch --depth=1 origin "$COMMON_SHA"
+          git -C "$SOURCE" checkout --detach FETCH_HEAD
+          python3 scripts/candidate_common.py "$COMMON_SHA" "$TESTSUITE_SHA" --source "$SOURCE" --output provenance.json
+      - uses: projectbluefin/actions/bootc-build/setup-runner@v1
+        with:
+          storage-backend: ${{ vars.DAKOTA_SIGN_RUNNER && 'none' || 'btrfs' }}
+          update-podman: true
+          native-overlay: true
+          install-tools: '["just"]'
+      - uses: ./.github/actions/generate-bst-ci-config
+        env:
+          CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
+          CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
+        with:
+          enable-remote-execution: 'false'
+          enable-push: 'false'
+      - name: Write target-only signing key
+        env:
+          DAKOTA_SECURE_BOOT_KEY: ${{ secrets.DAKOTA_SECURE_BOOT_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DAKOTA_SECURE_BOOT_KEY"
+          umask 077
+          printf '%s\n' "$DAKOTA_SECURE_BOOT_KEY" > files/boot-keys/private/secure-boot.key
+      - name: Sign complete native boot chain and compose
+        run: |
+          set -euo pipefail
+          just bst build bluefin/secure-boot.bst bluefin/signed-modules.bst bluefin-nvidia/nvidia-signed-modules.bst
+          just bst build oci/bluefin.bst oci/bluefin-nvidia.bst
+          just export default
+          just export nvidia
+      - name: Remove signing key
+        if: always()
+        run: rm -f files/boot-keys/private/secure-boot.key
+      - name: Free exported BuildStream cache
+        run: sudo rm -rf "${HOME}/.cache/buildstream"
+      - name: Chunkify and lint both images
+        run: |
+          set -euo pipefail
+          suffix=''; [ "$BUILD_GAMING" = false ] || suffix=-gaming
+          for base in dakota dakota-nvidia; do
+            image="$base$suffix"
+            just chunkify "localhost/$image:latest"
+            BUILD_IMAGE_NAME="$image" just lint
+          done
+      - name: Publish immutable candidate images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          consumer=$(git rev-parse 'HEAD^{commit}')
+          tag="common-$COMMON_SHA-$consumer-$GITHUB_RUN_ID"
+          printf '%s' "$GH_TOKEN" | sudo podman login ghcr.io --username "$GH_ACTOR" --password-stdin
+          trap 'sudo podman logout ghcr.io' EXIT
+          suffix=''; [ "$BUILD_GAMING" = false ] || suffix=-gaming
+          for base in dakota dakota-nvidia; do
+            image="$base$suffix"
+            ref="ghcr.io/projectbluefin/$image"
+            sudo podman tag "localhost/$image:latest" "$ref:$tag"
+            sudo podman push --compression-format=zstd --digestfile "$RUNNER_TEMP/$image.digest" "$ref:$tag"
+            digest=$(cat "$RUNNER_TEMP/$image.digest")
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            actual=$(sudo skopeo inspect --format '{{.Digest}}' "docker://$ref@$digest")
+            test "$actual" = "$digest"
+            python3 scripts/candidate_common.py "$COMMON_SHA" "$TESTSUITE_SHA" --image "$image" "$digest" "$ref@$digest" --output "image-$image.json"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: candidate-images-${{ matrix.gaming }}
+          path: image-*.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: candidate-signing-${{ matrix.gaming }}
+          path: |
+            logs/
+            provenance.json
+          if-no-files-found: error
+
+  manifest:
+    needs: sign-export
+    runs-on: ubuntu-24.04
+    outputs:
+      images: ${{ steps.manifest.outputs.images }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: candidate-images-*
+          path: candidates
+          merge-multiple: true
+      - name: Require four-image manifest
+        id: manifest
+        run: |
+          set -euo pipefail
+          python3 -m pip install PyYAML==6.0.3
+          python3 scripts/candidate_common.py "$COMMON_SHA" "$TESTSUITE_SHA" --merge candidates --output candidate-manifest.json
+          echo "images=$(jq -c '.images' candidate-manifest.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: candidate-manifest
+          path: candidate-manifest.json
+          if-no-files-found: error
+
+  e2e:
+    needs: manifest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.manifest.outputs.images) }}
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@948274b7bd76db65f1c69e4b5aab2bec0d63e8eb # candidate
+    with:
+      image: ${{ matrix.image.ref }}
+      suites: ${{ contains(matrix.image.flavor, 'nvidia') && 'smoke,common,nvidia' || 'smoke,common' }}
+      compose_image: false
+      test_ref: 948274b7bd76db65f1c69e4b5aab2bec0d63e8eb # candidate
