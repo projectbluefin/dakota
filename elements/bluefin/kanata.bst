@@ -15,10 +15,13 @@ config:
   build-commands:
   - cargo build --release --frozen --offline --bin kanata
 
-  # kanata.service is installed disabled. It runs as a transient
-  # DynamicUser with only the input group, so keyboards are readable by the
-  # remapper and not by every process in the user's session. Users write
-  # /etc/kanata/kanata.kbd and opt in with:
+  # kanata.service is opt-in. Dakota's presets have no catch-all `disable *`,
+  # so a unit with an [Install] section is enabled unless a preset disables
+  # it; 80-kanata.preset does that. ConditionPathExists keeps the unit a
+  # silent no-op when it is enabled before a config exists, instead of a
+  # restart loop. It runs as a transient DynamicUser with only the input group, so
+  # keyboards are readable by the remapper and not by every process in the
+  # user's session. Users write /etc/kanata/kanata.kbd and opt in with:
   # sudo systemctl enable --now kanata
   install-commands:
   - install -Dm755 target/release/kanata "%{install-root}%{bindir}/kanata"
@@ -32,6 +35,7 @@ config:
     [Unit]
     Description=Kanata keyboard remapper
     Documentation=file:///usr/share/doc/kanata/config.adoc
+    ConditionPathExists=/etc/kanata/kanata.kbd
 
     [Service]
     ExecStart=/usr/bin/kanata --cfg /etc/kanata/kanata.kbd
@@ -47,6 +51,11 @@ config:
 
     [Install]
     WantedBy=multi-user.target
+    EOF
+  - |
+    install -Dm644 /dev/null "%{install-root}%{indep-libdir}/systemd/system-preset/80-kanata.preset"
+    cat > "%{install-root}%{indep-libdir}/systemd/system-preset/80-kanata.preset" <<'EOF'
+    disable kanata.service
     EOF
   - '%{install-extra}'
 

@@ -268,6 +268,17 @@ falls back to `/var/log` only when that record is missing. `firstboot-date.bst`
 owns that runtime record, not the presentation; `nerd-fonts-symbols.bst`
 supplies icon fallback without changing the default text font.
 
+The record is written by `ublue-firstboot-date.path`, which starts the service
+only once `/run/systemd/timesync/synchronized` exists. Do not enable the service
+directly or order it on `time-set.target`: on hardware whose RTC the kernel does
+not read early, the clock is still the systemd build epoch at that point, and
+the write-once record would keep that date permanently. A machine that never
+reaches an NTP server keeps no record and uses Common's `/var/log` fallback.
+The record is write-once with one exception: `ublue-firstboot-date` replaces a
+record dated 2011, which can only have been written under that build-epoch
+clock, with the date of the first synchronized boot.
+See [systemd-timesyncd.service(8)](https://www.freedesktop.org/software/systemd/man/latest/systemd-timesyncd.service.html).
+
 `patches/common/0006-fastfetch-drop-weekly-stats.patch` removes an input Dakota
 cannot provide. It drops the weekly user and Bazaar install count lines,
 because other images fill `fastfetch-user-count` and `bazaar-install-count`

@@ -1,0 +1,14 @@
+[Unit]
+Description=Record Dakota installation date once the clock is synchronized
+Documentation=man:systemd-timesyncd.service(8)
+
+# systemd-timesyncd touches this file on each successful NTP synchronization.
+# Before that the clock may still be the systemd build epoch on hardware whose
+# RTC the kernel does not read early, which would record a bogus date for good.
+# There is no condition on the record here: the service decides, because it
+# also has to replace a record that an earlier image wrote under a wrong clock.
+[Path]
+PathExists=/run/systemd/timesync/synchronized
+
+[Install]
+WantedBy=multi-user.target
