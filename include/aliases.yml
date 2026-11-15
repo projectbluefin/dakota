@@ -65,8 +65,8 @@ aliases:
   thekelleys: http://thekelleys.org.uk/git/
   videolan_pub: https://download.videolan.org/pub/
   webkitgtk: https://webkitgtk.org/releases/
-  ziglang: https://ziglang.org/
   yubico: https://developers.yubico.com/
+  ziglang: https://ziglang.org/
 
   # Gaming stack (elements/gaming/), alias names match cosmic-build-meta
   github-releases: https://github.com/
