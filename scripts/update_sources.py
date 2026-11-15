@@ -65,6 +65,7 @@ TRACKED = [
     ("bluefin/nspawn.bst", "nspawn",
      "review: CLI, D-Bus, and polkit changes across major versions"),
     ("bluefin/sysstat.bst", "sysstat", ""),
+    ("bluefin/ddcutil.bst", "ddcutil", ""),
     ("bluefin/trace-cmd.bst", "trace-cmd", ""),
     ("bluefin/virtiofsd.bst", "virtiofsd", ""),
     ("bluefin/ydotool.bst", "ydotool", ""),
