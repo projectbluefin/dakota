@@ -238,6 +238,11 @@ RELEASES = {
         "download/{tag}/ifuse-{version}.tar", tag_pattern=r"[0-9]+\.[0-9]+\.[0-9]+"),
     "bluefin/powertop.bst": Release(
         "fenrus75/powertop", r"tags/(?P<version>v[0-9.]+)\.tar\.gz", "tags/{tag}.tar.gz"),
+    "bluefin/pam-u2f.bst": Release(
+        "", r"pam_u2f-(?P<version>[0-9.]+)\.tar\.gz", "pam_u2f-{version}.tar.gz",
+        tag_pattern=r"[0-9]+\.[0-9]+\.[0-9]+",
+        feed="https://developers.yubico.com/pam-u2f/Releases/atom.xml",
+        feed_pattern=r"pam_u2f-(?P<version>[0-9.]+)\.tar\.gz"),
     "gaming/inputplumber.bst": Release(
         "ShadowBlip/InputPlumber", r"download/(?P<version>v[0-9.]+)/inputplumber-x86_64",
         "download/{tag}/inputplumber-x86_64"),
