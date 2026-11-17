@@ -126,6 +126,7 @@ depends:
   - bluefin/nethogs.bst
   - bluefin/lm-sensors.bst
   - freedesktop-sdk.bst:components/which.bst
+  - bluefin/ddcutil.bst
 
 (?):
 - arch == "x86_64":
