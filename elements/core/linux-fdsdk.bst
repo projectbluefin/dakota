@@ -8,10 +8,14 @@
 #
 # As of 26.08, upstream builds ATH12K, strips modules (INSTALL_MOD_STRIP=1),
 # and splits vmlinux/System.map to the devel domain itself, so those former
-# Dakota deltas are gone. One Dakota delta remains:
+# Dakota deltas are gone. Two Dakota deltas remain:
 #   CRYPTO_ZSTD forced =y: the zswap.compressor=zstd karg
 #   (bluefin/zswap-config.bst, all variants) needs the compressor
 #   built in, not =m.
+#   btintel_pcie s2idle suspend fix: patches/linux-dakota backports two
+#   upstream commits so btintel_pcie_suspend() no longer returns -EBUSY
+#   when the controller drops its alive doorbell interrupt. Drop once the
+#   fixes reach the 7.3 stable series.
 #
 # Exit condition: only drop this element in favor of components/linux.bst
 # if upstream ships CONFIG_CRYPTO_ZSTD=y (or zswap moves off the karg) and
@@ -201,6 +205,11 @@ sources:
   ref: v7.3.1-0-g79a907609d53d5cd645b42c11550d295d43abf99
 - kind: patch_queue
   path: patches/linux
+# Dakota-authored kernel fixups; keeps patches/linux/ a verbatim fdsdk copy,
+# mirroring the patches/linux-ogc pattern. Drop entries here as fixes land in
+# the stable series (see each patch's Upstream-Status trailer).
+- kind: patch_queue
+  path: patches/linux-dakota
 - kind: local
   path: files/linux/config-utils.sh
 - kind: local

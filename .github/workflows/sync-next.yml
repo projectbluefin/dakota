@@ -40,6 +40,7 @@ env:
     patches/freedesktop-sdk
     patches/freedesktop-sdk.manifest.json
     patches/linux
+    patches/linux-dakota
     patches/linux-ogc
     files/linux-ogc
   NEXT_MERGED: ""

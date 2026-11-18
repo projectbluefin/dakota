@@ -1,0 +1,56 @@
+From: Vladimir V. Kondratyev <vladimirkondratyev2@gmail.com>
+Subject: [PATCH] Bluetooth: btintel_pcie: fix s2idle suspend abort (-EBUSY)
+
+s2idle suspend aborts repeatedly on Intel BT PCIe controllers:
+btintel_pcie_suspend() writes the D3 (sleep) state and waits up to 200 ms
+for the controller's "GP0 alive" doorbell interrupt. After
+BTINTEL_PCIE_DX_TRANSITION_MAX_RETRIES timeouts the fallback re-checks
+controller state via btintel_pcie_in_d3()/in_d0(), which read
+boot_stage_cache -- a field only updated by the interrupt handler. When
+the alive interrupt is dropped (a controller quirk), the cache is stale,
+the fallback wrongly sees "still in D0", all retries fail, and the driver
+returns -EBUSY (-16), aborting the whole suspend. logind then retries
+every ~30 s, keeping the laptop awake in a closed lid.
+
+Also clear the GP0 cause with a direct write-1-to-clear write:
+MSIX_HW_INT_CAUSES is W1C, and the read-modify-write helper writes zero
+to GP0, leaving the cause uncleared and acknowledging unrelated pending
+causes through the read value.
+
+Backports two upstream commits:
+  Bluetooth: btintel_pcie: fix stale cache in set_dxstate fallback check
+  Bluetooth: btintel_pcie: clear the GP0 cause with a W1C write
+
+Upstream-Status: Backport [12997a385f7140c66f733128b76845fd906c270a, f2cee6e2aa35a6a701ce3f4bedf20273c808361f]
+Carried by Dakota against v7.3.1; drop this patch once both upstream
+commits are backported to the Linux 7.3 stable series.
+---
+--- a/drivers/bluetooth/btintel_pcie.c
++++ b/drivers/bluetooth/btintel_pcie.c
+@@ -3200,15 +3200,19 @@
+ 			   "Timeout (%u ms) on alive interrupt for D%d entry, retry count %d",
+ 			   dx_intr_timeout_ms, dxstate, retry);
+ 
+-		/* clear gp0 cause */
+-		btintel_pcie_clr_reg_bits(data,
+-					  BTINTEL_PCIE_CSR_MSIX_HW_INT_CAUSES,
+-					  BTINTEL_PCIE_MSIX_HW_INT_CAUSES_GP0);
++		/* MSIX_HW_INT_CAUSES is W1C. Write only GP0 so other
++		 * pending causes are not acknowledged here.
++		 */
++		btintel_pcie_wr_reg32(data,
++				      BTINTEL_PCIE_CSR_MSIX_HW_INT_CAUSES,
++				      BTINTEL_PCIE_MSIX_HW_INT_CAUSES_GP0);
+ 
+-		/* A hardware bug may cause the alive interrupt to be missed.
+-		 * Check if the controller reached the expected state and retry
+-		 * the operation only if it hasn't.
++		/* A hardware bug may cause the alive interrupt to be missed. Refresh
++		 * boot_stage_cache from hardware, since only the interrupt handler
++		 * updates it. Finally retry only if the state check still fails.
+ 		 */
++		data->boot_stage_cache = btintel_pcie_rd_reg32(data,
++						       BTINTEL_PCIE_CSR_BOOT_STAGE_REG);
+ 		if (dxstate == BTINTEL_PCIE_STATE_D0) {
+ 			if (btintel_pcie_in_d0(data))
+ 				return 0;
