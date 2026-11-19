@@ -113,7 +113,7 @@ TRACKED = [
     # Private toolchain for Syncthing; any newer Go satisfies its go.mod.
     ("core/syncthing-go.bst", "Go (Syncthing toolchain)", ""),
     ("plugins/buildstream-plugins.bst", "buildstream-plugins",
-     "review: plugin junction; the local patch queue still applies"),
+     "review: plugin junction bump"),
 ]
 
 
