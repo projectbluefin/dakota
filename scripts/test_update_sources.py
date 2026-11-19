@@ -290,6 +290,7 @@ FEEDS = {
     "steampowered.com": "Filename: pool/steam/s/steam/steam-launcher_99.88.77.66_amd64.deb",
     "ftp-master.debian.org": '[{"libgtk2.0-0": {"oldstable": {"2.24.99-9+deb12u9": {}}}}]',
     "alsa-project.org": "alsa-utils-9.8.7.tar.bz2 alsa-utils-9.8.8.tar.bz2 alsa-utils-1.2.14.tar.bz2",
+    "developers.yubico.com": "<entry><title>pam_u2f-99.88.77.tar.gz</title></entry>",
 }
 ASSETS = {
     "repos/vmware/open-vm-tools/": "stable-99.88.77\nopen-vm-tools-99.88.77-12345.tar.gz\nother.zip",
