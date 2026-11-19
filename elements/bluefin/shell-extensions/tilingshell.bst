@@ -3,14 +3,10 @@ kind: manual
 sources:
 - kind: zip
   base-dir: ""
-  # Reviewed 17.3 build (GNOME 50 support upstream, 51 via the patch below), not the older GitHub ZIP.
-  url: gnome_extensions:tilingshell@ferrarodomenico.com.shell-extension.zip?version_tag=70233
-  ref: 0a9f2b26de65294f53350d74089a3dae9376642784a722e98fc8d78fcc470a35
-# GNOME 51: mutter dropped org.gnome.mutter experimental-features. Port of
-# upstream PR domferr/tilingshell#605 onto the compiled build; drop once a
-# release lists "51" in metadata.json.
-- kind: patch
-  path: patches/tilingshell/0001-gnome-51-support.patch
+  # Version 77 (pk 76684) lists GNOME 51 in metadata.json, so the GNOME 51
+  # patch is dropped. Reviewed compiled extensions.gnome.org build.
+  url: gnome_extensions:tilingshell@ferrarodomenico.com.shell-extension.zip?version_tag=76684
+  ref: 17ab42f990d9b55f66009f50089ca172c62d206b03d0534ac5d9b63cf44e1cd1
 
 build-depends:
 - core/sandbox-tools.bst

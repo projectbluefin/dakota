@@ -6,10 +6,6 @@ sources:
   track: '*.*.*'
   exclude:
   - '*dev*'
-  ref: 2.5.0-0-g79649529cffb695d0d22195ed9a4910c80ca6907
-# apache/buildstream-plugins#91 (open upstream): the docker source only
-# accepts Docker v2 media types, so registries serving OCI manifests
-# (ghcr.io, used by bluefin/brew-tarball.bst) 404 on fetch. Drop the patch
-# when the PR merges and the junction moves to a release containing it.
-- kind: patch_queue
-  path: patches/buildstream-plugins
+  ref: 2.8.0-0-g2681232038711d5c3d4ef1ecc962321c33ec72c1
+# OCI manifest types landed upstream (apache/buildstream-plugins#105), so the
+# docker-source OCI 404 patch is no longer needed at 2.8.0.
