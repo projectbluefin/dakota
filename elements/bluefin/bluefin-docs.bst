@@ -1,9 +1,10 @@
 kind: manual
 
 # Offline Bluefin documentation, opened by the logo menu's Documentation entry
-# (retargeted to the image's Papers in bluefin/common.bst). The documentation
-# repository publishes every build as an immutable YY.MM.N release;
-# scripts/update_sources.py advances the URL and checksum to the latest one.
+# (the preinstalled Papers Flatpak gets read-only access in bluefin/common.bst).
+# The documentation repository publishes every build as an immutable YY.MM.N
+# release; scripts/update_sources.py advances the URL and checksum to the latest
+# one.
 sources:
 - kind: remote
   url: github_files:projectbluefin/documentation/releases/download/26.11.1/bluefin.pdf

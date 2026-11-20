@@ -82,15 +82,15 @@ config:
       exit 1
     fi
 
-    # The Papers Flatpak cannot see the host's /usr/share/doc, so common's
-    # logo-menu Documentation entry opens nothing. Use the image's own Papers
-    # (gnome-build-meta core/papers.bst, pulled in by bluefin/deps.bst).
+    # Papers is preinstalled as a Flatpak, which cannot see the host's
+    # /usr/share/doc by default. Keep common's logo-menu Documentation entry
+    # pointed at the Flatpak but grant read-only access to Bluefin's doc dir.
     DOC_MENU="system_files/bluefin/etc/dconf/db/distro.d/04-bluefin-custom-command-menu"
     if [ "$(sed -n '\#flatpak run org\.gnome\.Papers /usr/share/doc/bluefin/bluefin\.pdf#p' "$DOC_MENU" | wc -l)" != 1 ]; then
-      echo "ERROR: common's Documentation menu entry changed upstream — re-fit the host Papers retarget" >&2
+      echo "ERROR: common's Documentation menu entry changed upstream — re-fit the Flatpak filesystem override" >&2
       exit 1
     fi
-    sed -i 's#flatpak run org\.gnome\.Papers /usr/share/doc/bluefin/bluefin\.pdf#/usr/bin/papers /usr/share/doc/bluefin/bluefin.pdf#' "$DOC_MENU"
+    sed -i 's#flatpak run org\.gnome\.Papers /usr/share/doc/bluefin/bluefin\.pdf#flatpak run --filesystem=/usr/share/doc/bluefin:ro org.gnome.Papers /usr/share/doc/bluefin/bluefin.pdf#' "$DOC_MENU"
 
     cp -r system_files/bluefin/usr/./ "%{install-root}%{prefix}/"
     cp -r system_files/shared/usr/./ "%{install-root}%{prefix}/"
