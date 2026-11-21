@@ -4,10 +4,16 @@ description: |
 
   The GNOME OS initramfs is built upstream without knowledge of NVIDIA,
   so /etc/modprobe.d/blacklist-nouveau.conf is not honored during the
-  initramfs phase. Without rd.driver.blacklist nouveau (or simpledrm)
-  claims the framebuffer before pivot_root, after which nvidia-drm
-  cannot attach — the symptom is a black screen unless the user adds
-  `nomodeset` manually at the bootloader.
+  initramfs phase. Without rd.driver.blacklist nouveau claims the GPU
+  before pivot_root, after which nvidia-drm cannot attach.
+
+  The NVIDIA modules are not in the initramfs, so simpledrm is the only
+  display there. It must stay enabled: on a machine whose only GPU is
+  NVIDIA it is what draws the LUKS passphrase prompt and any emergency
+  output. plymouth.use-simpledrm=1 makes Plymouth use it at once instead
+  of waiting out DeviceTimeout for a native driver that cannot arrive
+  before the root is unlocked. nvidia-drm with fbdev=1 takes the
+  framebuffer over from simpledrm when it loads after pivot_root.
 
   bootc applies these from /usr/lib/bootc/kargs.d/ on switch/upgrade.
 
@@ -30,6 +36,6 @@ config:
         "modprobe.blacklist=nouveau",
         "nvidia-drm.modeset=1",
         "nvidia-drm.fbdev=1",
-        "initcall_blacklist=simpledrm_platform_driver_init",
+        "plymouth.use-simpledrm=1",
     ]
     EOF
