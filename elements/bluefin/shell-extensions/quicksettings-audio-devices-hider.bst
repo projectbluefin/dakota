@@ -3,8 +3,8 @@ kind: manual
 sources:
 - kind: zip
   base-dir: ""
-  url: gnome_extensions:quicksettings-audio-devices-hider@marcinjahn.com.shell-extension.zip?version_tag=69924
-  ref: 217082e049572ae54bc90bc09240f896e25f4a2609e0c0aa4b7133bed46d935d
+  url: gnome_extensions:quicksettings-audio-devices-hider@marcinjahn.com.shell-extension.zip?version_tag=77569
+  ref: 91cb3f43de4d865bc33417673d7baaf15844d2abca6516fbf51fec973251c26b
 
 build-depends:
 - core/sandbox-tools.bst
