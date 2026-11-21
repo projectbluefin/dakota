@@ -117,6 +117,8 @@ depends:
 
   - bluefin/bindmounts.bst
   - bluefin/migrate-var-home-passwd.bst
+  - bluefin/homed-defaults.bst
+  - bluefin/homed-subids.bst
 
   - gnome-build-meta.bst:gnomeos-deps/snapd.bst
 

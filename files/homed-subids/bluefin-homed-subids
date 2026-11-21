@@ -1,0 +1,169 @@
+#!/usr/bin/bash
+# Give systemd-homed users a subordinate UID/GID range in /etc/subuid and
+# /etc/subgid so rootless podman, distrobox and toolbox work for them.
+# useradd does this for classic users; homectl does not, and upstream
+# systemd declines to manage subids (systemd/systemd#34539, #13717).
+#
+# The range comes from systemd's container UID range (524288..1879048191),
+# not useradd's 100000+: homed mounts homes idmapped and passes only that
+# range (plus 0..60000 and 60514..65534) through 1:1, so container layers
+# owned by a 100000+ range cannot be chowned inside ~/.local/share/containers
+# ("lchown ...: value too large for defined data type"). See
+# make_home_userns() in systemd's src/home/homework-mount.c.
+#
+# Blocks start above useradd's SUB_UID_MAX/SUB_GID_MAX (shadow default
+# 600100000): useradd hands out ranges up to that value and can run at the
+# same time as this script, so the two must never share a region.
+#
+# Usage: bluefin-homed-subids [USER|UID]   (no argument: every homed user)
+# Run as root from a user@.service drop-in before each user manager starts.
+#
+# - Only users registered with systemd-homed are touched; everyone else,
+#   and homed users that already have both ranges, are left alone, so
+#   reruns are no-ops.
+# - A user with only one of the two entries gets the same start in the
+#   other file, so subuid and subgid stay identical.
+# - Writes go through usermod --add-subuids/--add-subgids, which takes
+#   shadow's own lock on each file. The flock below only serialises
+#   concurrent runs of this script (two first logins at once), so they can't
+#   both pick the same free block between reading the files and writing.
+
+set -euo pipefail
+
+BASE=600113152     # 0x23C50000: first 64K-aligned UID above SUB_UID_MAX (600100000)
+LIMIT=1879048192   # CONTAINER_UID_BASE_MAX + 65536 (0x70000000), exclusive
+COUNT=65536
+LOCK=/run/bluefin-homed-subids.lock
+
+log() { echo "bluefin-homed-subids: $*"; }
+
+homed_users() {
+    # "name uid" for every home registered with systemd-homed. Bounded so a
+    # stuck homed can't stall a login; on failure there is simply no user.
+    timeout 15 homectl list --no-legend --no-pager 2>/dev/null |
+        awk 'NF >= 2 && $2 ~ /^[0-9]+$/ { print $1, $2 }' || true
+}
+
+user_range() { # $1=name $2=uid $3=file -> "start count" of the first entry
+    [ -r "$3" ] || return 1
+    awk -F: -v n="$1" -v u="$2" '
+        NF == 3 && ($1 == n || $1 == u) && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {
+            print $2, $3; found = 1; exit
+        }
+        END { exit !found }' "$3"
+}
+
+has_range() { # $1=name $2=uid $3=file
+    user_range "$@" >/dev/null
+}
+
+is_free() { # $1=start $2=count $3..=files: no entry in the files overlaps
+    local start=$1 count=$2
+    shift 2
+    cat "$@" | awk -F: -v c="$start" -v n="$count" '
+        NF == 3 && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && c < $2 + $3 && $2 < c + n { busy = 1 }
+        END { exit busy }'
+}
+
+free_start() {
+    # Lowest 64K-aligned block from BASE that overlaps no entry in
+    # /etc/subuid or /etc/subgid.
+    cat /etc/subuid /etc/subgid |
+        awk -F: -v base="$BASE" -v limit="$LIMIT" -v count="$COUNT" '
+            BEGIN { n = 0 }   # numeric index, so s[0] really is the first entry
+            NF == 3 && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { s[n] = $2 + 0; e[n] = $2 + $3; n++ }
+            END {
+                for (c = base; c + count <= limit; c += count) {
+                    ok = 1
+                    for (i = 0; i < n; i++) if (c < e[i] && s[i] < c + count) { ok = 0; break }
+                    if (ok) { printf "%d\n", c; exit 0 }
+                }
+                exit 1
+            }'
+}
+
+ensure_files() {
+    # usermod and the readers below need both files. Create a missing one
+    # the way shadow ships it: empty, root:root, 0644, with the default
+    # SELinux label where SELinux is in use.
+    local f
+    for f in /etc/subuid /etc/subgid; do
+        [ -e "$f" ] && continue
+        install -m 0644 -o root -g root /dev/null "$f" || return 1
+        if command -v restorecon >/dev/null 2>&1; then
+            restorecon "$f" 2>/dev/null || true
+        fi
+        log "created empty $f"
+    done
+}
+
+target="${1:-}"
+rc=0
+locked=0
+
+while read -r name uid; do
+    if [ -n "$target" ] && [ "$target" != "$name" ] && [ "$target" != "$uid" ]; then
+        continue
+    fi
+    if has_range "$name" "$uid" /etc/subuid && has_range "$name" "$uid" /etc/subgid; then
+        continue
+    fi
+
+    if [ "$locked" -eq 0 ]; then
+        exec 9>"$LOCK"
+        if ! flock -w 30 9; then
+            log "could not take $LOCK"
+            exit 1
+        fi
+        locked=1
+        # Another run may have assigned this user while we waited.
+        if has_range "$name" "$uid" /etc/subuid && has_range "$name" "$uid" /etc/subgid; then
+            continue
+        fi
+    fi
+
+    if ! ensure_files; then
+        log "could not create /etc/subuid or /etc/subgid"
+        rc=1
+        continue
+    fi
+
+    # Half an entry (only subuid or only subgid): reuse its start and size
+    # for the missing file if that block is free there, so both stay equal.
+    start=""
+    count=$COUNT
+    if existing=$(user_range "$name" "$uid" /etc/subuid); then
+        other=/etc/subgid
+    elif existing=$(user_range "$name" "$uid" /etc/subgid); then
+        other=/etc/subuid
+    else
+        existing=""
+    fi
+    if [ -n "$existing" ]; then
+        read -r s c <<<"$existing"
+        if [ "$c" -gt 0 ] && is_free "$s" "$c" "$other"; then
+            start=$s
+            count=$c
+        else
+            log "range $s:$c of $name is taken in $other, using a new block"
+        fi
+    fi
+
+    if [ -z "$start" ] && ! start=$(free_start); then
+        log "no free range left for $name"
+        rc=1
+        continue
+    fi
+    end=$((start + count - 1))
+    args=()
+    has_range "$name" "$uid" /etc/subuid || args+=(--add-subuids "$start-$end")
+    has_range "$name" "$uid" /etc/subgid || args+=(--add-subgids "$start-$end")
+    if usermod "${args[@]}" "$name"; then
+        log "assigned $start-$end to $name (uid $uid)"
+    else
+        log "failed to assign a range to $name"
+        rc=1
+    fi
+done < <(homed_users)
+
+exit "$rc"
