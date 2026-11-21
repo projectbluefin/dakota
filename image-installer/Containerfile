@@ -16,14 +16,16 @@ ARG BUILDER_IMAGE=registry.fedoraproject.org/fedora:43@sha256:a19e8544313a675e65
 # OS-Installer is Python + GTK4/libadwaita, and Dakota already has every
 # runtime piece it loads (Gtk 4, Adw, GnomeDesktop 4, GWeather 4, Vte 3.91,
 # PyYAML) except the UDisks GObject-introspection typelib: Dakota ships
-# udisks2 and libudisks2 but not UDisks-2.0.typelib. The typelib only
-# describes libudisks2.so.0's stable API, so Fedora's is used as is.
+# udisks2 and libudisks2 but not UDisks-2.0.typelib. The typelib describes
+# libudisks2.so.0's stable API, so Fedora's is used, with one gap: Dakota's
+# libudisks2 is built without LVM2, so the LVM2 types it lists do not exist
+# there (OS-Installer 2006418 skips LVM2 when they are missing).
 # blueprint-compiler, needed to build the .ui files, is build-only.
 FROM ${BUILDER_IMAGE} AS os-installer
 ARG OSI_REPO=https://github.com/hanthor/os-installer.git
 # Full commit of hanthor/os-installer (branch dakota). Fetched by commit and
 # compared after checkout, so the build never follows a moving branch.
-ARG OSI_REF=91b70d896a44d2e4db7ad8a5d4ba41fe6aab6855
+ARG OSI_REF=20064186ffba96f3ee73114f84feed9404f742ec
 RUN dnf -y install --setopt=install_weak_deps=False \
         git meson ninja-build gettext blueprint-compiler glib2-devel \
         gtk4-devel libadwaita-devel gnome-desktop4-devel libgweather4-devel \
