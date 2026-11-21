@@ -10,7 +10,7 @@ theme (no watermark), AppArmor instead of SELinux, no runuser.
 Stages (every screenshot is listed in DIR/screenshots/manifest.json):
   1. Boot the raw disk image as live media (read-only virtio disk,
      systemd-boot's default "Dakota Live" entry: ro dakota.live plus the
-     live-only initrd, tmpfs overlays over /, /etc and /var).
+     live-only initrd, a tmpfs overlay over / with /etc and /var).
   2. Install with the real OS-Installer window (--install gui): language,
      welcome, keyboard, disk, encryption with a passphrase, confirmation,
      summary, progress, completion. With --install script the same
@@ -571,7 +571,7 @@ class Harness:
         while time.time() < end and "gnome-shell" not in self.ssh("liveuser", "pgrep -a -u liveuser gnome-shell || true", password=live_pw):
             time.sleep(5)
         time.sleep(10)
-        self.shot("01-live-session", f"Raw disk image booted as live media ({LIVE_KARG}, tmpfs overlays over /, /etc, /var): GNOME session for the live user", True)
+        self.shot("01-live-session", f"Raw disk image booted as live media ({LIVE_KARG}, tmpfs overlay over / with /etc and /var): GNOME session for the live user", True)
 
     def shot_boot_menu(self):
         # loader.conf's timeout keeps systemd-boot's menu up for a few seconds;

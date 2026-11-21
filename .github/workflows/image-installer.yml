@@ -62,7 +62,9 @@ jobs:
       WORK: /mnt/image-installer
       INSTALL: ${{ inputs.install || 'gui' }}
       FLATPAKS: ${{ github.event_name != 'workflow_dispatch' || inputs.flatpaks }}
-      FORMATS: zstd-3,zstd-19-long
+      # zstd -19 --long costs ~67 min per run (both media in run 44917386389);
+      # pushes measure zstd -3 only, dispatches both.
+      FORMATS: ${{ github.event_name == 'workflow_dispatch' && 'zstd-3,zstd-19-long' || 'zstd-3' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         timeout-minutes: 10

@@ -4,7 +4,7 @@
 #
 # The shipped bootc disk image is the live medium (booted from its "Dakota
 # Live" entry: `ro dakota.live` plus a live-only initrd whose bootc
-# setup-root config puts tmpfs overlays over /, /etc and /var; see
+# setup-root config puts a tmpfs overlay over / (with /etc and /var); see
 # build-raw-image.sh), and installing is a block copy of it, done by
 # OS-Installer's Dakota config (hanthor/os-installer, dakota_config/, sharing
 # utah_config/scripts/install.sh). The layers sit on top of a published Dakota

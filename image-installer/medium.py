@@ -17,8 +17,8 @@ filesystem has been shrunk to its content:
 
 The live entry is the deployment's own entry with `ro dakota.live` in place
 of `rw` and one more initrd: LIVE_INITRD, a cpio on the medium's ESP that
-carries bootc's /usr/lib/composefs/setup-root-conf.toml with /, /etc and
-/var as tmpfs overlays (bootc-root-setup.service mounts them itself, so no
+carries bootc's /usr/lib/composefs/setup-root-conf.toml: a tmpfs overlay over
+/, with /etc and /var (bootc-root-setup.service mounts it itself, so no
 ordering against it is needed). systemd-boot concatenates the initrds, and
 later cpio members win, so only this entry boots live; the image and its
 initramfs are untouched. This is GNOME OS's live addon idea for Type #1

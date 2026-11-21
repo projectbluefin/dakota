@@ -17,7 +17,7 @@
 #   2. Add a "Dakota Live" Type #1 entry on the ESP (medium.py live-entry): the
 #      deployment's own entry with `ro dakota.live` instead of `rw` and an extra
 #      initrd, EFI/Linux/dakota-live/live.initrd, a cpio that carries bootc's
-#      setup-root config with /, /etc and /var as tmpfs overlays. It is made
+#      setup-root config with a tmpfs overlay over / (with /etc and /var). It is made
 #      systemd-boot's default in loader.conf. OS-Installer's install.sh removes
 #      the entry, that initrd and the default from the installed copy. The
 #      image, its initramfs and the deployment's own entry are untouched.

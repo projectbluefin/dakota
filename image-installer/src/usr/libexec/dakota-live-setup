@@ -1,8 +1,8 @@
 #!/usr/bin/bash
 # Turn a dakota.live boot of the installed disk image into the live session.
 #
-# Runs only with dakota.live on the kernel command line. /, /etc and /var are
-# tmpfs overlays there (the live entry's extra initrd configures
+# Runs only with dakota.live on the kernel command line. / (with /etc and
+# /var) is a tmpfs overlay there (the live entry's extra initrd configures
 # bootc-root-setup that way), so everything written here (the live account,
 # its autologin, the installer autostart) exists only in RAM and never reaches
 # the medium -- which is what the installer copies.
