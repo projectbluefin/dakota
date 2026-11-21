@@ -19,8 +19,12 @@ if ! id "${user}" >/dev/null 2>&1; then
         --groups wheel --comment 'Live User' "${user}"
 fi
 passwd --delete "${user}" >/dev/null
-printf '%s ALL=(ALL) NOPASSWD: ALL\n' "${user}" >/etc/sudoers.d/dakota-live
-chmod 0440 /etc/sudoers.d/dakota-live
+# sudoers: the last matching rule wins, and sudoers.d is read in name order.
+# The image's sudoers.d/wheel (freedesktop-sdk vm/config/sudo.bst) asks wheel
+# for a password, so the live rule must sort after it (run 44926702980: sudo
+# prompted for the live user).
+printf '%s ALL=(ALL) NOPASSWD: ALL\n' "${user}" >/etc/sudoers.d/zz-dakota-live
+chmod 0440 /etc/sudoers.d/zz-dakota-live
 install -d -o "${user}" -g "${user}" "${home}/.config"
 install -o "${user}" -g "${user}" -m 0644 /dev/null "${home}/.config/gnome-initial-setup-done"
 
