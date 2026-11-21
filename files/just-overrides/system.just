@@ -340,6 +340,35 @@ toggle-network-monitoring:
         gum style --foreground 82 "✓ Enabled. Restart Mission Center to see per-process network usage."
     fi
 
+# Compress new writes on the Btrfs root filesystem with zstd
+[group('System')]
+toggle-btrfs-compression:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    UNIT=dakota-btrfs-compression.service
+    if [ ! -t 0 ]; then
+        echo "Interactive terminal required" >&2
+        exit 1
+    fi
+    if systemctl is-enabled --quiet "$UNIT" 2>/dev/null; then
+        echo "Btrfs compression is enabled."
+        gum confirm "Disable it?" || exit 0
+        sudo systemctl disable "$UNIT"
+        gum style --foreground 245 "Disabled. New writes stay compressed until the next reboot; compressed files remain readable."
+    else
+        if ! findmnt --noheadings --mountpoint /var --types btrfs >/dev/null; then
+            echo "The root filesystem is not Btrfs, so compression is not available." >&2
+            exit 1
+        fi
+        echo "Btrfs compression is disabled."
+        echo "Enabling compresses eligible new writes with zstd. Existing files are not rewritten."
+        echo "Known issue: compressed system files make false fs-verity \"FILE CORRUPTED\" kernel"
+        echo "messages more frequent: https://github.com/projectbluefin/dakota/issues/1832"
+        gum confirm "Enable it?" || exit 0
+        sudo systemctl enable --now "$UNIT"
+        gum style --foreground 82 "✓ Enabled. Eligible new writes are now compressed with zstd."
+    fi
+
 # Seal TPM disk unlock to the current boot state, after firmware or Secure Boot changes
 [group('System')]
 reseal-tpm-unlock:
