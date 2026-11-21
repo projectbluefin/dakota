@@ -8,8 +8,8 @@ kind: manual
 
 sources:
 - kind: tar
-  url: github-releases:ShadowBlip/InputPlumber/releases/download/v0.77.2/inputplumber-x86_64.tar.gz
-  ref: 4494e014bfc737d01c900be2160290a12215b97536a5070bf98387cd933e7b23
+  url: github-releases:ShadowBlip/InputPlumber/releases/download/v0.85.0/inputplumber-x86_64.tar.gz
+  ref: 8200b08a328d516c26c27b385091293127188c6a04802ee3412f138ce8819939
 
 build-depends:
 - freedesktop-sdk.bst:bootstrap/bash.bst
