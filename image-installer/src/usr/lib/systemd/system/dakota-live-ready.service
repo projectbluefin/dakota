@@ -1,0 +1,14 @@
+[Unit]
+Description=Dakota live environment ready marker
+ConditionKernelCommandLine=dakota.live
+After=display-manager.service
+Requires=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/echo DAKOTA_LIVE_READY
+StandardOutput=tty
+TTYPath=/dev/ttyS0
+
+[Install]
+WantedBy=multi-user.target

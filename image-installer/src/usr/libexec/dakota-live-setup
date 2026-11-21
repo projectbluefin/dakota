@@ -1,0 +1,97 @@
+#!/usr/bin/bash
+# Turn a dakota.live boot of the installed disk image into the live session.
+#
+# Runs only with dakota.live on the kernel command line. /, /etc and /var are
+# tmpfs overlays there (the live entry's extra initrd configures
+# bootc-root-setup that way), so everything written here (the live account,
+# its autologin, the installer autostart) exists only in RAM and never reaches
+# the medium -- which is what the installer copies.
+#
+# dakota.live.debug (CI only) additionally gives the live user the password
+# "live" and starts sshd, so a harness can drive the session.
+set -euo pipefail
+
+user=liveuser
+home="$(realpath -m /home)/${user}"
+
+if ! id "${user}" >/dev/null 2>&1; then
+    useradd --create-home --home-dir "${home}" --user-group \
+        --groups wheel --comment 'Live User' "${user}"
+fi
+passwd --delete "${user}" >/dev/null
+printf '%s ALL=(ALL) NOPASSWD: ALL\n' "${user}" >/etc/sudoers.d/dakota-live
+chmod 0440 /etc/sudoers.d/dakota-live
+install -d -o "${user}" -g "${user}" "${home}/.config"
+install -o "${user}" -g "${user}" -m 0644 /dev/null "${home}/.config/gnome-initial-setup-done"
+
+python3 - <<'PY'
+import configparser, pathlib
+path = pathlib.Path("/etc/gdm/custom.conf")
+config = configparser.ConfigParser(interpolation=None)
+config.optionxform = str
+if path.exists():
+    config.read(path)
+if not config.has_section("daemon"):
+    config.add_section("daemon")
+config["daemon"]["AutomaticLoginEnable"] = "True"
+config["daemon"]["AutomaticLogin"] = "liveuser"
+path.parent.mkdir(parents=True, exist_ok=True)
+with path.open("w") as f:
+    config.write(f)
+PY
+
+# Keep the live session awake and skip the tour; pin the installer. The
+# defaults go into the first system database the user profile reads.
+db="$(sed -n 's/^system-db://p' /etc/dconf/profile/user 2>/dev/null | head -n 1)"
+db="${db:-local}"
+if [[ ! -f /etc/dconf/profile/user ]]; then
+    install -d /etc/dconf/profile
+    printf 'user-db:user\nsystem-db:%s\n' "${db}" >/etc/dconf/profile/user
+fi
+install -d "/etc/dconf/db/${db}.d/locks"
+cat >"/etc/dconf/db/${db}.d/50-dakota-live" <<'EOF'
+[org/gnome/shell]
+welcome-dialog-last-shown-version='999'
+favorite-apps=['com.github.p3732.os_installer.desktop', 'org.gnome.Nautilus.desktop']
+
+[org/gnome/desktop/screensaver]
+lock-enabled=false
+idle-activation-enabled=false
+
+[org/gnome/desktop/session]
+idle-delay=uint32 0
+
+[org/gnome/settings-daemon/plugins/power]
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-type='nothing'
+EOF
+cat >"/etc/dconf/db/${db}.d/locks/50-dakota-live" <<'EOF'
+/org/gnome/desktop/screensaver/lock-enabled
+/org/gnome/desktop/screensaver/idle-activation-enabled
+/org/gnome/desktop/session/idle-delay
+EOF
+dconf update || true
+
+install -d /etc/xdg/autostart
+cat >/etc/xdg/autostart/dakota-os-installer.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Install Dakota
+Exec=os-installer --config /usr/share/dakota/os-installer/config.yaml
+Icon=com.github.p3732.os_installer
+X-GNOME-Autostart-enabled=true
+EOF
+# The app-grid/dock entry exists only in live sessions: the image keeps the
+# desktop file out of /usr/share/applications (installed systems must not
+# offer the installer), and /usr/local is writable here (overlay).
+install -d /usr/local/share/applications
+sed 's|^Exec=os-installer$|Exec=os-installer --config /usr/share/dakota/os-installer/config.yaml|' \
+    /usr/share/dakota/os-installer/com.github.p3732.os_installer.desktop \
+    >/usr/local/share/applications/com.github.p3732.os_installer.desktop
+
+if grep -qw dakota.live.debug /proc/cmdline; then
+    echo "${user}:live" | chpasswd
+    install -d /etc/ssh/sshd_config.d
+    printf 'PasswordAuthentication yes\n' >/etc/ssh/sshd_config.d/00-dakota-live-debug.conf
+    systemctl --no-block start sshd.service
+fi
