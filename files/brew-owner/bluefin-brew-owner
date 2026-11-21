@@ -1,0 +1,164 @@
+#!/usr/bin/bash
+# Keep the Homebrew prefix owned by a real user.
+#
+# Homebrew allows one owner per prefix. ublue-os/brew's brew-setup.service
+# unpacks /home/linuxbrew on first boot, before any user exists, and gives
+# it to UID 1000; its brew-update and brew-upgrade services run as
+# User=1000. systemd-homed users get UIDs from 60001, and a classic first
+# user is not always 1000, so on those systems the prefix belongs to a UID
+# with no user and brew can't install, update or upgrade anything.
+#
+# Usage:
+#   bluefin-brew-owner claim UID
+#       Run as root from a user@.service drop-in before each user manager
+#       starts. Gives the prefix to UID if it has no owner yet: owned by
+#       root, or by a UID that no user has (for example 1000 on a
+#       homed-only system). A prefix that belongs to an existing user is
+#       never touched, so the first regular user to log in keeps it.
+#   bluefin-brew-owner run COMMAND...
+#       Run COMMAND as the prefix owner. brew-update.service and
+#       brew-upgrade.service use this instead of User=1000. Exits 0 without
+#       running anything if the prefix has no owner yet or the owner's home
+#       is not available (a homed home is mounted only while its user is
+#       logged in).
+
+set -euo pipefail
+
+ROOT=/home/linuxbrew
+PREFIX=$ROOT/.linuxbrew
+LOCK=/run/bluefin-brew-owner.lock
+# Regular users: login.defs UID_MIN..UID_MAX (1000..60000) and the
+# systemd-homed range (60001..60513). root, system users and GDM's
+# greeter users (60578..60705) never claim the prefix, and neither do
+# directory (LDAP/sssd) users above 60513. getent can't tell "no such user"
+# from "lookup failed", so an in-range directory owner that can't be
+# resolved at login (sssd offline, no cache) looks like it has no user.
+UID_FIRST=1000
+UID_LAST=60513
+# brew-setup.service unpacks the prefix in a few seconds. A login that
+# races it on first boot waits up to SETUP_WAIT seconds for it, then leaves
+# the claim to a later login. Both waits stay well inside user@.service's
+# 90 s start timeout.
+SETUP_WAIT=20
+LOCK_WAIT=15
+
+log() { echo "bluefin-brew-owner: $*"; }
+
+prefix_owner() { # print the prefix owner's UID; fail if there is no prefix
+    [ -d "$PREFIX" ] && [ ! -L "$PREFIX" ] && [ ! -L "$ROOT" ] || return 1
+    stat -c %u "$PREFIX"
+}
+
+uid_has_user() { # $1=uid: NSS knows it, or a homed identity carries it
+    local f
+    getent passwd "$1" >/dev/null && return 0
+    # Also covers a homed user while systemd-homed is not answering (crashed,
+    # or not yet started when logind brings up a lingering user at boot).
+    # homed keeps the UID in the per-machine binding section of the identity
+    # file (binding.<machine-id>.uid), not at the top level.
+    for f in /var/lib/systemd/home/*.identity; do
+        [ -f "$f" ] || continue
+        jq -e --argjson u "$1" 'any(.binding[]?; .uid == $u) or .uid == $u' \
+            "$f" >/dev/null 2>&1 && return 0
+    done
+    return 1
+}
+
+unclaimed() { # $1=owner uid
+    [ "$1" -eq 0 ] || ! uid_has_user "$1"
+}
+
+setup_done() { # brew-setup.service is not unpacking the prefix right now
+    local i
+    for ((i = 0; i < SETUP_WAIT; i++)); do
+        [ "$(systemctl show -P ActiveState brew-setup.service 2>/dev/null)" = activating ] || return 0
+        sleep 1
+    done
+    return 1
+}
+
+claim() {
+    local uid=${1:-} owner ent name gid
+    case "$uid" in
+        '' | *[!0-9]*) log "usage: claim UID"; return 2 ;;
+    esac
+    [ "$uid" -ge "$UID_FIRST" ] && [ "$uid" -le "$UID_LAST" ] || return 0
+
+    if ! setup_done; then
+        log "brew-setup.service is still running; $ROOT is claimed at a later login"
+        return 0
+    fi
+    owner=$(prefix_owner) || return 0
+    [ "$owner" != "$uid" ] || return 0
+    unclaimed "$owner" || return 0
+
+    # Two first logins at once: only one of them gets the prefix.
+    exec 9>"$LOCK"
+    if ! flock -w "$LOCK_WAIT" 9; then
+        log "could not take $LOCK"
+        return 1
+    fi
+    owner=$(prefix_owner) || return 0
+    [ "$owner" != "$uid" ] || return 0
+    unclaimed "$owner" || return 0
+
+    if ! ent=$(getent passwd "$uid"); then
+        log "uid $uid has no user record"
+        return 1
+    fi
+    IFS=: read -r name _ _ gid _ <<<"$ent"
+    # Contents first (find -depth), then /home/linuxbrew, the prefix itself
+    # last. The prefix's owner is what every login checks, so a claim that is
+    # interrupted or fails part-way leaves it with its old owner and the next
+    # login redoes the whole claim. (Dakota's uutils chown -R changes the top
+    # directory first and would strand the rest.) Symlinks are changed, never
+    # followed.
+    if ! find "$ROOT" -mindepth 1 -depth ! -path "$PREFIX" \
+        -exec chown --no-dereference "$uid:$gid" {} +; then
+        log "could not give all of $ROOT to $name (uid $uid); retrying at the next login"
+        return 1
+    fi
+    chown --no-dereference "$uid:$gid" "$ROOT"
+    chown --no-dereference "$uid:$gid" "$PREFIX"
+    if [ "$owner" -eq 0 ]; then
+        log "gave $ROOT to $name (uid $uid)"
+    else
+        log "gave $ROOT to $name (uid $uid); its owner, uid $owner, has no user"
+    fi
+}
+
+run() {
+    local owner ent name uid gid home
+    if [ "$#" -eq 0 ]; then
+        log "usage: run COMMAND..."
+        return 2
+    fi
+    if ! owner=$(prefix_owner); then
+        log "no Homebrew prefix at $PREFIX; nothing to do"
+        return 0
+    fi
+    if [ "$owner" -eq 0 ]; then
+        log "$PREFIX has no owner yet; the first user to log in gets it"
+        return 0
+    fi
+    if ! ent=$(getent passwd "$owner"); then
+        log "$PREFIX belongs to uid $owner, which has no user; the next user to log in gets it"
+        return 0
+    fi
+    IFS=: read -r name _ uid gid _ home _ <<<"$ent"
+    if [ "$home" = / ] || [ ! -d "$home" ]; then
+        log "the home of $name, who owns $PREFIX, is not available (not logged in?); skipping"
+        return 0
+    fi
+    exec setpriv --reuid="$uid" --regid="$gid" --init-groups -- \
+        env HOME="$home" USER="$name" LOGNAME="$name" "$@"
+}
+
+case "${1:-}" in
+    claim) shift; claim "$@" ;;
+    run) shift; run "$@" ;;
+    *)
+        echo "usage: bluefin-brew-owner claim UID | run COMMAND..." >&2
+        exit 2
+        ;;
+esac
