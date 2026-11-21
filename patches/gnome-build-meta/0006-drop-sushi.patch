@@ -1,0 +1,21 @@
+Upstream-Status: Pending
+Exit: Drop when the image stops preinstalling org.gnome.NautilusPreviewer from Flathub.
+Subject: core/meta-gnome-core-shell.bst: drop sushi
+
+Sushi is a DBus-activated previewer that Nautilus drives through the
+org.gnome.NautilusPreviewer service name. Dakota preinstalls the Flathub
+build of the same app instead, so keeping the in-tree element would stage
+a second D-Bus service and launcher in the image. The Flatpak is
+version-aligned with the pinned GNOME 51 stack.
+
+diff --git a/elements/core/meta-gnome-core-shell.bst b/elements/core/meta-gnome-core-shell.bst
+--- a/elements/core/meta-gnome-core-shell.bst
++++ b/elements/core/meta-gnome-core-shell.bst
+@@ -23,7 +23,6 @@ depends:
+ - core/mutter.bst
+ - core/orca.bst
+ - core/rygel.bst
+-- core/sushi.bst
+ - core/tecla.bst
+ - sdk/adwaita-icon-theme.bst
+ - sdk/glib-networking.bst

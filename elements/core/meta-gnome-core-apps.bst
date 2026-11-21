@@ -5,6 +5,6 @@ description: |
   Overridden to only keep some applications.
 
 depends:
-  - gnome-build-meta.bst:core/baobab.bst
+  # Baobab is preinstalled from Flathub as org.gnome.baobab instead.
   - gnome-build-meta.bst:core/gnome-disk-utility.bst
   - gnome-build-meta.bst:core/nautilus.bst
