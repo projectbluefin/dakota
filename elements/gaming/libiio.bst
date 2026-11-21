@@ -9,7 +9,7 @@ sources:
 - kind: git_repo
   url: github:analogdevicesinc/libiio.git
   track: 'v0.*'
-  ref: v0.26-0-ga0eca0d2bf10326506fb762f0eec14255b27bef5
+  ref: v0.26-rc.1-0-gbdd5c0001604d2ab5ea36365a6280173405d2166
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-cmake.bst
