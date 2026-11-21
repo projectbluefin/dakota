@@ -1,0 +1,14 @@
+[Unit]
+Description=Prepare the Dakota live session (dakota.live)
+ConditionKernelCommandLine=dakota.live
+DefaultDependencies=no
+After=local-fs.target systemd-sysusers.service systemd-tmpfiles-setup.service
+Before=display-manager.service systemd-user-sessions.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/dakota-live-setup
+
+[Install]
+WantedBy=multi-user.target

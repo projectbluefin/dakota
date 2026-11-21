@@ -1,0 +1,23 @@
+# bootc setup-root config for the live entry only (bootc-setup-root-conf.toml(5)).
+#
+# Shipped in the medium's live-only initrd (build-raw-image.sh), never in the
+# image: with it, bootc-root-setup.service puts one overlay with a tmpfs upper
+# layer over the composefs root, so the live session writes to RAM and the
+# medium stays what the installer copies. The composefs objects are still read
+# straight from the medium's ext4 root, with fs-verity checked: the strict
+# composefs= karg stays.
+#
+# /etc and /var are the image's own, inside that root overlay: neither the
+# deployment's state dirs (bind mounts of the read-only medium) nor overlays
+# of their own. bootc stacks a transient subdirectory overlay on the transient
+# root overlay, which is on composefs (itself an overlay), and the kernel
+# refuses the third level ("overlayfs: maximum fs stacking depth exceeded",
+# run 44917386389).
+[root]
+transient = true
+
+[etc]
+mount = "none"
+
+[var]
+mount = "none"

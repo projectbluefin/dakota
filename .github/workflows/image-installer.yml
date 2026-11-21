@@ -1,0 +1,198 @@
+name: Image-based installer (experimental)
+
+# Dakota track of the image-based installer shared with Utah
+# (projectbluefin/utah docs/adr/0001-image-based-installer.md, #1406), run
+# beside dakota-iso + bootc-installer/fisherman so the two can be compared on
+# the same :testing digest. It is NOT a gate: it publishes nothing and moves
+# no tag.
+#
+#   1. build a live-capable layer on the exact :testing digest
+#      (image-installer/Containerfile: OS-Installer from a pinned
+#      hanthor/os-installer commit, dakota.live units);
+#   2. `bootc install to-disk --composefs-backend --bootloader systemd
+#      --filesystem ext4` it once into a raw disk image and add the live
+#      entry (image-installer/build-raw-image.sh), bake the image's
+#      preinstall.d Flatpaks into the medium's /var and shrink it;
+#   3. image-installer/raw_e2e.py: live boot -> OS-Installer GUI install into
+#      LUKS2 -> Plymouth unlock -> gnome-initial-setup -> desktop + bootc
+#      status -> bootc switch -> bootc rollback, with a screenshot of every
+#      stage;
+#   4. measure the medium (raw, allocated, zstd -3, zstd -19 --long).
+# Screenshots, logs and measurements are uploaded; the medium and disks are
+# never uploaded (CI media carry test credentials).
+on:
+  workflow_dispatch:
+    inputs:
+      image_ref:
+        description: Exact image to install (ghcr.io/projectbluefin/dakota@sha256:...); default the current :testing digest
+        type: string
+        default: ''
+      candidate_ref:
+        description: bootc switch target (ghcr.io/projectbluefin/dakota@sha256:...); default the current :stable digest
+        type: string
+        default: ''
+      install:
+        description: gui drives OS-Installer's window; script runs the same install.sh over SSH
+        type: choice
+        options: [gui, script]
+        default: gui
+      flatpaks:
+        description: Bake the image's preinstall.d Flatpaks into the medium's /var
+        type: boolean
+        default: true
+  push:
+    branches: [spike/image-installer]
+    paths:
+      - image-installer/**
+      - .github/workflows/image-installer.yml
+
+permissions: {}
+
+concurrency:
+  group: image-installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    permissions:
+      contents: read
+    env:
+      WORK: /mnt/image-installer
+      INSTALL: ${{ inputs.install || 'gui' }}
+      FLATPAKS: ${{ github.event_name != 'workflow_dispatch' || inputs.flatpaks }}
+      # zstd -19 --long costs ~67 min per run (both media in run 44917386389);
+      # pushes measure zstd -3 only, dispatches both.
+      FORMATS: ${{ github.event_name == 'workflow_dispatch' && 'zstd-3,zstd-19-long' || 'zstd-3' }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        timeout-minutes: 10
+        with:
+          persist-credentials: false
+      - name: Resolve the image and the bootc switch target
+        timeout-minutes: 10
+        env:
+          IMAGE_REF: ${{ inputs.image_ref }}
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+        run: |
+          set -euo pipefail
+          repo=ghcr.io/projectbluefin/dakota
+          pin='^ghcr\.io/projectbluefin/dakota@sha256:[0-9a-f]{64}$'
+          ref="${IMAGE_REF:-$repo@$(skopeo inspect --format '{{.Digest}}' "docker://$repo:testing")}"
+          cand="${CANDIDATE_REF:-$repo@$(skopeo inspect --format '{{.Digest}}' "docker://$repo:stable")}"
+          [[ "$ref" =~ $pin && "$cand" =~ $pin ]] || { echo "refs must be $repo@sha256:<digest>" >&2; exit 1; }
+          [[ "$ref" != "$cand" ]] || { echo "the switch target is the installed digest" >&2; exit 1; }
+          echo "SOURCE_REF=$ref" >> "$GITHUB_ENV"
+          echo "CANDIDATE=$cand" >> "$GITHUB_ENV"
+          echo "installed: $ref"; echo "switch target: $cand"
+      - name: Prepare host (podman storage and work dir on /mnt, QEMU, KVM)
+        timeout-minutes: 40
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo apt-get update
+          sudo apt-get install -y podman skopeo qemu-system-x86 qemu-utils ovmf sshpass ffmpeg imagemagick zstd xz-utils tesseract-ocr cpio
+          sudo mkdir -p /mnt/containers /var/lib/containers "$WORK"
+          sudo mount --bind /mnt/containers /var/lib/containers
+          sudo chown "$USER" "$WORK"
+          test -c /dev/kvm && sudo chmod a+rw /dev/kvm
+          df -h / /mnt
+      - name: Build the live-capable image layer
+        timeout-minutes: 60
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          sudo podman pull -q "$SOURCE_REF"
+          sudo podman build --layers=false -t localhost/dakota-raw:ci \
+            --build-arg SOURCE_IMAGE="$SOURCE_REF" -f image-installer/Containerfile image-installer 2>&1 | tail -150
+          echo "IMAGE_BUILD_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
+      - name: Assert the published image and the live layer carry no Flatpaks
+        run: |
+          set -euo pipefail
+          for ref in "$SOURCE_REF" localhost/dakota-raw:ci; do
+            sudo podman run --rm --entrypoint sh "$ref" -c \
+              'test ! -e /var/lib/flatpak || test -z "$(ls -A /var/lib/flatpak)"' \
+              || { echo "::error::$ref has content in /var/lib/flatpak"; exit 1; }
+          done
+      - name: Build the raw medium (bootc install to-disk, once)
+        run: |
+          set -euo pipefail
+          ssh-keygen -q -t ed25519 -N '' -f "$WORK/id_ed25519"
+          start=$(date +%s)
+          # Diagnostics for the CI live entry only: journal on the serial
+          # console, no Plymouth hiding it.
+          sudo env DAKOTA_RAW_LIVE_KARGS="dakota.live.debug console=tty0 console=ttyS0,115200 systemd.journald.forward_to_console=1 plymouth.enable=0 rd.plymouth=0" \
+            DAKOTA_RAW_SSH_PUBKEY="$WORK/id_ed25519.pub" DAKOTA_RAW_DEBUG_SSHD=1 DAKOTA_RAW_EVIDENCE="$WORK/raw-evidence" \
+            bash image-installer/build-raw-image.sh localhost/dakota-raw:ci "$WORK/medium.raw" "${SOURCE_REF%@*}:testing"
+          echo "MEDIUM_BUILD_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
+      - name: Bake the Flatpaks into the medium and shrink it
+        id: medium
+        run: |
+          set -euo pipefail
+          ev="$WORK/raw-evidence"
+          start=$(date +%s)
+          sudo python3 image-installer/measure_medium.py "$WORK/medium.raw" "$ev/size-1-installed.json" \
+            --label "after bootc install" --formats zstd-3
+          if [[ "$FLATPAKS" == true ]]; then
+            sudo cp --sparse=always "$WORK/medium.raw" "$WORK/no-flatpaks.raw"
+            sudo env DAKOTA_RAW_EVIDENCE="$ev/no-flatpaks" bash image-installer/shrink-raw-image.sh localhost/dakota-raw:ci "$WORK/no-flatpaks.raw"
+            sudo python3 image-installer/measure_medium.py "$WORK/no-flatpaks.raw" "$ev/size-2-no-flatpaks.json" \
+              --label "shrunk, no Flatpaks (not tested)" --formats "$FORMATS"
+            sudo rm -f "$WORK/no-flatpaks.raw"
+            sudo env DAKOTA_RAW_EVIDENCE="$ev" bash image-installer/bake-flatpaks.sh localhost/dakota-raw:ci "$WORK/medium.raw"
+          fi
+          sudo env DAKOTA_RAW_EVIDENCE="$ev" bash image-installer/shrink-raw-image.sh localhost/dakota-raw:ci "$WORK/medium.raw"
+          echo "BAKE_SHRINK_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
+          sudo chown "$USER" "$WORK/medium.raw"
+          sudo chown -R "$USER" "$ev"
+          sudo podman rmi -af >/dev/null || true
+          df -h / /mnt
+      - name: End-to-end with screenshots
+        run: |
+          set -euo pipefail
+          baked=()
+          [[ "$FLATPAKS" != true ]] || baked=(--flatpaks "$WORK/raw-evidence/flatpak-apps.txt")
+          python3 image-installer/raw_e2e.py --raw "$WORK/medium.raw" --work "$WORK/e2e" --install "$INSTALL" \
+            --candidate "$CANDIDATE" --ssh-key "$WORK/id_ed25519" "${baked[@]}" 2>&1 | tee "$WORK/e2e.log"
+      - name: Measure the medium
+        if: always() && steps.medium.outcome == 'success'
+        run: |
+          set -euo pipefail
+          if [[ "$FLATPAKS" == true ]]; then out=size-3-flatpaks.json label="shrunk + Flatpaks (tested medium)"
+          else out=size-3-no-flatpaks.json label="shrunk, no Flatpaks (tested medium)"; fi
+          python3 image-installer/measure_medium.py "$WORK/medium.raw" "$WORK/raw-evidence/$out" \
+            --label "$label" --formats "$FORMATS"
+          printf '{"source_ref": "%s", "candidate": "%s", "image_build_seconds": %s, "medium_build_seconds": %s, "bake_shrink_seconds": %s}\n' \
+            "$SOURCE_REF" "$CANDIDATE" "${IMAGE_BUILD_SECONDS:-0}" "${MEDIUM_BUILD_SECONDS:-0}" "${BAKE_SHRINK_SECONDS:-0}" \
+            | tee "$WORK/raw-evidence/build-times.json"
+          {
+            echo "## Dakota image-based installer"
+            echo "installed \`$SOURCE_REF\`, switch target \`$CANDIDATE\`"
+            echo '```'; cat "$WORK"/raw-evidence/size-*.json "$WORK/raw-evidence/build-times.json"; echo '```'
+            [[ -f "$WORK/e2e/evidence/results.json" ]] && { echo '```json'; cat "$WORK/e2e/evidence/results.json"; echo '```'; }
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Contact sheet
+        if: always()
+        run: |
+          set -euo pipefail
+          cd "$WORK/e2e/screenshots" 2>/dev/null || exit 0
+          shopt -s nullglob
+          shots=(./*.png)
+          (( ${#shots[@]} )) || exit 0
+          montage -font DejaVu-Sans -pointsize 14 -label '%t' "${shots[@]}" \
+            -tile 4x -geometry 480x270+8+8 -background '#202020' -fill white contact-sheet.png
+      - name: Upload screenshots, logs and measurements
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: image-installer-dakota
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            ${{ env.WORK }}/e2e/screenshots/
+            ${{ env.WORK }}/e2e/evidence/
+            ${{ env.WORK }}/e2e/debug/
+            ${{ env.WORK }}/e2e/*.log
+            ${{ env.WORK }}/e2e.log
+            ${{ env.WORK }}/raw-evidence/
