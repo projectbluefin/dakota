@@ -8,9 +8,8 @@ sources:
   project-id: 1227
   url: https://go.dev/dl/go{version}.src.tar.gz
   ref:
-    version: 1.26.6
-    sha256sum: a0721c54c688901448d77ad9b3ec7ea7c474730755ff891382e92ecb93ff2cb1
-
+    version: 1.27.4
+    sha256sum: 73cfb8571aec0c01177687db87163d46aa20e9779672772891aa17654d9a6099
 build-depends:
 - core/sandbox-tools.bst
 - freedesktop-sdk.bst:components/go.bst
