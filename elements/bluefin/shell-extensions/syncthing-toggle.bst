@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:projectbluefin/bluefin-bling.git
   track: main
-  ref: baa802a45d7aaa514ad02e3b91076546bfa034d9
+  ref: 3e07217e0b73c1c130aa97fdddc8e79770c48714
 
 build-depends:
 - core/sandbox-tools.bst

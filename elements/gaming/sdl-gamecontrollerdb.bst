@@ -14,8 +14,8 @@ sources:
   # Pin to a commit instead of the moving master branch; this database is
   # updated frequently and raw-master fetches fail as soon as the content
   # hash changes.
-  url: github-raw:mdqinc/SDL_GameControllerDB/998d5b08b5b33bdf3a63b2ef8f2ac4ccc664e2f6/gamecontrollerdb.txt
-  ref: a34670ad1dafedef740c6c8ae8b8ff82a1cf1058d8f98eb8f1c123dee905ad19
+  url: github-raw:mdqinc/SDL_GameControllerDB/4e87e3c6c2574f49e1cdf8526b6f829b61e5ccb3/gamecontrollerdb.txt
+  ref: a9994e85b0d608cfcb4df0e1424523e488829acb1017b6a2a2adf8df6478cb26
   filename: gamecontrollerdb.txt
 
 build-depends:

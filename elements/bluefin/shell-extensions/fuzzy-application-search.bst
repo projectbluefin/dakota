@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: codeberg:mkhl/gnome-shell-extension-fuzzy-application-search.git
   track: 'v[0-9]*'
-  ref: 864bf0ca6a3963e93cde7d5fd4fba8fb37cf0f49
+  ref: v3-0-g6f8185b86963dfba89028f814c8c4af0e327fc6a
 
 build-depends:
 - core/sandbox-tools.bst

@@ -8,7 +8,7 @@ sources:
 - kind: git_repo
   url: github:libimobiledevice/usbmuxd.git
   track: master
-  ref: 1.1.1-72-g3ded00c9985a5108cfc7591a309f9a23d57a8cba
+  ref: 1.1.1-76-ge0216f30e1d34812354ee0cd6e91711bbf704bbe
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-autotools.bst

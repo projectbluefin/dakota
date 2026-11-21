@@ -198,7 +198,7 @@ sources:
   track: v7.3*
   exclude:
   - v7.3-rc*
-  ref: v7.3.1-0-g79a907609d53d5cd645b42c11550d295d43abf99
+  ref: v7.3.5-0-g988117cc1bb17338c586a4e21ade88b5397eac33
 - kind: patch_queue
   path: patches/linux
 - kind: local

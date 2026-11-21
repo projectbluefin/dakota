@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:sysstat/sysstat.git
   track: v*
-  ref: v12.8.0-0-gffabe8175aa9a7aa056380c66ed3648e50c1967d
+  ref: v12.8.1-0-ga0929c04249a015a924399e87a3fd06045d81846
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-autotools.bst

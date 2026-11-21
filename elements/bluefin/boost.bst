@@ -6,9 +6,8 @@ sources:
   project-id: 6845
   url: boost:release/{version}/source/boost_{major}_{minor}_{patch}.tar.bz2
   ref:
-    version: 1.90.0
-    sha256sum: 49551aff3b22cbc5c5a9ed3dbc92f0e23ea50a0f7325b0d198b705e8ee3fc305
-
+    version: 1.92.0
+    sha256sum: 5c1d40cb8e19adbf740a4ec2da35b3e58f3f5804b1dce44deb53df72193cbc6c
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-make.bst
 
