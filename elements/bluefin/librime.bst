@@ -4,11 +4,11 @@ sources:
 - kind: git_repo
   url: github:rime/librime.git
   track: '[0-9]*'
-  ref: 33e78140250125871856cdc5b42ddc6a5fcd3cd4
+  ref: 1.17.0-0-g33e78140250125871856cdc5b42ddc6a5fcd3cd4
 - kind: git_repo
   url: github:hchunhui/librime-lua.git
   track: 'master'
-  ref: ad1e4a6c98abf634dd34242a747f9b1d5d069fbe
+  ref: lua-dev-build-17-228-g6da5d6cedb853380ed1b5b9b6979cb1a9c028353
   directory: plugins/lua
 
 build-depends:
