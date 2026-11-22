@@ -6,8 +6,8 @@ kind: manual
 # scripts/update_sources.py advances the URL and checksum to the latest one.
 sources:
 - kind: remote
-  url: github_files:projectbluefin/documentation/releases/download/26.11.1/bluefin.pdf
-  ref: fc064d114cc6033c8c356c78f4a5869d460e86cea542624759cd51bbbdfef841
+  url: github_files:projectbluefin/documentation/releases/download/26.11.4/bluefin.pdf
+  ref: f45b5e175f5cc00a84965ccf1f4f580aebce14606bfb5edf6f0ec650717a110a
   filename: bluefin.pdf
 
 build-depends:
