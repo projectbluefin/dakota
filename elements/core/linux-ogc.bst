@@ -261,7 +261,7 @@ sources:
   url: github:OpenGamingCollective/linux.git
   # rc-based OGC tags are fair game on the next stream.
   track: v7.3.*-ogc*
-  ref: v7.3.3-ogc1-0-ga66e9e735fa99a7844fe18b0af0651737589f61a
+  ref: v7.3.5-ogc1-0-g03968916e4ae511d33d2c2804a88ea0331b1ca32
 # Dakota fixups for the OGC patchset itself; review at every tag bump and
 # drop each patch once the fix lands upstream.
 - kind: patch_queue
