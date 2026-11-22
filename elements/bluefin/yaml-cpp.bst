@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:jbeder/yaml-cpp.git
   track: 'yaml-cpp-[0-9]*'
-  ref: 2f86d13775d119edbb69af52e5f566fd65c6953b
+  ref: yaml-cpp-0.9.0-0-g56e3bb550c91fd7005566f19c079cb7a503223cf
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-cmake.bst
