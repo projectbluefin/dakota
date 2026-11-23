@@ -1,0 +1,120 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<interface>
+  <requires lib="gtk" version="4.6"/>
+  <requires lib="libadwaita" version="1.6"/>
+  <template class="StatusDisplay" parent="AdwNavigationPage">
+    <property name="can-pop">False</property>
+    <property name="title" translatable="yes">Installing</property>
+    <property name="child">
+      <object class="AdwStatusPage" id="StatusPage">
+        <property name="title" translatable="yes">Installing Bluefin</property>
+        <property name="description" translatable="yes">You can keep using this session while it installs.</property>
+        <property name="icon-name">folder-download-symbolic</property>
+        <property name="child">
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <property name="spacing">18</property>
+            <property name="halign">center</property>
+            <child>
+              <object class="GtkBox" id="ProgressBox">
+                <property name="orientation">vertical</property>
+                <property name="spacing">8</property>
+                <child>
+                  <object class="GtkProgressBar" id="Progress">
+                    <property name="width-request">460</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="StepLabel">
+                    <property name="label" translatable="yes">Starting</property>
+                    <style>
+                      <class name="dim-label"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="AdwPreferencesGroup" id="RecoveryKeyDisplay">
+                <property name="width-request">460</property>
+                <child>
+                  <object class="AdwActionRow">
+                    <property name="title" translatable="yes">Recovery Key</property>
+                    <property name="subtitle" translatable="yes">Keep a copy somewhere safe. It unlocks your disk if the security chip cannot.</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwActionRow">
+                    <child type="prefix">
+                      <object class="GtkLabel" id="RecoveryKey">
+                        <property name="selectable">True</property>
+                        <property name="margin-top">12</property>
+                        <property name="margin-bottom">12</property>
+                        <style>
+                          <class name="monospace"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child type="suffix">
+                      <object class="GtkButton" id="CopyKey">
+                        <property name="icon-name">edit-copy-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Copy</property>
+                        <property name="valign">center</property>
+                        <signal name="clicked" handler="clicked_copy_key"/>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="AdwPreferencesGroup" id="SecureBootNote">
+                <property name="visible">False</property>
+                <property name="width-request">460</property>
+                <child>
+                  <object class="AdwActionRow" id="SecureBootNoteRow">
+                    <property name="title" translatable="yes">One Secure Boot step is left</property>
+                    <child type="prefix">
+                      <object class="GtkImage">
+                        <property name="icon-name">security-high-symbolic</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkBox" id="FinishButtons">
+                <property name="visible">False</property>
+                <property name="halign">center</property>
+                <property name="spacing">12</property>
+                <child>
+                  <object class="GtkButton">
+                    <property name="label" translatable="yes">Keep Using Bluefin</property>
+                    <signal name="clicked" handler="clicked_keep"/>
+                    <style>
+                      <class name="pill"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton">
+                    <property name="label" translatable="yes">Restart Now</property>
+                    <signal name="clicked" handler="clicked_restart"/>
+                    <style>
+                      <class name="pill"/>
+                      <class name="suggested-action"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

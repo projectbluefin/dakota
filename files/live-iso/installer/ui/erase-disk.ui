@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<interface>
+  <requires lib="libadwaita" version="1.6"/>
+  <template class="EraseDiskAlertDialog" parent="AdwAlertDialog">
+    <property name="heading" translatable="yes">Erase Disk?</property>
+    <property name="default-response">cancel</property>
+    <property name="close-response">cancel</property>
+    <responses>
+      <response id="cancel" translatable="yes">Cancel</response>
+      <response id="erase" translatable="yes" appearance="destructive">Erase and Install</response>
+    </responses>
+  </template>
+</interface>

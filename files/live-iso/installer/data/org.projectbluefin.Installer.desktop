@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Install Bluefin
+Comment=Install Bluefin on this computer
+Exec=/var/opt/dakota-installer/installer.py
+Terminal=false
+Type=Application
+OnlyShowIn=GNOME;
+Icon=system-software-install
+StartupWMClass=org.gnome.Installer

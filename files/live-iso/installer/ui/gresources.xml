@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/gnome/os/proto-installer">
+    <file>disk-selector.ui</file>
+    <file>install-button.ui</file>
+    <file>installer-window.ui</file>
+    <file>status-display.ui</file>
+    <file>disk-row.ui</file>
+    <file>warning-icon.ui</file>
+    <file>error-icon.ui</file>
+    <file>install-or-live.ui</file>
+    <file>erase-disk.ui</file>
+  </gresource>
+</gresources>

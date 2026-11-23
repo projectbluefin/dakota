@@ -1,0 +1,41 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<interface>
+  <requires lib="gtk" version="4.18"/>
+  <requires lib="libadwaita" version="1.4"/>
+  <template class="InstallOrLive" parent="AdwNavigationPage">
+    <property name="title" translatable="yes">Welcome</property>
+    <property name="child">
+      <object class="AdwStatusPage" id="StatusPage">
+        <property name="child">
+          <object class="GtkBox">
+            <property name="halign">center</property>
+            <property name="spacing">12</property>
+            <child>
+              <object class="GtkButton">
+                <property name="label" translatable="yes">Try Bluefin</property>
+                <signal name="clicked" handler="clicked_try"/>
+                <style>
+                  <class name="pill"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton">
+                <property name="label" translatable="yes">Install Bluefin</property>
+                <signal name="clicked" handler="clicked_install"/>
+                <style>
+                  <class name="pill"/>
+                  <class name="suggested-action"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </property>
+        <property name="description" translatable="yes">Try it for as long as you like, or install it now.
+Nothing is saved until you install.</property>
+        <property name="title" translatable="yes">Welcome to Bluefin</property>
+        <property name="icon-name">computer-symbolic</property>
+      </object>
+    </property>
+  </template>
+</interface>
