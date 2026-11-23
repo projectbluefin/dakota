@@ -99,7 +99,11 @@ jobs:
             # push-free signing jobs. Building it here keeps its pinned
             # upstream source and artifact in the CAS, so publish does
             # not depend on the upstream URL staying online.
-            elements: oci/bluefin.bst oci/bluefin-nvidia.bst bluefin/fedora-shim.bst
+            #
+            # iso/tools.bst is what pr-test builds live ISOs with. That job
+            # cannot push, so building it here is what puts it in the CAS;
+            # pr-test then fetches it and does not compile it per image.
+            elements: oci/bluefin.bst oci/bluefin-nvidia.bst bluefin/fedora-shim.bst iso/tools.bst
             required: oci/bluefin.bst bluefin/fedora-shim.bst
             continue: false
           - group: gaming
@@ -411,6 +415,113 @@ jobs:
             echo "::error::only ${PUSHED:-0} of 2 images were pushed as :${PR_TAG}"
             exit 1
           fi
+
+  # Tests of the images pr-image just pushed. They run on the build pool: the
+  # build job is done by now, so its VMs are idle, and the signing VMs go
+  # back to publishes as soon as the images are pushed. Each image is
+  # installed to a disk and booted. When the PR changes the live ISO, an ISO
+  # is built from that same image, booted, and uploaded for download. Not a
+  # required check.
+  pr-test:
+    needs: pr-image
+    # pr-image fails as a whole when the gaming images fail, and these images
+    # may have been pushed all the same. "Resolve the pushed image" settles
+    # it: it fails unless :pr-N is the image built from this commit.
+    if: (!cancelled()) && contains(fromJSON('["success", "failure"]'), needs.pr-image.result)
+    runs-on: ${{ vars.DAKOTA_BUILD_RUNNER || 'ubuntu-26.04' }}
+    # A hung boot must not hold the global build queue for long.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [dakota, dakota-nvidia]
+    permissions:
+      contents: read
+      packages: read
+    env:
+      PR_TAG: pr-${{ github.event.pull_request.number }}
+      IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup runner
+        uses: projectbluefin/actions/bootc-build/setup-runner@v1
+        with:
+          storage-backend: ${{ vars.DAKOTA_BUILD_RUNNER && 'none' || 'btrfs' }}
+          update-podman: true
+          native-overlay: true
+          install-tools: '["just"]'
+
+      - name: Prepare the runner for tests
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/pr_test.py prepare
+
+      # The tag was pushed by this run; builds are serialized, so nothing
+      # else can have moved it. The revision label is checked all the same.
+      - name: Resolve the pushed image
+        id: image
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/pr_test.py resolve --image "$IMAGE" --tag "$PR_TAG" --head-sha "$HEAD_SHA"
+
+      # bootc installs the image to a disk file, the way a user's machine
+      # gets it, and the disk has to reach a login prompt under UEFI.
+      - name: Boot the image from an installed disk
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: python3 scripts/pr_test.py boot-disk --image "$IMAGE" --tag "$PR_TAG" --digest "$DIGEST" --logs "$RUNNER_TEMP/test-logs"
+
+      - name: Check whether the PR changes the live ISO
+        id: iso
+        run: python3 scripts/pr_test.py iso-changed
+
+      # Fetch only: this job never pushes to the cache or uses remote
+      # execution, so it stays on the mTLS endpoint.
+      - name: Generate BST fetch config
+        if: steps.iso.outputs.changed == 'true'
+        env:
+          CASD_CLIENT_CERT: ${{ vars.CASD_CLIENT_CERT }}
+          CASD_CLIENT_KEY: ${{ secrets.CASD_CLIENT_KEY }}
+        uses: ./.github/actions/generate-bst-ci-config
+        with:
+          enable-remote-execution: 'false'
+          enable-push: 'false'
+
+      # Built from the pushed image by digest, so the installed system
+      # records the digest GHCR serves and follows :pr-N. BuildStream only
+      # supplies the tools (iso/tools.bst). The ISO is booted the way a USB stick boots.
+      - name: Build and boot the live ISO
+        id: build_iso
+        if: steps.iso.outputs.changed == 'true'
+        env:
+          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: python3 scripts/pr_test.py build-iso --image "$IMAGE" --tag "$PR_TAG" --digest "$DIGEST" --logs "$RUNNER_TEMP/test-logs" --out "$RUNNER_TEMP/iso"
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pr-test-logs-${{ matrix.image }}
+          path: ${{ runner.temp }}/test-logs/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # The same bucket projectbluefin/dakota-iso publishes to. PR names
+      # (<image>-pr-N.iso) never collide with its dakota-live-*.iso files;
+      # pr-cleanup.yml deletes them when the PR closes. Only an ISO that
+      # booted gets this far.
+      - name: Upload the live ISO to R2
+        if: steps.build_iso.outputs.iso != ''
+        env:
+          ISO: ${{ steps.build_iso.outputs.iso }}
+          R2_ACCESS_KEY: ${{ secrets.R2_ACCESS_KEY }}
+          R2_SECRET_KEY: ${{ secrets.R2_SECRET_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: python3 scripts/pr_test.py upload-iso --iso "$ISO"
 
   # Required check: pending until a `build`-labeled PR has built.
   build-gate:

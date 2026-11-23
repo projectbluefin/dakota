@@ -1,0 +1,154 @@
+{
+   "blockdevices": [
+      {
+         "name": "sda",
+         "type": "disk",
+         "size": 42949672960,
+         "ro": false,
+         "model": "QEMU HARDDISK   ",
+         "serial": "QM00001",
+         "wwn": null,
+         "tran": "sata",
+         "pttype": null,
+         "fstype": null
+      },{
+         "name": "sdb",
+         "type": "disk",
+         "size": 21474836480,
+         "ro": false,
+         "model": "QEMU HARDDISK   ",
+         "serial": "QM00005",
+         "wwn": null,
+         "tran": "sata",
+         "pttype": null,
+         "fstype": null
+      },{
+         "name": "sdc",
+         "type": "disk",
+         "size": 21474836480,
+         "ro": false,
+         "model": "QEMU HARDDISK   ",
+         "serial": "QM00007",
+         "wwn": null,
+         "tran": "sata",
+         "pttype": "gpt",
+         "fstype": null
+      },{
+         "name": "sdd",
+         "type": "disk",
+         "size": 21474836480,
+         "ro": false,
+         "model": "QEMU HARDDISK   ",
+         "serial": "QM00009",
+         "wwn": null,
+         "tran": "sata",
+         "pttype": "dos",
+         "fstype": null
+      },{
+         "name": "sde",
+         "type": "disk",
+         "size": 21474836480,
+         "ro": false,
+         "model": "QEMU HARDDISK   ",
+         "serial": "QM00011",
+         "wwn": null,
+         "tran": "sata",
+         "pttype": "gpt",
+         "fstype": null,
+         "children": [
+            {
+               "name": "sde1",
+               "type": "part",
+               "size": 10737418240,
+               "ro": false,
+               "model": null,
+               "serial": null,
+               "wwn": null,
+               "tran": null,
+               "pttype": "gpt",
+               "fstype": null
+            }
+         ]
+      },{
+         "name": "sdf",
+         "type": "disk",
+         "size": 21474836480,
+         "ro": false,
+         "model": "QEMU HARDDISK   ",
+         "serial": "QM00013",
+         "wwn": null,
+         "tran": "sata",
+         "pttype": null,
+         "fstype": "ext4"
+      },{
+         "name": "sdg",
+         "type": "disk",
+         "size": 4294967296,
+         "ro": false,
+         "model": "QEMU HARDDISK   ",
+         "serial": "QM00015",
+         "wwn": null,
+         "tran": "sata",
+         "pttype": null,
+         "fstype": null
+      },{
+         "name": "sdh",
+         "type": "disk",
+         "size": 5450514944,
+         "ro": true,
+         "model": "QEMU HARDDISK   ",
+         "serial": null,
+         "wwn": null,
+         "tran": "usb",
+         "pttype": "gpt",
+         "fstype": "iso9660",
+         "children": [
+            {
+               "name": "sdh1",
+               "type": "part",
+               "size": 268435456,
+               "ro": true,
+               "model": null,
+               "serial": null,
+               "wwn": null,
+               "tran": null,
+               "pttype": "gpt",
+               "fstype": "vfat"
+            },{
+               "name": "sdh2",
+               "type": "part",
+               "size": 5181014016,
+               "ro": true,
+               "model": null,
+               "serial": null,
+               "wwn": null,
+               "tran": null,
+               "pttype": "gpt",
+               "fstype": "btrfs"
+            }
+         ]
+      },{
+         "name": "zram0",
+         "type": "disk",
+         "size": 10436620288,
+         "ro": false,
+         "model": null,
+         "serial": null,
+         "wwn": null,
+         "tran": null,
+         "pttype": null,
+         "fstype": "btrfs"
+      },{
+         "name": "vda",
+         "type": "disk",
+         "size": 21474836480,
+         "ro": false,
+         "model": null,
+         "serial": null,
+         "wwn": null,
+         "tran": "virtio",
+         "pttype": null,
+         "fstype": null
+      }
+   ]
+}

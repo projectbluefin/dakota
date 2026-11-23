@@ -141,7 +141,7 @@ check-publish-workflow:
     python3 -m unittest scripts.test_ownership_metadata scripts.test_ownership_oci scripts.test_ownership_overlay scripts.test_oci_append_layer scripts.test_compare_oci_layers scripts.test_ownership_recipes scripts.test_sync_next
     python3 -m unittest scripts.test_image_variants scripts.test_track_bundle scripts.test_update_sources
     python3 -m unittest scripts.test_desktop_defaults scripts.test_bst_wrapper
-    python3 -m unittest scripts.test_live_iso
+    python3 -m unittest scripts.test_live_iso scripts.test_live_installer scripts.test_pr_test
     just test-devmode
     just test-release
 
@@ -497,39 +497,7 @@ push-local registry="localhost:5000":
 # Build the live ISO into .build-iso/ (dakota-live.iso and its metadata).
 [group('build')]
 iso image="" origin="":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    image={{quote(image)}}
-    origin={{quote(origin)}}
-    rm -rf .build-iso
-    if [ -z "$image" ]; then
-        just bst build iso/live.bst
-        just bst artifact checkout iso/live.bst --deps none --directory /src/.build-iso
-    else
-        if [[ ! "$origin" =~ ^[a-z0-9.-]+(/[a-z0-9._-]+)+:[A-Za-z0-9._-]+$ ]]; then
-            echo "usage: just iso IMAGE ORIGIN, where ORIGIN is registry/name:tag" >&2
-            exit 1
-        fi
-        mkdir -p .build-iso/work .build-iso/out
-        # --preserve-digests: the installed system records the manifest
-        # digest, and it has to be the one the registry serves.
-        skopeo copy --preserve-digests "$image" "oci:.build-iso/image:${origin}"
-        just bst build iso/tools.bst
-        # The sandbox root is read-only, so every path the build writes is a
-        # mount. On a real filesystem the composefs repository does not need
-        # to sit in memory as it does in iso/live.bst.
-        just bst shell \
-            --mount /src/.build-iso/image /image \
-            --mount /src/.build-iso/work /build \
-            --mount /src/.build-iso/out /out \
-            iso/tools.bst -- \
-            env WORK=/build ROOT_WORK=/build TMPDIR=/build SOURCE_DATE_EPOCH=1321009871 \
-            bash /usr/libexec/dakota-live-iso/build.sh /image /out "$origin"
-        mv .build-iso/out/* .build-iso/
-        rm -rf .build-iso/work .build-iso/out .build-iso/image
-    fi
-    ls -l .build-iso
-    cat .build-iso/dakota-live.json
+    python3 scripts/live_iso.py {{quote(image)}} {{quote(origin)}}
 
 # ── Clean ─────────────────────────────────────────────────────────────
 # Remove generated artifacts (disk image, OVMF vars, build output).

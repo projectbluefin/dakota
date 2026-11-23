@@ -1,6 +1,6 @@
 name: PR cleanup
 
-# Delete the :pr-N image tags build.yml pushed once the PR closes.
+# Delete the :pr-N image tags and live ISOs build.yml pushed once the PR closes.
 on:
   pull_request:
     types: [closed]
@@ -35,3 +35,25 @@ jobs:
               gh api --method DELETE "/orgs/${OWNER}/packages/container/${PACKAGE}/versions/${ID}"
             done
           done
+
+  # build.yml uploads <image>-pr-N.iso when a PR changes the live ISO.
+  delete-pr-isos:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # The base branch's copy of the script, never the closed PR's.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+
+      - name: Delete the PR's live ISOs from R2
+        env:
+          PR_TAG: pr-${{ github.event.pull_request.number }}
+          R2_ACCESS_KEY: ${{ secrets.R2_ACCESS_KEY }}
+          R2_SECRET_KEY: ${{ secrets.R2_SECRET_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: python3 scripts/pr_test.py delete-isos --tag "$PR_TAG" --images dakota dakota-nvidia
