@@ -149,6 +149,7 @@ PINNED = {
     # Upstream's desktop-mode fallback now calls steamosctl, whose session
     # switching only writes SDDM configuration; Dakota uses GDM.
     "gaming/gamescope-session-steam.bst": "newer sessions need steamos-manager, which supports only SDDM",
+    "iso/btrfs-progs.bst": "carries a mkfs patch that has to be checked against each release by hand",
 }
 
 

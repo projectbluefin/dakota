@@ -1,0 +1,14 @@
+[Unit]
+Description=Make the Dakota live root writable
+DefaultDependencies=no
+ConditionKernelCommandLine=dakota.live
+Requires=sysroot.mount
+After=sysroot.mount
+Before=bootc-root-setup.service initrd-root-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/dakota-live/sprout
+StandardOutput=journal+console
+StandardError=journal+console
