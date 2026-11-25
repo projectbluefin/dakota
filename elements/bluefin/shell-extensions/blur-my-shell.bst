@@ -21,7 +21,14 @@ variables:
 config:
   install-commands:
   - |
-    %{make}
+    # Upstream 9f45a97 (after v78) split the Makefile: plain `make` only
+    # prepares build/, `make pack` writes the zip. Older tags have no pack
+    # target and `make` writes the zip, so use pack when it exists.
+    if make -n pack >/dev/null 2>&1; then
+      %{make} pack
+    else
+      %{make}
+    fi
 
     _uuid="$(jq -r .uuid metadata.json)"
     install -d "%{install-root}/usr/share/gnome-shell/extensions/${_uuid}"
