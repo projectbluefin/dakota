@@ -340,6 +340,102 @@ toggle-network-monitoring:
         gum style --foreground 82 "✓ Enabled. Restart Mission Center to see per-process network usage."
     fi
 
+# Compress new writes on the Btrfs root filesystem with zstd
+[group('System')]
+toggle-btrfs-compression:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    UNIT=dakota-btrfs-compression.service
+    if [ ! -t 0 ]; then
+        echo "Interactive terminal required" >&2
+        exit 1
+    fi
+
+    parse_compress_opt() {
+        local current="$1"
+        local list="$2"
+        local opt
+        local -a opts=()
+        if [ -z "$list" ]; then
+            printf '%s\n' "$current"
+            return 0
+        fi
+        IFS=',' read -ra opts <<< "$list"
+        for opt in "${opts[@]}"; do
+            case "$opt" in
+                compress=no|compress=none|compress-force=no|compress-force=none)
+                    current=""
+                    ;;
+                compress|compress=*|compress-force|compress-force=*)
+                    current="$opt"
+                    ;;
+            esac
+        done
+        printf '%s\n' "$current"
+    }
+
+    MOUNT_OPTS=$(findmnt --noheadings --first-only --output OPTIONS --mountpoint /var --types btrfs 2>/dev/null || true)
+    ACTIVE_COMPRESS=$(parse_compress_opt "" "$MOUNT_OPTS")
+
+    CMDLINE_COMPRESS=""
+    if [ -r /proc/cmdline ]; then
+        CMDLINE_ARGS=()
+        read -r -a CMDLINE_ARGS < /proc/cmdline || true
+        for arg in "${CMDLINE_ARGS[@]}"; do
+            arg="${arg#\"}"
+            arg="${arg%\"}"
+            case "$arg" in
+                rootflags=*)
+                    val="${arg#rootflags=}"
+                    val="${val#\"}"
+                    val="${val%\"}"
+                    CMDLINE_COMPRESS=$(parse_compress_opt "$CMDLINE_COMPRESS" "$val")
+                    ;;
+            esac
+        done
+    fi
+
+    if [ -n "$MOUNT_OPTS" ] && [ -n "$CMDLINE_COMPRESS" ]; then
+        echo "Btrfs compression is already enabled via kernel parameters ($CMDLINE_COMPRESS)."
+        if systemctl is-enabled --quiet "$UNIT" 2>/dev/null; then
+            echo "$UNIT is also enabled, which is redundant."
+            gum confirm "Disable the redundant service?" || exit 0
+            sudo systemctl disable "$UNIT"
+            gum style --foreground 245 "Service disabled. Compression stays enabled via kernel parameters."
+        else
+            echo "It is managed by your boot kernel parameters, not this toggle."
+        fi
+        exit 0
+    fi
+
+    if systemctl is-enabled --quiet "$UNIT" 2>/dev/null; then
+        echo "Btrfs compression is enabled."
+        gum confirm "Disable it?" || exit 0
+        sudo systemctl disable "$UNIT"
+        gum style --foreground 245 "Disabled. New writes stay compressed until the next reboot; compressed files remain readable."
+    else
+        if [ -z "$MOUNT_OPTS" ]; then
+            echo "The root filesystem is not Btrfs, so compression is not available." >&2
+            exit 1
+        fi
+        if [ -n "$ACTIVE_COMPRESS" ]; then
+            if systemctl is-active --quiet "$UNIT" 2>/dev/null; then
+                echo "Btrfs compression is disabled for future boots (still active as $ACTIVE_COMPRESS until the next reboot)."
+            else
+                echo "Btrfs compression is already active ($ACTIVE_COMPRESS), configured outside this toggle."
+                exit 0
+            fi
+        else
+            echo "Btrfs compression is disabled."
+        fi
+        echo "Enabling compresses eligible new writes with zstd. Existing files are not rewritten."
+        echo "Known issue: compressed system files make false fs-verity \"FILE CORRUPTED\" kernel"
+        echo "messages more frequent: https://github.com/projectbluefin/dakota/issues/1832"
+        gum confirm "Enable it?" || exit 0
+        sudo systemctl enable --now "$UNIT"
+        gum style --foreground 82 "✓ Enabled. Eligible new writes are now compressed with zstd."
+    fi
+
 # Seal TPM disk unlock to the current boot state, after firmware or Secure Boot changes
 [group('System')]
 reseal-tpm-unlock:
