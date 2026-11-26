@@ -8,9 +8,8 @@ sources:
   project-id: 4212
   url: sourceforge:project/rpcbind/rpcbind/{version}/rpcbind-{version}.tar.bz2
   ref:
-    version: 1.2.7
-    sha256sum: f6edf8cdf562aedd5d53b8bf93962d61623292bfc4d47eedd3f427d84d06f37e
-
+    version: 1.3.1
+    sha256sum: 8e551b445f5172f8ef218845af342fb2a2d741b57ce8c777c781a01ea92f92a5
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-autotools.bst
 - freedesktop-sdk.bst:components/pkg-config.bst
