@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: gnome_gitlab:ofourdan/gnome-ponytail-daemon.git
   track: "master"
-  ref: 0.0.11-0-g72f222d912de8105208f6faa865b71480c189924
+  ref: 0.0.12-0-g7c16dad298720407dbf90b29e44bde4ffcfd6e5f
 
 variables:
   conf-flags: >-
