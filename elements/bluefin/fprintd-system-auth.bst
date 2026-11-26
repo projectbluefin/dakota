@@ -44,10 +44,21 @@ kind: manual
 # overlap warning. The file lands in /etc (not /usr/etc), so the OCI
 # `/usr/etc -> /etc` merge in oci/bluefin.bst never touches or clobbers it.
 #
+# BLANK PASSWORDS (auth line):
+# Stock fdsdk has `nullok_secure`. Upstream Linux-PAM has no securetty-aware
+# variant (that is a Debian patch) and matches options by prefix, so it
+# behaves as plain `nullok`. Dakota uses `nullresetok` instead: an empty
+# password is accepted only while a password change is enforced (expired),
+# which is what GNOME's "set a password at next login" needs. The password
+# lines keep stock `nullok_secure` so such a user can set the new password. password-auth gets
+# the same change in bluefin/password-auth.bst. If this element is dropped,
+# keep that change.
+#
 # Exit condition: drop if fdsdk/gnome-build-meta ship a fingerprint-enabled
-# system-auth, or if the image gains authselect. Re-check at every fdsdk bump
-# that the stock auth/account/password/session stack below still matches
-# upstream (diff against files/linux-pam-config/system-auth in the fdsdk ref) —
+# system-auth without nullok, or if the image gains authselect. Re-check at
+# every fdsdk bump that the stock auth/account/password/session stack below
+# still matches upstream (diff against files/linux-pam-config/system-auth in the fdsdk ref;
+# the only intended differences are the pam_fprintd line and nullresetok) —
 # if upstream changes system-auth, this copy must be re-synced.
 
 public:
@@ -75,7 +86,7 @@ config:
     auth        required      pam_env.so
     auth        sufficient    pam_fprintd.so
     -auth       sufficient    pam_systemd_home.so
-    auth        sufficient    pam_unix.so try_first_pass nullok_secure
+    auth        sufficient    pam_unix.so try_first_pass nullresetok
     auth        required      pam_deny.so
 
     -account    sufficient    pam_systemd_home.so

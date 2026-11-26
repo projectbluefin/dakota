@@ -57,6 +57,7 @@ depends:
   - bluefin/sudo-rs.bst
   - bluefin/sudo-linuxbrew-path.bst
   - bluefin/fprintd-system-auth.bst
+  - bluefin/password-auth.bst
   - bluefin/fprintd-fingerprint-auth.bst
   - bluefin/oo7-passwd-pam.bst
   - bluefin/pam-u2f.bst
