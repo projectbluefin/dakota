@@ -26,7 +26,7 @@ sources:
 - kind: git_repo
   url: gitlab:virtio-fs/virtiofsd.git
   track: 'v[0-9]*.[0-9]*.[0-9]*'
-  ref: v1.14.0-0-gc2540f8db14caba81c1e37fba23fc7bf2cd7f0dd
+  ref: v1.15.0-0-g697f63cebc85d7fa06995599116e0e15b4591d7c
 - kind: cargo2
   url: crates:crates
   ref:
@@ -404,24 +404,24 @@ sources:
     sha: 49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f
   - kind: registry
     name: vhost
-    version: 0.16.0
-    sha: ee90657203a8644e9a0860a0db6a7887d8ef0c7bc09fc22dfa4ae75df65bac86
+    version: 0.18.1
+    sha: 8feccbba622dfd3ac9e94767ea73a39ee470c4b0917bb5627a2d998d8338cfd3
   - kind: registry
     name: vhost-user-backend
-    version: 0.22.0
-    sha: d5925983d8fb537752ad3e26604c0a17abfa5de77cb6773a096c8a959c9eca0f
+    version: 0.24.1
+    sha: f990acd1cc109fe2d1b7fdb14e85a0015da07a27fa7b3832241382acfb3e1633
   - kind: registry
     name: virtio-bindings
     version: 0.2.7
     sha: 091f1f09cfbf2a78563b562e7a949465cce1aef63b6065645188d995162f8868
   - kind: registry
     name: virtio-queue
-    version: 0.17.0
-    sha: e358084f32ed165fddb41d98ff1b7ff3c08b9611d8d6114a1b422e2e85688baf
+    version: 0.18.0
+    sha: f631bfd09362a9b17f0cfd5ca3b0a1b179d153fa276f9ce86919d560891e61d6
   - kind: registry
     name: vm-memory
-    version: 0.17.1
-    sha: f39348a049689cabd3377cdd9182bf526ec76a6f823b79903896452e9d7a7380
+    version: 0.18.0
+    sha: 9b55e753c7725603745cb32b2287ef7ef3da05c03c7702cda3fa8abe25ae0465
   - kind: registry
     name: vmm-sys-util
     version: 0.15.0
