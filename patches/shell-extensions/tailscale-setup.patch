@@ -3,7 +3,7 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
 
 --- a/tailscale-gnome-qs@tailscale-qs.github.io/extension.js
 +++ b/tailscale-gnome-qs@tailscale-qs.github.io/extension.js
-@@ -33,6 +33,17 @@
+@@ -32,6 +32,17 @@ import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js'
  // This is the live instance of the Quick Settings menu
  const QuickSettingsMenu = Main.panel.statusArea.quickSettings;
  
@@ -21,7 +21,7 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
  import {Tailscale} from './tailscale.js';
  import {filterMullvadNodes, createMullvadExitNodeButton} from './mullvad.js';
  
-@@ -113,6 +124,7 @@
+@@ -112,6 +123,7 @@ const TailscaleDeviceItem = GObject.registerClass(
            this.add_child(sub);
            sub.text = subtitle;
  
@@ -29,7 +29,7 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
            this._connectEvents = [];
            this._connectEvents.push(this.connect('activate', () => onClick?.()));
  
-@@ -290,7 +302,17 @@
+@@ -254,7 +266,17 @@ const TailscaleMenuToggle = GObject.registerClass(
  
            this._tailscale = tailscale;
            this.title = 'Tailscale';
@@ -48,7 +48,7 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
  
            // Header action bar section
            const actionLayout = new Clutter.GridLayout();
-@@ -307,12 +329,15 @@
+@@ -271,12 +293,15 @@ const TailscaleMenuToggle = GObject.registerClass(
            // This function is unique to this class. It adds a nice header with an
            // icon, title and optional subtitle. It's recommended you do so for
            // consistency with other menus.
@@ -69,7 +69,7 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
  
            // NODES
            const mnodes = new PopupScrollableSubMenuMenuItem(_('Nodes'), false, {});
-@@ -439,7 +464,7 @@
+@@ -403,7 +428,7 @@ const TailscaleMenuToggle = GObject.registerClass(
                for (const p of obj.profiles) {
                    if (!p.NetworkProfile || !p.NetworkProfile.DomainName)
                        continue; // Skip invalid profiles
@@ -78,7 +78,7 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
                    const onClick = () => {
                        tailscale.profiles = p.ID;
                    };
-@@ -449,6 +474,12 @@
+@@ -413,6 +438,12 @@ const TailscaleMenuToggle = GObject.registerClass(
            };
            tailscale.connectObject('notify::profiles', obj => updateProfiles(obj), this);
            this.menu.addMenuItem(profiles);
@@ -93,15 +93,17 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
        destroy() {
 --- a/tailscale-gnome-qs@tailscale-qs.github.io/tailscale.js
 +++ b/tailscale-gnome-qs@tailscale-qs.github.io/tailscale.js
-@@ -4,7 +4,6 @@
+@@ -4,9 +4,7 @@ import Gio from 'gi://Gio';
  import Soup from 'gi://Soup';
  
  // Promisify methods once at module load to avoid wrapper accumulation in loops
 -Gio._promisify(Gio.DataInputStream.prototype, 'read_line_async');
  Gio._promisify(Soup.Session.prototype, 'send_and_read_async');
+-Gio._promisify(Soup.Session.prototype, 'send_async');
  
  class TailscaleApiClient {
-@@ -14,32 +13,12 @@
+     constructor() {
+@@ -15,34 +13,14 @@ class TailscaleApiClient {
          });
          this.session = new Soup.Session({
              'remote-connectable': address,
@@ -112,12 +114,12 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
 +        this.cancellable = new Gio.Cancellable();
          this.encoder = new TextEncoder();
          this.decoder = new TextDecoder();
--    }
--
+     }
+ 
 -    async* stream(method, path, cancellable) {
 -        const message = Soup.Message.new(method, `http://local-tailscaled.sock${path}`);
 -
--        const baseStream = this.session.send(message, cancellable);
+-        const baseStream = await this.session.send_async(message, GLib.PRIORITY_DEFAULT, cancellable);
 -        const stream = new Gio.DataInputStream({base_stream: baseStream});
 -        try {
 -            const contentType = message.response_headers.get_one('Content-Type');
@@ -133,10 +135,12 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
 -        } finally {
 -            stream.close(cancellable);
 -        }
-     }
- 
+-    }
+-
      async request(method, path, body = null) {
-@@ -49,13 +28,16 @@
+         const message = Soup.Message.new(method, `http://local-tailscaled.sock${path}`);
+         if (body) {
+@@ -50,13 +28,16 @@ class TailscaleApiClient {
              message.set_request_body_from_bytes('application/json', new GLib.Bytes(bytes));
          }
  
@@ -156,7 +160,7 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
          this.session.abort();
          this.session = null;
          this.encoder = null;
-@@ -66,6 +48,10 @@
+@@ -67,6 +48,10 @@ class TailscaleApiClient {
  export const Tailscale = GObject.registerClass(
      {
          Properties: {
@@ -167,7 +171,7 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
              'running': GObject.ParamSpec.boolean(
                  'running', '', '',
                  GObject.ParamFlags.READWRITE,
-@@ -128,6 +114,10 @@
+@@ -129,6 +114,10 @@ export const Tailscale = GObject.registerClass(
              super._init();
              this._client = new TailscaleApiClient();
              this._running = false;
@@ -178,7 +182,7 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
              this._dns = false;
              this._routes = false;
              this._allowLanAccess = false;
-@@ -147,6 +137,7 @@
+@@ -148,6 +137,7 @@ export const Tailscale = GObject.registerClass(
          }
  
          destroy() {
@@ -186,7 +190,7 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
              this._cancelable.cancel();
              this._cancelable = null;
              this._client.destroy();
-@@ -161,7 +152,7 @@
+@@ -162,7 +152,7 @@ export const Tailscale = GObject.registerClass(
          }
  
          _processRunning(prefs) {
@@ -195,7 +199,7 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
              if (running !== this._running) {
                  this._running = running;
                  this.notify('running');
-@@ -274,6 +265,21 @@
+@@ -276,6 +266,21 @@ export const Tailscale = GObject.registerClass(
              }
          }
  
@@ -217,7 +221,7 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
          get running() {
              return this._running;
          }
-@@ -383,51 +389,38 @@
+@@ -385,84 +390,38 @@ export const Tailscale = GObject.registerClass(
                  this._timeouts.push(id);
              });
  
@@ -253,10 +257,11 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
                      this._parseResponse();
 -
 -                    // eslint-disable-next-line no-await-in-loop
--                    for await (const update of this._client.stream('GET', '/localapi/v0/watch-ipn-bus', this._cancelable)) {
+-                    for await (const update of this._client.stream('GET', '/localapi/v0/watch-ipn-bus?mask=4096', this._cancelable)) { // mask = 2^12, aka 1<<12, aka [NotifyWatchOpt#NotifyPeerChanges](https://pkg.go.dev/tailscale.com/ipn#NotifyWatchOpt)
 -                        let shouldUpdate = false;
 -                        if (update.Prefs) {
 -                            this._prefs = update.Prefs;
+-                            this.notify('profiles');
 -                            shouldUpdate = true;
 -                        }
 -                        if (update.NetMap) {
@@ -267,11 +272,43 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
 -                                ExitNodeOption: peer.AllowedIPs?.includes('0.0.0.0/0'),
 -                                Online: peer.Online,
 -                                TailscaleIPs: peer.Addresses.map(address => address.split('/')[0]),
--                                Tags: peer.Tags,
+-                                Tags: peer.Tags ?? [],
 -                                Location: peer.Hostinfo.Location,
+-                                InternalID: peer.ID,
 -                            }));
 -                            shouldUpdate = true;
 -                        }
+-                        if (update.SelfChange) {
+-                            // New netmap (e.g. profile switch): PeersChanged in this message is the full peer set
+-                            this._peers = [];
+-                            shouldUpdate = true;
+-                        }
+-                        if (update.PeersChanged) {
+-                            for (const changedPeer of update.PeersChanged) {
+-                                const updatePeer = this._peers.find(oldPeer => oldPeer.ID === changedPeer.StableID) ?? {};
+-                                const wasEmpty = Object.keys(updatePeer).length === 0;
+-
+-                                updatePeer.ID = changedPeer.StableID;
+-                                updatePeer.DNSName = changedPeer.Name;
+-                                updatePeer.OS = changedPeer.Hostinfo.OS;
+-                                updatePeer.ExitNodeOption = changedPeer.AllowedIPs?.includes('0.0.0.0/0');
+-                                updatePeer.Online = changedPeer.Online;
+-                                updatePeer.TailscaleIPs = changedPeer.Addresses.map(address => address.split('/')[0]);
+-                                updatePeer.Tags = changedPeer.Tags ?? [];
+-                                updatePeer.Location = changedPeer.Hostinfo.Location;
+-                                updatePeer.InternalID = changedPeer.ID;
+-                                if (wasEmpty)
+-                                    this._peers.push(updatePeer);
+-
+-                                shouldUpdate ||= true;
+-                            }
+-                        }
+-                        if (update.PeersRemoved) {
+-                            const removeIds = update.PeersRemoved;
+-                            this._peers = this._peers.filter(peer => !removeIds.includes(peer.NodeID ?? peer.InternalID));
+-                            shouldUpdate ||= true;
+-                        }
+-
 -                        if (shouldUpdate)
 -                            this._parseResponse();
 -                    }
@@ -291,37 +328,36 @@ Upstream-Status: Inappropriate [Dakota desktop setup integration]
                  await delayPromise(5000);
              }
          }
-@@ -457,10 +450,17 @@
-             this._client.request('PATCH', '/localapi/v0/prefs', body)
-         .then(
-             prefs => {
-+                if (this._destroyed)
-+                    return;
-                 this._prefs = prefs;
-                 this._parseResponse();
-             },
--            error => console.error(error)
-+            error => {
-+                if (this._destroyed)
-+                    return;
-+                this._setConnectionState(true, error.message);
-+                this.notify('running');
-+            }
-         );
+@@ -490,19 +449,29 @@ export const Tailscale = GObject.registerClass(
+             };
+             this._client.request('PATCH', '/localapi/v0/prefs', body).then(
+                 prefs => {
++                    if (this._destroyed)
++                        return;
+                     this._prefs = prefs;
+                     this._parseResponse();
+                 },
+-                error => console.error(error)
++                error => {
++                    if (this._destroyed)
++                        return;
++                    this._setConnectionState(true, error.message);
++                    this.notify('running');
++                }
+             );
          }
  
-@@ -468,9 +468,12 @@
-             this._client.request('POST', `/localapi/v0/profiles/${value}`, {})
-         .then(
-             () => {
--                this.notify('profiles');
-+                // The next refresh reads the selected profile and its settings.
-             },
--            error => console.error(error)
-+            error => {
-+                if (!this._destroyed)
-+                    this._setConnectionState(true, error.message);
-+            }
-         );
+         _updateProfile(value) {
+             this._client.request('POST', `/localapi/v0/profiles/${value}`, {}).then(
+                 () => {
+-                    this.notify('profiles');
++                    // The next refresh reads the selected profile and its settings.
+                 },
+-                error => console.error(error)
++                error => {
++                    if (!this._destroyed)
++                        this._setConnectionState(true, error.message);
++                }
+             );
          }
      }

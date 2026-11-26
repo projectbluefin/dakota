@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:tailscale-qs/tailscale-gnome-qs.git
   track: 'v[0-9]*'
-  ref: 7feced3f4b9bdf3ae775b203ca023ffbca2b29cb
+  ref: 3efe7313f6b67cfb7681beea748693b9554a4ff7
 - kind: patch
   path: patches/shell-extensions/tailscale-setup.patch
 
