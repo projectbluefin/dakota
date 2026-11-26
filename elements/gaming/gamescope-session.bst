@@ -9,7 +9,7 @@ sources:
 - kind: git_repo
   url: github:OpenGamingCollective/gamescope-session.git
   track: main
-  ref: b5c2d0d3ebcefa7450d9d4336dd5802aa96d8513
+  ref: 08e65a62ed3d7acc6ae17db637091d402a55ae2a
 
 build-depends:
 - freedesktop-sdk.bst:bootstrap/bash.bst
