@@ -1,0 +1,62 @@
+Upstream-Status: Pending
+Exit: Drop when freedesktop-sdk stops appending the PKCS#11 engine to the system OpenSSL config.
+Subject: libp11: stop auto-loading the PKCS#11 engine
+
+freedesktop-sdk's libp11 element appends an `engines = engine_section`
+block to the system OpenSSL config. OpenSSL then loads libpkcs11.so into
+every process that initialises libcrypto, including torch and pyarrow.
+Their concurrent static initialisers reach the engine through
+pthread_once and segfault. The wheels are fine on Fedora, and disabling
+just the engine line makes both import orders pass while HTTPS keeps
+working.
+
+Keep libp11 and the p11-kit OpenSC module installed. Applications that
+need PKCS#11 can load the engine explicitly; it no longer runs in every
+OpenSSL process.
+
+Resolves: projectbluefin/dakota#1943
+
+diff --git a/elements/components/libp11.bst b/elements/components/libp11.bst
+index 1e188d687..9cbe7a798 100644
+--- a/elements/components/libp11.bst
++++ b/elements/components/libp11.bst
+@@ -10,39 +10,15 @@ depends:
+ - public-stacks/runtime-minimal.bst
+ - components/openssl.bst
+ 
+-variables:
+-  openssl_conf: "%{sysconfdir}/pki/tls/openssl.cnf"
+-
+ config:
+   install-commands:
+     (>):
+     - rm -r %{install-root}%{includedir}
+     - rm -r %{install-root}%{libdir}/pkgconfig
+     - rm %{install-root}%{libdir}/libp11.so
+-    - |
+-      test -f %{openssl_conf}
+-
+-      mkdir -p $(dirname %{install-root}%{openssl_conf})
+-      cat >> %{install-root}%{openssl_conf} << EOF
+-      $(cat %{openssl_conf})
+-
+-      [openssl_init]
+-      engines = engine_section
+-
+-      [engine_section]
+-      pkcs11 = pkcs11_section
+-
+-      [pkcs11_section]
+-      engine_id = pkcs11
+-      dynamic_path = %{libdir}/engines-3/libpkcs11.so
+-      MODULE_PATH = opensc-pkcs11.so
+-      init = 0
+-      EOF
+ 
+ public:
+   bst:
+-    overlap-whitelist:
+-    - "%{openssl_conf}"
+     split-rules:
+       devel:
+         (>):
