@@ -13,6 +13,7 @@ depends:
 
   - bluefin/brew.bst
   - bluefin/brew-tarball.bst
+  - bluefin/brew-owner.bst
 
   - bluefin/tailscale.bst
   - bluefin/uupd.bst

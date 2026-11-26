@@ -12,7 +12,7 @@ Dakota runs Homebrew directly on the host rather than in a container, with persi
 
 ## When to Use
 
-- Editing host Homebrew packaging elements (`elements/bluefin/brew.bst`, `brew-tarball.bst`)
+- Editing host Homebrew packaging elements (`elements/bluefin/brew.bst`, `brew-tarball.bst`, `brew-owner.bst`)
 - Managing workstation services or systemd unit presets owned by BST elements and their source files
 - Diagnosing broken host brew prefixes or bottle rejection errors (see `references/host-homebrew.md`)
 
@@ -39,6 +39,7 @@ Dakota runs Homebrew directly on the host rather than in a container, with persi
 - **Prefix Spelling Invariant**: Invoke brew strictly through `/home/linuxbrew/.linuxbrew/bin/brew`. The `/var/home` spelling breaks bottle prefix detection and forces broken source builds.
 - **GNU Make Invariant**: The image must supply GNU Make in `/usr/bin` alongside GCC. Homebrew's internal PATH filter strips all other locations during native gem builds.
 - **Persistent State Invariant**: `/home/linuxbrew/.linuxbrew` is persistent user data. Reboots and image updates will not repair corrupted gems.
+- **Single Owner Invariant**: Homebrew allows one owner per prefix. Never hard-code its UID (systemd-homed users start at 60001); `bluefin-brew-owner` gives an unowned prefix to the first regular user who logs in and runs the brew timers as the owner. It never moves a prefix that belongs to an existing user.
 - **No ublue-os Writes**: Fix shared path regressions in `projectbluefin/common`. Never submit PRs or issues to `ublue-os/*`.
 
 ## Common Rationalizations
@@ -52,6 +53,7 @@ Dakota runs Homebrew directly on the host rather than in a container, with persi
 ## Red Flags
 
 - Spelling brew prefix paths as `/var/home/linuxbrew`
+- Hard-coding UID 1000 (or any UID) as the brew prefix owner
 - Removing GNU Make from the base toolchain elements
 - Adding `dnf` or `rpm-ostree` commands to repair host packages
 - Touching `ublue-os/*` repositories

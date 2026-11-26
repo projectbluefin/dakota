@@ -12,9 +12,9 @@ the prefix by hand.
 
 ## When to Use
 
-- Editing `elements/bluefin/brew.bst`, `elements/bluefin/brew-tarball.bst`, or
-  the brew-related files common ships (`brew-preinstall`, `20-oem-brew.sh`,
-  `update.just`, `brew-preinstall.service`)
+- Editing `elements/bluefin/brew.bst`, `elements/bluefin/brew-tarball.bst`,
+  `elements/bluefin/brew-owner.bst`, or the brew-related files common ships
+  (`brew-preinstall`, `20-oem-brew.sh`, `update.just`, `brew-preinstall.service`)
 - A user-facing report that every `brew` command crashes on an installed system
 - Reviewing changes that touch the toolchain content of the OCI layers
   (`elements/oci/layers/bluefin.bst`, `bluefin-nvidia.bst`)
@@ -62,6 +62,29 @@ the source; `elements/bluefin/common.bst` keeps a build-time guard that fails
 if the `/var/home/linuxbrew` spelling ever regresses upstream — fix such
 regressions in common, not with a Dakota-side rewrite.
 
+## Prefix owner
+
+Homebrew allows one owner per prefix; other users can run what it installed
+but cannot install, update or upgrade. ublue-os/brew's `brew-setup.service`
+unpacks the prefix on first boot, before any user exists, and gives it to
+UID 1000, and its `brew-update`/`brew-upgrade` services hard-code
+`User=1000`. systemd-homed users get UIDs from 60001, so Dakota never relies
+on that UID. `elements/bluefin/brew-owner.bst` ships
+`/usr/libexec/bluefin-brew-owner` and leaves the ublue-os/brew units
+unmodified:
+
+- A `user@.service` drop-in runs `bluefin-brew-owner claim %i` as root
+  before each user manager starts. A prefix owned by root, or by a UID that
+  no user (and no homed identity) has, goes to the logging-in regular user
+  (UID 1000–60513). A prefix that belongs to an existing user never moves.
+- Drop-ins for `brew-update.service` and `brew-upgrade.service` replace
+  `User=1000` with `bluefin-brew-owner run`, which runs brew as the prefix
+  owner and skips cleanly when there is no owner yet or the owner's homed
+  home is not mounted. uupd's brew module already follows the prefix owner.
+
+Never hard-code a UID for the brew owner, and never chown the prefix away
+from an existing user.
+
 ## ChairLift cask
 
 ChairLift (Brewfile, desktop assets, polkit policy, config and the
@@ -104,4 +127,4 @@ Bundler extracts gem files **before** building native extensions. Every failed a
 
 ### Timer Execution Environment
 
-`brew-update.service` and `brew-upgrade.service` (systemd user units) invoke brew with the default systemd PATH. Because `bin/brew` enforces a hard PATH filter, timer-context native builds only ever see `/usr/bin`. This is why GNU Make must live in the base image, never in a user profile or prefix.
+`brew-update.service` and `brew-upgrade.service` (system units from ublue-os/brew, run as the prefix owner through `bluefin-brew-owner run`) invoke brew with the default systemd PATH. Because `bin/brew` enforces a hard PATH filter, timer-context native builds only ever see `/usr/bin`. This is why GNU Make must live in the base image, never in a user profile or prefix.
