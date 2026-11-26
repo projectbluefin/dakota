@@ -4,7 +4,7 @@ sources:
 - kind: git_repo
   url: github:bazaar-org/bazaar-companion.git
   track: main
-  ref: 3bb9134985343ffd1993520eb37c90e113bfb09b
+  ref: 0d3af1137b1b2407499c72d1e7aecc528eebccf5
 
 build-depends:
 - core/sandbox-tools.bst
