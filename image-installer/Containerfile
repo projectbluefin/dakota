@@ -1,0 +1,63 @@
+# Experimental image-based installer (shared with Utah, projectbluefin/utah
+# docs/adr/0001-image-based-installer.md): a Dakota image whose installed disk
+# can also boot as live media.
+#
+# The shipped bootc disk image is the live medium (booted from its "Dakota
+# Live" entry: `ro dakota.live` plus a live-only initrd whose bootc
+# setup-root config puts a tmpfs overlay over / (with /etc and /var); see
+# build-raw-image.sh), and installing is a block copy of it, done by
+# OS-Installer's Dakota config (hanthor/os-installer, dakota_config/, sharing
+# utah_config/scripts/install.sh). The layers sit on top of a published Dakota
+# digest; the initramfs is not rebuilt (Dakota has no dracut) and nothing
+# here changes the published image or the dakota-iso path.
+ARG SOURCE_IMAGE=ghcr.io/projectbluefin/dakota:testing@sha256:a81ae3c0a45bc944b986462436a48f0f4c5484ea2b698818bc03cc2508c2d457
+ARG BUILDER_IMAGE=registry.fedoraproject.org/fedora:43@sha256:a19e8544313a675e6529d3242f74f0015beebdd1834d0bf9b132e669f734f2bf
+
+# OS-Installer is Python + GTK4/libadwaita, and Dakota already has every
+# runtime piece it loads (Gtk 4, Adw, GnomeDesktop 4, GWeather 4, Vte 3.91,
+# PyYAML) except the UDisks GObject-introspection typelib: Dakota ships
+# udisks2 and libudisks2 but not UDisks-2.0.typelib. The typelib describes
+# libudisks2.so.0's stable API, so Fedora's is used, with one gap: Dakota's
+# libudisks2 is built without LVM2, so the LVM2 types it lists do not exist
+# there (OS-Installer 2006418 skips LVM2 when they are missing).
+# blueprint-compiler, needed to build the .ui files, is build-only.
+FROM ${BUILDER_IMAGE} AS os-installer
+ARG OSI_REPO=https://github.com/hanthor/os-installer.git
+# Full commit of hanthor/os-installer (branch dakota). Fetched by commit and
+# compared after checkout, so the build never follows a moving branch.
+ARG OSI_REF=20064186ffba96f3ee73114f84feed9404f742ec
+RUN dnf -y install --setopt=install_weak_deps=False \
+        git meson ninja-build gettext blueprint-compiler glib2-devel \
+        gtk4-devel libadwaita-devel gnome-desktop4-devel libgweather4-devel \
+        vte291-gtk4-devel python3-pyyaml desktop-file-utils libudisks2 && \
+    [[ "${OSI_REF}" =~ ^[0-9a-f]{40}$ ]] && \
+    git init -q /src && \
+    git -C /src fetch -q --depth 1 "${OSI_REPO}" "${OSI_REF}" && \
+    git -C /src checkout -q FETCH_HEAD && \
+    test "$(git -C /src rev-parse HEAD)" = "${OSI_REF}" && \
+    meson setup /src/build /src --prefix=/usr && \
+    meson install -C /src/build --destdir /out && \
+    install -d /out/usr/share/dakota && \
+    cp -aL /src/dakota_config /out/usr/share/dakota/os-installer && \
+    mv /out/usr/share/applications/com.github.p3732.os_installer.desktop \
+       /out/usr/share/dakota/os-installer/ && \
+    echo "${OSI_REF}" > /out/usr/share/dakota/os-installer/SOURCE_REF && \
+    install -D -m 0644 /usr/lib64/girepository-1.0/UDisks-2.0.typelib /typelib/UDisks-2.0.typelib
+
+FROM ${SOURCE_IMAGE}
+COPY --from=os-installer /out/usr/ /usr/
+COPY --from=os-installer /typelib/ /tmp/typelib/
+COPY src/usr/ /usr/
+
+# Dakota has no package manager; files only. The UDisks typelib goes next to
+# Gtk's, wherever this GNOME OS-based image keeps typelibs.
+RUN set -euxo pipefail; \
+    girdir="$(dirname "$(find /usr/lib -name Gtk-4.0.typelib -print -quit)")"; \
+    test -d "${girdir}"; \
+    test -e "${girdir}/UDisks-2.0.typelib" || install -m 0644 /tmp/typelib/UDisks-2.0.typelib "${girdir}/"; \
+    rm -rf /tmp/typelib; \
+    glib-compile-schemas /usr/share/glib-2.0/schemas; \
+    chmod 0755 /usr/libexec/dakota-live-setup /usr/share/dakota/os-installer/scripts/install.sh; \
+    systemctl enable dakota-live-setup.service dakota-live-ready.service; \
+    head -1 /usr/bin/os-installer; \
+    python3 -c 'import yaml, gi; gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1"); gi.require_version("Vte", "3.91"); gi.require_version("GnomeDesktop", "4.0"); gi.require_version("GWeather", "4.0"); gi.require_version("UDisks", "2.0"); from gi.repository import Gtk, Adw, Vte, GnomeDesktop, GWeather, UDisks; print("UDisks", UDisks.MAJOR_VERSION, UDisks.MINOR_VERSION)'
