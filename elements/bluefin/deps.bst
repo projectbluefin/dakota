@@ -45,12 +45,9 @@ depends:
   - bluefin/composefs-loop-udisks-ignore.bst
   - bluefin/udev-groups.bst
   - bluefin/gnome-epub-thumbnailer.bst
-  # Papers' thumbnailer and PDF backend. The full package already reaches the
-  # image through gnome-build-meta's sushi, and the Papers Flatpak's desktop
-  # entry takes precedence in XDG_DATA_DIRS, so users see one Papers app.
-  # bluefin/common.bst also points the logo menu's Documentation entry at
-  # its /usr/bin/papers; the Flatpak cannot read /usr/share/doc.
-  - gnome-build-meta.bst:core/papers.bst
+  # Papers is preinstalled from Flathub as org.gnome.Papers instead of built
+  # from gnome-build-meta. common.bst grants that Flatpak read access to the
+  # Documentation PDF for the logo menu entry.
   - bluefin/wallpapers.bst
 
   - bluefin/uutils-coreutils.bst
