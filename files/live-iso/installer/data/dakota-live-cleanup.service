@@ -1,0 +1,14 @@
+# First boot of the installed system: remove the live user, the installer
+# and this unit. The install daemon leaves the marker.
+[Unit]
+Description=Remove live session leftovers after install
+ConditionKernelCommandLine=!dakota.live
+ConditionPathExists=/etc/dakota-live-cleanup-pending
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /var/opt/dakota-installer/cleanup.py
+
+[Install]
+WantedBy=multi-user.target

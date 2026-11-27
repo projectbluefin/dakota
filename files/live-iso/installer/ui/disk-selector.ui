@@ -1,0 +1,54 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="libadwaita" version="1.4"/>
+  <template class="DiskSelector" parent="AdwNavigationPage">
+    <property name="title" translatable="yes">Install Bluefin</property>
+    <child>
+      <object class="AdwPreferencesPage">
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title" translatable="yes">Destination</property>
+            <property name="description" translatable="yes">Bluefin is installed on the disk you choose. Everything on that disk is erased.</property>
+            <child>
+              <object class="GtkListBox" id="DiskList">
+                <style>
+                  <class name="boxed-list"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title" translatable="yes">Security</property>
+            <child>
+              <object class="AdwSwitchRow" id="EncryptionRow">
+                <property name="title" translatable="yes">Disk Encryption</property>
+                <property name="subtitle" translatable="yes">Unlocked automatically by this computer's security chip. You get a recovery key at the end of the install.</property>
+                <property name="active">True</property>
+                <child type="prefix">
+                  <object class="GtkImage">
+                    <property name="icon-name">channel-secure-symbolic</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="AdwSwitchRow" id="SecureBootRow">
+                <property name="title" translatable="yes">Secure Boot</property>
+                <property name="subtitle" translatable="yes">Needed by some anti-cheat games.</property>
+                <property name="active">True</property>
+                <child type="prefix">
+                  <object class="GtkImage">
+                    <property name="icon-name">security-high-symbolic</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

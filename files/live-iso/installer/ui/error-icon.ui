@@ -1,0 +1,23 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Created with Cambalache 0.94.1 -->
+<interface>
+  <requires lib="gtk" version="4.12"/>
+  <template class="ErrorIcon" parent="GtkBox">
+    <child>
+      <object class="GtkMenuButton">
+        <property name="has-frame">False</property>
+        <property name="icon-name">dialog-error-symbolic</property>
+        <property name="popover">
+          <object class="GtkPopover">
+            <property name="child">
+              <object class="GtkLabel" id="ErrorLabel"/>
+            </property>
+          </object>
+        </property>
+        <style>
+          <class name="error"/>
+        </style>
+      </object>
+    </child>
+  </template>
+</interface>

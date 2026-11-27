@@ -1,0 +1,3 @@
+# The ISO build cannot give files to another user, so this does it at boot.
+d /var/home/live 0700 900 900 -
+Z /var/home/live - 900 900 -

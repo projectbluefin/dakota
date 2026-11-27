@@ -141,6 +141,7 @@ check-publish-workflow:
     python3 -m unittest scripts.test_ownership_metadata scripts.test_ownership_oci scripts.test_ownership_overlay scripts.test_oci_append_layer scripts.test_compare_oci_layers scripts.test_ownership_recipes scripts.test_sync_next
     python3 -m unittest scripts.test_image_variants scripts.test_track_bundle scripts.test_update_sources
     python3 -m unittest scripts.test_desktop_defaults scripts.test_bst_wrapper
+    python3 -m unittest scripts.test_live_iso scripts.test_live_installer scripts.test_pr_test
     just test-devmode
     just test-release
 
@@ -473,12 +474,37 @@ push-local registry="localhost:5000":
     echo "==> Pushing $TARGET_REF"
     $SUDO_CMD podman push "$TARGET_REF"
 
+# Two sources for the image inside the ISO:
+#
+#   just iso
+#       oci/bluefin.bst, through iso/live.bst. For pull requests and local
+#       work. That artifact is not a published image (export stamps the
+#       version and re-chunks it), so a system installed from this ISO
+#       updates onto the published image the first time.
+#
+#   just iso IMAGE ORIGIN
+#       An exported or published image, the one release ISOs carry. IMAGE is
+#       anything skopeo can read (docker://ghcr.io/...@sha256:...,
+#       containers-storage:..., oci:DIR). ORIGIN is the reference the
+#       installed system updates from, for example
+#       ghcr.io/projectbluefin/dakota:stable. The installed system is then
+#       the published image, bit for bit. BuildStream provides the tools as a
+#       sandbox (iso/tools.bst) and nothing else.
+#
+# The seed is packed at the default zstd level; files/live-iso/build.py
+# explains SEED_ZSTD_LEVEL.
+
+# Build the live ISO into .build-iso/ (dakota-live.iso and its metadata).
+[group('build')]
+iso image="" origin="":
+    python3 scripts/live_iso.py {{quote(image)}} {{quote(origin)}}
+
 # ── Clean ─────────────────────────────────────────────────────────────
 # Remove generated artifacts (disk image, OVMF vars, build output).
 [group('build')]
 clean:
     rm -f bootable.raw .ovmf-vars.fd
-    rm -rf .build-out
+    rm -rf .build-out .build-iso
 
 # ── bootc helper ─────────────────────────────────────────────────────
 [group('dev')]

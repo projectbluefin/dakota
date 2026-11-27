@@ -1,0 +1,15 @@
+[Unit]
+Description=Bluefin install daemon
+ConditionKernelCommandLine=dakota.live
+After=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.gnome.Installer1
+ExecStart=/usr/bin/python3 /var/opt/dakota-installer/daemon.py
+# It keeps the outcome and the recovery key in /run, so a restart loses
+# neither. It exits cleanly once the user has acknowledged the install.
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

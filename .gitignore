@@ -14,6 +14,7 @@ debug-session/
 *.tar
 .ovmf-vars.fd
 .build-out
+.build-iso
 .build-ownership/
 .build-ownership-source/
 

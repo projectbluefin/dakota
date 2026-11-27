@@ -1,0 +1,237 @@
+Upstream-Status: Pending
+Exit: Drop when a btrfs-progs release removes empty block groups in `mkfs.btrfs --shrink`.
+Subject: btrfs-progs: mkfs: remove empty block groups before shrinking
+
+While --rootdir fills the filesystem, a new chunk is allocated whenever the
+existing ones of that type are 70% used (btrfs_try_chunk_alloc), so a
+populated filesystem ends with a run of block groups that hold nothing.
+--shrink only cuts the device back to the end of the last device extent, so
+those empty block groups stay in the image: about 2.9 GiB of a 7.7 GiB image
+of the Dakota live ISO's seed filesystem.
+
+Remove empty data and metadata block groups before the device size is
+computed. An empty block group goes only when a used one of the same type
+and profile stays, empty metadata block groups stay unless the used ones
+have 32 MiB free, and system, mixed and remap block groups are left alone.
+
+The shrink also moves to the end of mkfs, after the UUID tree rebuild, the
+temporary chunk cleanup and the quota setup, because each of those needs
+free metadata space and the removed block groups were where it came from.
+
+Known limits, which is why this is a local patch and not an upstream
+submission as written:
+
+- The saving depends on the chunk layout. An empty block group in front of
+  a used one becomes a hole inside the image and saves nothing, because the
+  shrink still only trims the tail. files/live-iso/check-seed.py fails the
+  ISO build when that happens.
+- With -O squota the image comes out larger than unpatched: quota setup now
+  runs before the shrink and allocates a metadata block group the reserve
+  rule then keeps. The ISO build does not use quotas.
+- The better fix is at the cause, the allocation ahead of need in --rootdir.
+
+Only the live ISO build uses this copy of mkfs.btrfs. It is not in the image.
+
+diff --git a/mkfs/main.c b/mkfs/main.c
+index b7f0bb45..5725a481 100644
+--- a/mkfs/main.c
++++ b/mkfs/main.c
+@@ -2513,18 +2513,8 @@ raid_groups:
+ 			goto out;
+ 		}
+ 
+-		if (shrink_rootdir) {
+-			pr_default("  Shrink:           yes\n");
+-			ret = btrfs_mkfs_shrink_fs(fs_info, &shrink_size,
+-						   shrink_rootdir);
+-			if (ret < 0) {
+-				errno = -ret;
+-				error("error while shrinking filesystem: %m");
+-				goto out;
+-			}
+-		} else {
+-			pr_default("  Shrink:           no\n");
+-		}
++		pr_default("  Shrink:           %s\n",
++			   shrink_rootdir ? "yes" : "no");
+ 	}
+ 
+ 	ret = btrfs_rebuild_uuid_tree(fs_info);
+@@ -2548,6 +2538,20 @@ raid_groups:
+ 			goto out;
+ 		}
+ 	}
++
++	/*
++	 * Shrink last: every step above needs free metadata space, and the
++	 * shrink removes the block groups that hold none.
++	 */
++	if (shrink_rootdir) {
++		ret = btrfs_mkfs_shrink_fs(fs_info, &shrink_size,
++					   shrink_rootdir);
++		if (ret < 0) {
++			errno = -ret;
++			error("error while shrinking filesystem: %m");
++			goto out;
++		}
++	}
+ 	if (bconf.verbose) {
+ 		char features_buf[BTRFS_FEATURE_STRING_BUF_SIZE];
+ 
+diff --git a/mkfs/rootdir.c b/mkfs/rootdir.c
+index 0b5dbee1..b3335ebf 100644
+--- a/mkfs/rootdir.c
++++ b/mkfs/rootdir.c
+@@ -2500,6 +2500,141 @@ err:
+ 	return ret;
+ }
+ 
++struct empty_block_group {
++	u64 start;
++	u64 length;
++};
++
++/*
++ * Free metadata space to leave for the transactions that still follow the
++ * shrink (the removal itself and the final commit).
++ */
++#define SHRINK_METADATA_RESERVE		SZ_32M
++
++/*
++ * Remove the data and metadata block groups that hold nothing.
++ *
++ * Chunks are allocated ahead of need while the filesystem is filled, so a
++ * populated filesystem ends with a run of empty block groups. The shrink only
++ * cuts the device back to the end of the last device extent, so without this
++ * they stay in the image as unused space.
++ *
++ * An empty block group is only removed when a used one with the same type
++ * and profile stays, and empty metadata block groups are kept unless the used
++ * ones have SHRINK_METADATA_RESERVE free.
++ */
++static int remove_empty_block_groups(struct btrfs_fs_info *fs_info)
++{
++	struct btrfs_root *root = btrfs_block_group_root(fs_info);
++	struct btrfs_trans_handle *trans;
++	struct btrfs_block_group *bg;
++	struct empty_block_group *empty = NULL;
++	u64 data_flags = 0;
++	u64 metadata_flags = 0;
++	u64 metadata_free = 0;
++	u64 start = 0;
++	int nr = 0;
++	int alloc = 0;
++	int ret = 0;
++	int i;
++
++	trans = btrfs_start_transaction(root, 1);
++	if (IS_ERR(trans)) {
++		ret = PTR_ERR(trans);
++		errno = -ret;
++		error_msg(ERROR_MSG_START_TRANS, "%m");
++		return ret;
++	}
++
++	/*
++	 * Nothing has been allocated in this transaction yet, so the used
++	 * counters are exact. First find what is in use.
++	 */
++	while ((bg = btrfs_lookup_first_block_group(fs_info, start))) {
++		const u64 type = bg->flags & BTRFS_BLOCK_GROUP_TYPE_MASK;
++
++		start = bg->start + bg->length;
++		if (!bg->used)
++			continue;
++		if (type == BTRFS_BLOCK_GROUP_DATA) {
++			data_flags = bg->flags;
++		} else if (type == BTRFS_BLOCK_GROUP_METADATA) {
++			metadata_flags = bg->flags;
++			metadata_free += bg->length - bg->used;
++		}
++	}
++
++	start = 0;
++	while ((bg = btrfs_lookup_first_block_group(fs_info, start))) {
++		const u64 type = bg->flags & BTRFS_BLOCK_GROUP_TYPE_MASK;
++
++		start = bg->start + bg->length;
++		if (bg->used)
++			continue;
++		if (type == BTRFS_BLOCK_GROUP_DATA) {
++			if (bg->flags != data_flags)
++				continue;
++		} else if (type == BTRFS_BLOCK_GROUP_METADATA) {
++			if (bg->flags != metadata_flags ||
++			    metadata_free < SHRINK_METADATA_RESERVE)
++				continue;
++		} else {
++			/* System, mixed and remap block groups stay. */
++			continue;
++		}
++		if (nr == alloc) {
++			struct empty_block_group *tmp;
++
++			alloc = alloc ? alloc * 2 : 64;
++			tmp = realloc(empty, alloc * sizeof(*empty));
++			if (!tmp) {
++				ret = -ENOMEM;
++				goto out;
++			}
++			empty = tmp;
++		}
++		empty[nr].start = bg->start;
++		empty[nr].length = bg->length;
++		nr++;
++	}
++
++	/*
++	 * Removing a block group allocates tree blocks. Pin all the block
++	 * groups that are going away first, so none of those blocks land in
++	 * one that is removed later.
++	 */
++	for (i = 0; i < nr; i++)
++		btrfs_pin_extent(fs_info, empty[i].start, empty[i].length);
++
++	for (i = 0; i < nr; i++) {
++		/* btrfs_remove_block_group() pins the range itself. */
++		btrfs_unpin_extent(fs_info, empty[i].start, empty[i].length);
++		ret = btrfs_remove_block_group(trans, empty[i].start,
++					       empty[i].length);
++		if (ret < 0) {
++			errno = -ret;
++			error("failed to remove empty block group at %llu: %m",
++			      empty[i].start);
++			for (i++; i < nr; i++)
++				btrfs_unpin_extent(fs_info, empty[i].start,
++						   empty[i].length);
++			goto out;
++		}
++	}
++out:
++	free(empty);
++	if (ret < 0) {
++		btrfs_abort_transaction(trans, ret);
++		return ret;
++	}
++	ret = btrfs_commit_transaction(trans, root);
++	if (ret < 0) {
++		errno = -ret;
++		error_msg(ERROR_MSG_COMMIT_TRANS, "%m");
++	}
++	return ret;
++}
++
+ int btrfs_mkfs_shrink_fs(struct btrfs_fs_info *fs_info, u64 *new_size_ret,
+ 			 bool shrink_file_size)
+ {
+@@ -2518,6 +2653,10 @@ int btrfs_mkfs_shrink_fs(struct btrfs_fs_info *fs_info, u64 *new_size_ret,
+ 		return -ENOTTY;
+ 	}
+ 
++	ret = remove_empty_block_groups(fs_info);
++	if (ret < 0)
++		return ret;
++
+ 	ret = get_device_extent_end(fs_info, 1, &new_size);
+ 	if (ret < 0) {
+ 		errno = -ret;

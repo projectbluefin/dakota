@@ -1,0 +1,24 @@
+#!/usr/bin/bash
+# The live root is a read-only btrfs seed. Add a zram device to it so the
+# session can write, which is also what lets the installer move the running
+# filesystem onto the target disk later.
+set -eu
+[ -e /sys/block/zram0 ] || insmod /usr/lib/dakota-live/zram.ko.zst
+# Half of memory; zram only uses what is written, compressed.
+while read -r key value _; do
+    if [ "$key" = MemTotal: ]; then kb=$((value / 2)); fi
+done </proc/meminfo
+echo "${kb}K" >/sys/block/zram0/disksize
+# Once the device is added, the kernel reports /dev/zram0 as the source of
+# /sysroot and systemd binds sysroot.mount to its device unit. If udev has
+# not finished with zram0 by then, systemd sees an inactive device, unmounts
+# /sysroot and the boot stops. So wait for the unit first.
+udevadm settle
+for _ in {1..100}; do
+    systemctl is-active --quiet dev-zram0.device && break
+    udevadm trigger --action=change /dev/zram0
+    udevadm settle
+    sleep 0.1
+done
+btrfs device add -f /dev/zram0 /sysroot
+mount -o remount,rw /sysroot
