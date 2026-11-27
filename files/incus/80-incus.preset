@@ -1,0 +1,4 @@
+enable incus.socket
+enable incus-startup.service
+enable incus-user.socket
+enable lxcfs.service

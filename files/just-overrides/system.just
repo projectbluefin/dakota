@@ -410,3 +410,58 @@ mount-drive:
     sudo systemctl daemon-reload
     sudo systemctl enable --now "$UNIT_NAME"
     echo "Mounted $DEVICE at $MOUNTPOINT and enabled on boot."
+
+# Set up Incus (system containers & VMs): start the daemon, grant access, initialize
+[group('Containers')]
+incus-init:
+    #!/usr/bin/bash
+    set -euo pipefail
+
+    if ! command -v incus >/dev/null 2>&1; then
+      echo "incus is not installed in this image." >&2
+      exit 1
+    fi
+
+    # Bring up the socket-activated daemon.
+    sudo systemctl enable --now incus.socket lxcfs.service incus-startup.service
+
+    # Grant the current user access to the control socket.
+    if ! id -nG "$USER" | grep -qw incus-admin; then
+      if [ -t 0 ] && gum confirm "Add $USER to the 'incus-admin' group (needed to run incus without sudo)?"; then
+        sudo usermod -aG incus-admin "$USER"
+        echo "Added $USER to incus-admin — log out and back in (or reboot) for it to take effect."
+      fi
+    fi
+
+    # Initialize the daemon (storage pool + default bridge network).
+    if sudo incus storage list --format csv 2>/dev/null | grep -q .; then
+      echo "Incus already initialized — skipping 'incus admin init'."
+    else
+      MODE="Minimal (sensible defaults)"
+      if [ -t 0 ]; then
+        MODE=$(gum choose --header="Incus setup:" "Minimal (sensible defaults)" "Interactive (choose storage & network)")
+      fi
+      case "$MODE" in
+        Minimal*)     sudo incus admin init --minimal ;;
+        Interactive*) sudo incus admin init ;;
+      esac
+    fi
+
+    # Keep firewalld permissive for the default managed bridge if firewalld is active.
+    if command -v firewall-cmd >/dev/null 2>&1 && sudo -n firewall-cmd --state >/dev/null 2>&1; then
+      sudo firewall-cmd --zone=trusted --add-interface=incusbr0 >/dev/null 2>&1 || true
+      sudo firewall-cmd --permanent --zone=trusted --add-interface=incusbr0 >/dev/null 2>&1 || true
+    fi
+
+    echo
+    echo "Incus is ready. Try:"
+    echo "  incus launch images:debian/13 c1          # system container"
+    echo "  incus launch images:debian/13 v1 --vm     # virtual machine"
+
+# Show Incus daemon status and resource summary
+[group('Containers')]
+incus-status:
+    #!/usr/bin/bash
+    systemctl status incus.socket incus.service lxcfs.service --no-pager || true
+    echo
+    incus info 2>/dev/null || sudo -n incus info || true
