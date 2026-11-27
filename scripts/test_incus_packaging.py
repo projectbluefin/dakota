@@ -53,24 +53,24 @@ class IncusPackagingTests(unittest.TestCase):
         self.assertIn("root:1000000:1000000000", content)
         self.assertNotIn("overlap-whitelist:", content)
 
-    def test_systemd_preset_enables_socket_activation(self):
+    def test_systemd_preset_disables_services_by_default(self):
         preset = (REPO / "files/incus/80-incus.preset").read_text()
-        self.assertIn("enable incus.socket", preset)
-        self.assertIn("enable incus-startup.service", preset)
-        self.assertIn("enable incus-user.socket", preset)
-        self.assertIn("enable lxcfs.service", preset)
+        self.assertIn("disable incus.service", preset)
+        self.assertIn("disable incus.socket", preset)
+        self.assertIn("disable incus-startup.service", preset)
+        self.assertIn("disable incus-user.socket", preset)
+        self.assertIn("disable lxcfs.service", preset)
+        self.assertNotIn("enable", preset)
 
     def test_incus_service_deadlock_ordering_fix(self):
         incus_service = (REPO / "files/incus/incus.service").read_text()
         self.assertNotIn("incus-startup.service", incus_service)
         self.assertIn("After=network-online.target incus.socket", incus_service)
 
-    def test_ujust_recipes_exist_and_safe(self):
+    def test_no_just_recipes_needed(self):
         system_just = (REPO / "files/just-overrides/system.just").read_text()
-        self.assertIn("incus-init:", system_just)
-        self.assertIn("incus-status:", system_just)
-        self.assertIn("[ -t 0 ]", system_just)
-        self.assertIn("sudo -n", system_just)
+        self.assertNotIn("incus-init:", system_just)
+        self.assertNotIn("incus-status:", system_just)
 
 
 if __name__ == "__main__":
