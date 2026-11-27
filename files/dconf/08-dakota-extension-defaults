@@ -6,6 +6,12 @@
 # database applies regardless of which schema source is used, so extension
 # defaults belong here, not in zz3-bluefin-unsupported-stuff.gschema.override.
 
+# common's zz0 override sets this too, but dash-to-dock's schema is local here,
+# so it never applied and every login opened the Activities overview. Utah
+# installs the schema globally and gets true from that override.
+[org/gnome/shell/extensions/dash-to-dock]
+disable-overview-on-startup=true
+
 [org/gnome/shell/extensions/tilingshell]
 show-indicator=false
 layouts-json='[{"id": "Horizontal","tiles": [{"x": 0,"y": 0,"width": 0.5,"height": 1,"groups": [1]},{"x": 0.5,"y": 0,"width": 0.5,"height": 1,"groups": [1]}]},{"id": "Vertical","tiles": [{"x": 0,"y": 0,"width": 1,"height": 0.5,"groups": [1]},{"x": 0,"y": 0.5,"width": 1,"height": 0.5,"groups": [1]}]},{"id": "Quarters","tiles": [{"x": 0,"y": 0,"width": 0.5,"height": 0.5,"groups": [1]},{"x": 0,"y": 0.5,"width": 0.5,"height": 0.5,"groups": [1]},{"x": 0.5,"y": 0,"width": 0.5,"height": 0.5,"groups": [1]},{"x": 0.5,"y": 0.5,"width": 0.5,"height": 0.5,"groups": [1]}]},{"id": "Full","tiles": [{"x": 0,"y": 0,"width": 1,"height": 1,"groups": [1]}]}]'

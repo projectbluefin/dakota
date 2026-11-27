@@ -5,6 +5,12 @@ sources:
   url: github:micheleg/dash-to-dock.git
   track: extensions.gnome.org-v*
   ref: extensions.gnome.org-v110-0-g2dfae3474d6984b566ef0c3dab1524a675bbba48
+# GNOME Shell imports every enabled extension before it enables any, so the
+# dock can come up after startup-complete and disable-overview-on-startup never
+# took effect (micheleg/dash-to-dock#2582). Same file as projectbluefin/utah
+# patches/dash-to-dock; drop it once upstream closes the late-enable case.
+- kind: patch
+  path: patches/dash-to-dock/0001-close-startup-overview-when-enabled-late.patch
 
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-make.bst
