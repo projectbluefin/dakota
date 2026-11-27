@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: James Reilly <jreilly1821@gmail.com>
+Date: Fri, 27 Nov 2026 18:40:34 +0000
+Subject: [PATCH] docking: Close the startup overview when the dock is enabled
+ late
+
+GNOME Shell imports every enabled extension before it enables any, so on a
+login with many extensions the dock can be enabled after startup-complete.
+disable-overview-on-startup then never takes effect and the session starts in
+the overview. Close it once per Shell process in that case.
+---
+ docking.js | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/docking.js b/docking.js
+index afda08e..6ee7928 100644
+--- a/docking.js
++++ b/docking.js
+@@ -67,6 +67,11 @@ const scrollAction = Object.freeze({
+     SWITCH_WORKSPACE: 2,
+ });
+ 
++// Whether this Shell process has passed its startup overview: the module
++// outlives disable/enable cycles (lock screen), so a later enable never
++// closes an overview the user opened.
++let startupOverviewHandled = false;
++
+ const Labels = Object.freeze({
+     INITIALIZE: Symbol('initialize'),
+     ISOLATION: Symbol('isolation'),
+@@ -2738,7 +2743,15 @@ export class DockManager {
+                 });
+         } else {
+             replaceMainDash();
++            // GNOME Shell imports every enabled extension before it enables
++            // any, so with many extensions the dock can come up only after the
++            // startup animation has already opened the overview, and the
++            // branch above never runs. Close that overview once.
++            if (!startupOverviewHandled && this._settings.disableOverviewOnStartup &&
++                Main.overview.visible)
++                Main.overview.hide();
+         }
++        startupOverviewHandled = true;
+     }
+ 
+     _deleteDocks() {
