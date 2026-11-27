@@ -65,7 +65,8 @@ Release workflows cross a cryptographic and security boundary. Stop for human ap
 - [ ] Every affected variant is accounted for; promotion and rollback cover the same variant set
 - [ ] No Git branch update gates promotion or post-release verification; stable-digest checks and cleanup remain intact
 - [ ] Human approval obtained before any release execution
-- [ ] `just test-release` passes offline; new tests are registered in the CI-facing `check-publish-workflow` recipe
+- [ ] `python3 -m unittest scripts.test_release` passes offline; new tests are registered in the CI-facing `validate` recipe
+
 
 ## References
 

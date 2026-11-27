@@ -25,7 +25,8 @@
 #
 # So on the standard direct-kernel-boot lane only the Flatpak-exclusion
 # assertion does real work; the suite is meaningful against a to-filesystem
-# install. Run it with `just e2e-installer`.
+# install. Run it with `just e2e installer`.
+
 #
 # Caveat while this is being sequenced: the LUKS runtime probe is
 # projectbluefin/testsuite#754. Until that merges AND the `@v1` tag this

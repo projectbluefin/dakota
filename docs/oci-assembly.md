@@ -136,7 +136,8 @@ validation is a separate Dakota design choice, not a Chunkah requirement.
 ### Chunkah metadata validation
 
 The offline metadata, recipe failure-path and next-sync regression tests run
-with `just check-publish-workflow` (also part of `just validate`). The explicit
+with `just validate`. The explicit
+
 export and cold-cache tests use `BST_RUNNER`, an executable checkout adapter,
 without rewriting the production Justfile. The runner receives the arguments
 to `just bst` unchanged and supplies its own BuildStream flags/environment.
@@ -161,9 +162,9 @@ to `just bst` unchanged and supplies its own BuildStream flags/environment.
   are removed; logs and sidecar evidence remain in the new output directory.
   Diagnostic failures do not skip cleanup. If a temporary container cannot be
   removed, its storage is preserved and the test fails with the resource ID/path.
-- `just ownership-layer-compare OLD_LAYOUT NEW_LAYOUT OUTPUT_JSON` measures
+- `python3 -m scripts.compare_oci_layers OLD_LAYOUT NEW_LAYOUT OUTPUT_JSON` measures
   layer reuse and new compressed bytes without publishing images. Export both
-  layouts with the same compression settings; uncompressed/mixed inputs fail.
+
 
 Compare migration churn (old/new ownership on the same root) separately from
 steady-state updates (generated ownership across builds). Repeated exports may

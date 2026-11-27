@@ -20,9 +20,10 @@ signing jobs (`pr-image` and `publish-image`) on `DAKOTA_SIGN_RUNNER`. Both
 default to GitHub-hosted `ubuntu-26.04` when unset. The two pools must stay
 separate: build-pool runners may share the cache server's casd socket, and a
 signing job there would store the Secure Boot key in the production CAS.
-`just check-publish-workflow` rejects a signing job on any other runner, the
+`just validate` rejects a signing job on any other runner, the
 signing pool outside signing jobs, and a key removal step without
 `if: always()`.
+
 
 On build-pool runners that sit on the cache server, `generate-bst-ci-config`
 uses casd's unix socket (`casd-socket`, default `/run/casd/casd.sock`) instead
@@ -107,7 +108,8 @@ PR image job runs the same gate. Past that gate only the default image is
 required: an optional image that fails to compose, export, chunkify or push
 drops out with a warning and is listed as not published in the job summary.
 `.github/image-variants.json` declares the `publish` role with one slot per OCI
-element, and `just check-publish-workflow` fails if the inline matrix drifts
+element, and `just validate` fails if the inline matrix drifts
+
 from it, the job stops reading each image's continue flag, or the signing gate
 becomes optional.
 
@@ -208,9 +210,10 @@ their SHA-tagged candidates and retains the existing stale-branch scan and
 untagged GHCR cleanup. These checks depend on image promotion, not a Git branch
 update; no branch-protection bypass is needed.
 
-`just test-release` runs offline Python tests with a mocked `gh`, including the
-real Justfile argument path. It is registered in `check-publish-workflow` so CI
+`python3 -m unittest scripts.test_release` runs offline Python tests with a mocked `gh`,
+including the real argument path. It is registered in `validate` so CI
 runs it too. Unlike `just release`, it creates no remote workflow run.
+
 
 ```text
 merge into testing → build → publish SHA-tagged images

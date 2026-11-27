@@ -29,9 +29,6 @@ jobs:
         with:
           tool: just
 
-      - name: Validate publish workflow and composite actions
-        run: just check-publish-workflow
-
       - name: Restore BST cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -49,11 +46,5 @@ jobs:
             exit 1
           fi
 
-      - name: Check freedesktop-sdk patch drift
-        run: just patch-drift-check
-
-      - name: Validate BST element graph (default)
-        run: just bst show --deps all oci/bluefin.bst
-
-      - name: Validate BST element graph (nvidia)
-        run: just bst show --deps all oci/bluefin-nvidia.bst
+      - name: Validate repository, workflows, tests, and element graphs
+        run: just validate

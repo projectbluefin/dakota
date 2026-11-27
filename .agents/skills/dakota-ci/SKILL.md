@@ -33,7 +33,8 @@ Workflow YAML in `.github/workflows/` is the current source of truth. Do not rel
 2. **Inspect at Run SHA**: Read the workflow YAML at the exact commit that executed.
 3. **Isolate Root Cause**: Distinguish syntax/permission failure (zero jobs run), source fetch failure, remote CAS cache failure, or BST compilation error.
 4. **Enforce Least Privilege**: Ensure workflow caller permissions strictly match what reusable workflows demand.
-5. **Validate Locally**: Run `just check-publish-workflow` and `just validate` before submitting.
+5. **Validate Locally**: Run `just validate` before submitting.
+
 
 ## Invariants
 
@@ -60,8 +61,8 @@ Workflow YAML in `.github/workflows/` is the current source of truth. Do not rel
 
 ## Verification
 
-- [ ] `just check-publish-workflow` passes
-- [ ] `just test-render-card` passes
+- [ ] `just validate` passes
+
 - [ ] All modified workflow files pass YAML linting and schema validation
 - [ ] Third-party actions are pinned to full commit SHAs with version comments
 - [ ] PR description specifies local checks run vs CI status
