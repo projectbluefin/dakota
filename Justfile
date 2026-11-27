@@ -131,26 +131,18 @@ secure-boot-keygen kind="release":
 update-sources *FLAGS:
     python3 scripts/update_sources.py "$@"
 
-# The ONLY recipe CI runs directly (.github/workflows/validate.yml).
-# New python test suites must be registered here to be enforced; anything
-# added to `validate` below runs on developer machines only.
+# Complete offline validation gate for developers and CI.
 [group('dev')]
-check-publish-workflow:
+validate:
     python3 scripts/check_publish_workflow.py
     python3 -m unittest scripts.test_check_publish_workflow
     python3 -m unittest scripts.test_ownership_metadata scripts.test_ownership_oci scripts.test_ownership_overlay scripts.test_oci_append_layer scripts.test_compare_oci_layers scripts.test_ownership_recipes scripts.test_sync_next
     python3 -m unittest scripts.test_image_variants scripts.test_track_bundle scripts.test_update_sources
     python3 -m unittest scripts.test_desktop_defaults scripts.test_bst_wrapper
-    just test-devmode
-    just test-release
-
-# Local convenience wrapper. CI does NOT run this recipe; it runs
-# `check-publish-workflow` plus its own bst show steps. Do not register
-# CI-facing checks here.
-[group('dev')]
-validate:
-    just check-publish-workflow
-    just test-render-card
+    python3 -m unittest discover -s scripts -p 'test_devmode*.py' -v
+    python3 -m unittest scripts.test_release
+    python3 -m unittest scripts.test_render_card
+    just patch-drift-check
     just bst show --deps all oci/bluefin.bst
     just bst show --deps all oci/bluefin-nvidia.bst
 
@@ -163,21 +155,6 @@ validate:
 [positional-arguments]
 release *FLAGS:
     python3 scripts/release.py dispatch "$@"
-
-# Offline release CLI and publish-readiness tests; no workflow dispatches.
-[group('test')]
-test-release:
-    python3 -m unittest scripts.test_release
-
-# Offline developer-tool tests; never changes host services, firewall, or apps.
-[group('test')]
-test-devmode:
-    python3 -m unittest discover -s scripts -p 'test_devmode*.py' -v
-
-# Unit tests for .github/scripts/render_card.py.
-[group('dev')]
-test-render-card:
-    python3 -m unittest scripts.test_render_card
 
 # Verify the local freedesktop-sdk patch queue matches its committed
 # manifest, offline. The manifest is written by `just patch-sync` (the only
@@ -473,16 +450,9 @@ push-local registry="localhost:5000":
     echo "==> Pushing $TARGET_REF"
     $SUDO_CMD podman push "$TARGET_REF"
 
-# ── Clean ─────────────────────────────────────────────────────────────
-# Remove generated artifacts (disk image, OVMF vars, build output).
-[group('build')]
-clean:
-    rm -f bootable.raw .ovmf-vars.fd
-    rm -rf .build-out
-
 # ── bootc helper ─────────────────────────────────────────────────────
-[group('dev')]
-bootc *ARGS:
+# Internal install adapter for generate-bootable-image.
+_bootc *ARGS:
     sudo podman run \
         --rm --privileged --pid=host \
         -it \
@@ -491,6 +461,7 @@ bootc *ARGS:
         -v "{{base_dir}}:/data" \
         --security-opt label=type:unconfined_t \
         "{{image_name}}:{{image_tag}}" bootc {{ARGS}}
+
 
 # ── Generate bootable disk image ─────────────────────────────────────
 # Variant selects which loaded image to install (default | nvidia).
@@ -522,7 +493,7 @@ generate-bootable-image variant="default" $base_dir=base_dir $filesystem=filesys
     fi
 
     echo "==> Installing $REF to disk image via bootc..."
-    BUILD_IMAGE_NAME="$FINAL_NAME" just bootc install to-disk \
+    BUILD_IMAGE_NAME="$FINAL_NAME" just _bootc install to-disk \
         --via-loopback /data/bootable.raw \
         --filesystem "${filesystem}" \
         --wipe \
@@ -662,162 +633,6 @@ boot-vm $base_dir=base_dir:
             ghcr.io/qemus/qemu:latest
     fi
 
-# ── Convert to qcow2 ──────────────────────────────────────────────────
-# Convert raw disk image to qcow2 format for better performance/compat.
-[group('test')]
-convert-to-qcow2 $base_dir=base_dir:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    RAW="{{base_dir}}/bootable.raw"
-    QCOW2="{{base_dir}}/bootable.qcow2"
-
-    if [ ! -e "$RAW" ]; then
-        echo "ERROR: ${RAW} not found. Run 'just generate-bootable-image' first." >&2
-        exit 1
-    fi
-
-    echo "==> Converting ${RAW} to ${QCOW2}..."
-
-    if command -v qemu-img &>/dev/null; then
-        qemu-img convert -f raw -O qcow2 "$RAW" "$QCOW2"
-    else
-        # Use the same container image to run qemu-img
-        echo "    Using containerized qemu-img..."
-        podman run --rm \
-            -v "{{base_dir}}:/data" \
-            --entrypoint qemu-img \
-            ghcr.io/qemus/qemu:latest \
-            convert -f raw -O qcow2 "/data/bootable.raw" "/data/bootable.qcow2"
-    fi
-    echo "==> Conversion complete: ${QCOW2}"
-
-# ── Show me the future ────────────────────────────────────────────────
-# The full end-to-end: build the OCI image, install it to a bootable
-# disk, and launch it in a QEMU VM. One command to rule them all.
-# Uses charm.sh gum for styled output when available.
-[group('test')]
-show-me-the-future:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    # ── Helpers ───────────────────────────────────────────────────
-    HAS_GUM=false
-    command -v gum &>/dev/null && [[ -t 1 ]] && HAS_GUM=true
-
-    OVERALL_START=$SECONDS
-
-    format_time() {
-        local secs=$1
-        if (( secs >= 3600 )); then
-            printf '%dh %02dm %02ds' $((secs / 3600)) $(((secs % 3600) / 60)) $((secs % 60))
-        elif (( secs >= 60 )); then
-            printf '%dm %02ds' $((secs / 60)) $((secs % 60))
-        else
-            printf '%ds' "$secs"
-        fi
-    }
-
-    step_start() {
-        local name=$1
-        if $HAS_GUM; then
-            gum style --foreground 212 --bold "◔ ${name}..."
-        else
-            echo "==> ${name}..."
-        fi
-    }
-
-    step_done() {
-        local name=$1 elapsed=$2
-        if $HAS_GUM; then
-            gum style --foreground 46 "● ${name} ($(format_time "$elapsed"))"
-        else
-            echo "==> ${name} done ($(format_time "$elapsed"))"
-        fi
-    }
-
-    step_failed() {
-        local name=$1 elapsed=$2
-        if $HAS_GUM; then
-            gum style --foreground 196 "◍ ${name} FAILED ($(format_time "$elapsed"))"
-        else
-            echo "==> ${name} FAILED ($(format_time "$elapsed"))"
-        fi
-    }
-
-    run_step() {
-        local name=$1; shift
-        step_start "$name"
-        local start=$SECONDS
-        if "$@"; then
-            step_done "$name" $((SECONDS - start))
-        else
-            step_failed "$name" $((SECONDS - start))
-            echo ""
-            if $HAS_GUM; then
-                gum style --foreground 196 --border rounded --align center --padding "1 2" \
-                    'BUILD FAILED' \
-                    "Failed: ${name}" \
-                    "Total elapsed: $(format_time $((SECONDS - OVERALL_START)))"
-            else
-                echo "BUILD FAILED: ${name}"
-                echo "Total elapsed: $(format_time $((SECONDS - OVERALL_START)))"
-            fi
-            exit 1
-        fi
-    }
-
-    # ── Banner ────────────────────────────────────────────────────
-    if $HAS_GUM; then
-        TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
-        BANNER_WIDTH=$((TERM_WIDTH > 62 ? 60 : TERM_WIDTH - 4))
-        gum style \
-            --foreground 212 \
-            --border-foreground 212 \
-            --border double \
-            --align center \
-            --width $BANNER_WIDTH \
-            --margin "1 2" \
-            --padding "1 4" \
-            'SHOW ME THE FUTURE' \
-            'Building Bluefin from source and booting it in a VM'
-    else
-        echo ""
-        echo "=== SHOW ME THE FUTURE ==="
-        echo "Building Bluefin from source and booting it in a VM"
-    fi
-    echo ""
-
-    # ── Steps ─────────────────────────────────────────────────────
-    # Pinned to the `default` variant so we don't double the wall time
-    # building the nvidia variant the user never boots in this flow.
-    run_step "Build OCI image" just build default
-    echo ""
-    run_step "Bootable disk" just generate-bootable-image
-    echo ""
-
-    # Step 3: VM is interactive -- just announce it
-    step_start "Launch VM"
-    just boot-vm
-    echo ""
-
-    # ── Completion ────────────────────────────────────────────────
-    if $HAS_GUM; then
-        gum style --foreground 46 "● Launch VM"
-        echo ""
-        gum style \
-            --foreground 46 \
-            --border-foreground 46 \
-            --border rounded \
-            --align center \
-            --width 42 \
-            --padding "1 2" \
-            'ALL STEPS COMPLETE' \
-            "Total: $(format_time $((SECONDS - OVERALL_START)))"
-    else
-        echo "==> All steps complete. Total: $(format_time $((SECONDS - OVERALL_START)))"
-    fi
-
 # ── Chunkah component ownership metadata ─────────────────────────────
 # Offline tests never pull images. The real BuildStream fixture is opt-in and
 # intentionally has its own recipe so CI's unit gate has no Podman/network need.
@@ -834,24 +649,6 @@ test-ownership-export:
 [group('test')]
 test-ownership-cold-cache default_ref nvidia_ref output:
     python3 scripts/test_ownership_cold_cache.py "{{default_ref}}" "{{nvidia_ref}}" "{{output}}"
-
-[group('test')]
-ownership-validate root sidecar arch="" variant="" manifest="/tmp/dakota-ownership-manifest.tsv":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    args=(validate-exported --root "{{root}}" --sidecar "{{sidecar}}" --manifest "{{manifest}}")
-    [ -z "{{arch}}" ] || args+=(--arch "{{arch}}")
-    [ -z "{{variant}}" ] || args+=(--variant "{{variant}}")
-    python3 scripts/ownership_metadata.py "${args[@]}"
-
-[group('test')]
-ownership-compare legacy manifest output:
-    python3 scripts/ownership_metadata.py compare --legacy "{{legacy}}" --manifest "{{manifest}}" --output "{{output}}"
-
-# Compare equally compressed local OCI layouts, without registry publication.
-[group('test')]
-ownership-layer-compare old new output:
-    python3 -m scripts.compare_oci_layers "{{old}}" "{{new}}" "{{output}}"
 
 # ── Chunkah ──────────────────────────────────────────────────────────
 # Use the pre-built chunkah image from quay.io (v0.6.0).
@@ -1022,26 +819,16 @@ chunkify image_ref:
 
 # ── bcvk (fast VM testing) ───────────────────────────────────────────
 
-# Ensure bcvk is installed (auto-installs via cargo if missing)
+# Fail instead of changing the host when a VM prerequisite is missing.
 _ensure-bcvk:
     #!/usr/bin/env bash
     set -euo pipefail
-    if command -v bcvk &>/dev/null; then
-        exit 0
-    fi
-    echo "bcvk not found. Attempting to install via cargo..."
-    if command -v cargo &>/dev/null; then
-        cargo install --locked --git https://github.com/bootc-dev/bcvk bcvk
-    else
-        echo "ERROR: bcvk is not installed and cargo is not available for auto-install." >&2
-        echo "" >&2
-        echo "Install bcvk manually:" >&2
-        echo "  Cargo:       cargo install --locked --git https://github.com/bootc-dev/bcvk bcvk" >&2
-        echo "  Fedora 42+:  sudo dnf install bcvk" >&2
-        echo "" >&2
-        echo "Also ensure qemu-kvm and virtiofsd are installed on the host." >&2
+    if ! command -v bcvk &>/dev/null; then
+        echo "ERROR: bcvk is required for VM recipes." >&2
+        echo "Install bcvk and ensure qemu-kvm and virtiofsd are installed on the host." >&2
         exit 1
     fi
+
 
 # Boot the built image instantly in an ephemeral VM via bcvk.
 # No disk image needed -- boots directly from the container via virtiofs.
@@ -1071,125 +858,6 @@ boot-fast: _ensure-bcvk
         --memory "{{vm_ram}}M" \
         --vcpus "{{vm_cpus}}" \
         "localhost/{{image_name}}:{{image_tag}}"
-
-# Interactive debug session — boots the image, captures serial console and systemd
-# journal on exit. Artifacts are saved to ./debug-session/ for bug reports.
-# Requires: bcvk, qemu-kvm, virtiofsd
-[group('test')]
-debug-session: _ensure-bcvk
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    VM_NAME="dakota-debug-$$"
-    SESSION_DIR="./debug-session"
-    START_TS=$(date +%s)
-
-    # Use sudo unless already root
-    SUDO_CMD=""
-    if [ "$(id -u)" -ne 0 ]; then
-        SUDO_CMD="sudo"
-    fi
-
-    if ! $SUDO_CMD podman image exists "{{image_name}}:{{image_tag}}"; then
-        echo "ERROR: Image '{{image_name}}:{{image_tag}}' not found in podman." >&2
-        echo "Run 'just build' first to build and export the OCI image." >&2
-        exit 1
-    fi
-
-    cleanup() {
-        set +e
-        END_TS=$(date +%s)
-        DURATION=$((END_TS - START_TS))
-
-        # Capture console log via podman logs (works even if guest hung/crashed)
-        $SUDO_CMD podman logs "$VM_NAME" > "${SESSION_DIR}/serial.log" 2>/dev/null || true
-
-        # Capture journal and summary via SSH if VM is still reachable
-        KERNEL="unknown"
-        FAILED_DISPLAY="none"
-        if $SUDO_CMD bcvk ephemeral ssh "$VM_NAME" -- true 2>/dev/null; then
-            echo "==> Capturing systemd journal..."
-            $SUDO_CMD bcvk ephemeral ssh "$VM_NAME" -- journalctl -b --no-pager > "${SESSION_DIR}/journal.log" 2>/dev/null || true
-
-            KERNEL=$($SUDO_CMD bcvk ephemeral ssh "$VM_NAME" -- uname -r 2>/dev/null || echo "unknown")
-            FAILED=$($SUDO_CMD bcvk ephemeral ssh "$VM_NAME" -- systemctl list-units --state=failed --no-legend --plain 2>/dev/null | awk '{print $1}' | head -10 | paste -sd ',' 2>/dev/null || true)
-            if [ -n "$FAILED" ]; then FAILED_DISPLAY="$FAILED"; fi
-        fi
-
-        {
-            echo "Debug session: {{image_name}}:{{image_tag}}"
-            echo "Duration: ${DURATION}s"
-            echo "Kernel: ${KERNEL}"
-            echo "Failed units: ${FAILED_DISPLAY}"
-            echo ""
-            echo "Artifacts:"
-            echo "  serial.log   — full serial console from boot"
-            echo "  journal.log  — systemd journal from this boot"
-            echo "  summary.txt  — this file"
-            echo ""
-            echo "Include these artifacts when filing an issue at:"
-            echo "  https://github.com/projectbluefin/dakota/issues/new?template=bug-report.yml"
-        } > "${SESSION_DIR}/summary.txt"
-
-        echo ""
-        echo "==> Debug session artifacts in ${SESSION_DIR}/"
-        if [[ -f "${SESSION_DIR}/serial.log" ]]; then
-            echo "    serial.log   ($(du -sh "${SESSION_DIR}/serial.log" | cut -f1)) — full serial console from boot"
-        fi
-        if [[ -f "${SESSION_DIR}/journal.log" ]]; then
-            echo "    journal.log  ($(du -sh "${SESSION_DIR}/journal.log" | cut -f1)) — systemd journal from this boot"
-        fi
-        if [[ -f "${SESSION_DIR}/summary.txt" ]]; then
-            echo "    summary.txt  — session summary"
-        fi
-        echo ""
-        echo "File an issue with the artifacts above:"
-        echo "  https://github.com/projectbluefin/dakota/issues/new?template=bug-report.yml"
-
-        echo "==> Tearing down VM ${VM_NAME}..."
-        $SUDO_CMD bcvk ephemeral rm -f "$VM_NAME" 2>/dev/null || true
-    }
-    trap cleanup EXIT
-
-    mkdir -p "${SESSION_DIR}"
-
-    echo "==> debug-session: booting {{image_name}}:{{image_tag}} with serial capture..."
-    echo "    RAM: {{vm_ram}}M, CPUs: {{vm_cpus}}"
-    echo "    Artifacts will be saved to ${SESSION_DIR}/"
-    echo ""
-
-    # Launch VM detached; -K enables bcvk ephemeral ssh, --console routes guest
-    # serial output to podman logs for reliable capture even when guest is hung
-    $SUDO_CMD bcvk ephemeral run -d --rm -K --console \
-        --memory "{{vm_ram}}M" \
-        --vcpus "{{vm_cpus}}" \
-        --name "$VM_NAME" \
-        "localhost/{{image_name}}:{{image_tag}}"
-
-    # Wait for SSH to become available
-    echo "==> Waiting for VM to boot..."
-    ELAPSED=0
-    TIMEOUT=120
-    while [ $ELAPSED -lt "$TIMEOUT" ]; do
-        if $SUDO_CMD bcvk ephemeral ssh "$VM_NAME" -- true 2>/dev/null; then
-            break
-        fi
-        sleep 5
-        ELAPSED=$((ELAPSED + 5))
-        printf '.' >&2
-    done
-    echo ""
-
-    if [ $ELAPSED -ge "$TIMEOUT" ]; then
-        echo "FAIL: SSH did not become available within ${TIMEOUT}s" >&2
-        exit 1
-    fi
-    echo "==> VM ready after ~${ELAPSED}s. Starting interactive session."
-    echo "    Reproduce your bug here. Exit the shell when done (Ctrl+D)."
-    echo ""
-
-    # Drop user into interactive SSH session
-    $SUDO_CMD bcvk ephemeral ssh "$VM_NAME"
 
 # Automated boot smoke test — boots the image, verifies GDM starts, exits 0/1.
 # Non-interactive. Intended for CI and agent verification loops.
@@ -1276,20 +944,6 @@ boot-test: _ensure-bcvk
         echo "FAIL: ${FAIL} check(s) failed" >&2
     fi
     exit $STATUS
-
-# Inspect the built bootc image.
-[group('info')]
-inspect: _ensure-bcvk
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    # Use sudo unless already root
-    SUDO_CMD=""
-    if [ "$(id -u)" -ne 0 ]; then
-        SUDO_CMD="sudo"
-    fi
-
-    $SUDO_CMD bcvk images list
 
 # ── SBOM ─────────────────────────────────────────────────────────────
 # Generate a BST-native SBOM (SPDX 2.3) using buildstream-sbom.
@@ -1409,7 +1063,8 @@ verify image_ref="":
     # 1. Cosign keyless signature
     echo "── Cosign signature (keyless / Sigstore OIDC) ──"
     if ! command -v cosign &>/dev/null; then
-        echo "SKIP: cosign not installed"
+        echo "FAIL: cosign is not installed" >&2
+        STATUS=1
     else
         cosign verify \
             --certificate-identity-regexp \
@@ -1422,7 +1077,8 @@ verify image_ref="":
     # 2. SBOM referrer
     echo "── SBOM OCI referrer ──"
     if ! command -v oras &>/dev/null; then
-        echo "SKIP: oras not installed"
+        echo "FAIL: oras is not installed" >&2
+        STATUS=1
     else
         oras discover "${IMAGE}" && echo "PASS: referrers listed above" || { echo "FAIL: oras discover failed"; STATUS=1; }
     fi
@@ -1431,11 +1087,13 @@ verify image_ref="":
     # 3. SLSA attestation
     echo "── SLSA build provenance (actions/attest) ──"
     if ! command -v gh &>/dev/null; then
-        echo "SKIP: gh not installed"
+        echo "FAIL: gh is not installed" >&2
+        STATUS=1
     else
         gh attestation verify "oci://${IMAGE}" \
             --repo projectbluefin/dakota && echo "PASS: attestation valid" || { echo "FAIL: attestation check failed"; STATUS=1; }
     fi
+
     exit "${STATUS}"
 
 # ── E2E dispatch ─────────────────────────────────────────────────────
@@ -1458,15 +1116,6 @@ e2e suites="smoke" image="ghcr.io/projectbluefin/dakota:testing":
         --field image="{{image}}" \
         --field suites="{{suites}}"
     echo "==> Watch it with: gh run list --repo projectbluefin/dakota --workflow e2e.yml --limit 5"
-
-# Only meaningful against a fisherman to-filesystem install — see the header
-# of .github/workflows/e2e.yml for which of the three assertions gate on what.
-# Usage: just e2e-installer ghcr.io/projectbluefin/dakota:testing
-#
-# Dispatch the fisherman post-boot assertions (projectbluefin/dakota#651).
-[group('test')]
-e2e-installer image="ghcr.io/projectbluefin/dakota:testing":
-    just e2e installer "{{image}}"
 
 # ── Lint ─────────────────────────────────────────────────────────────
 [group('test')]

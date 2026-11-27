@@ -299,9 +299,9 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_tests_are_in_ci_recipe(self):
         justfile = (ROOT / "Justfile").read_text()
-        checks = justfile.split("check-publish-workflow:\n", 1)[1].split("\n# Local convenience", 1)[0]
-        self.assertIn("just test-release", checks)
-        self.assertIn("python3 -m unittest scripts.test_release", justfile)
+        checks = justfile.split("validate:\n", 1)[1].split("\n# Usage:", 1)[0]
+        self.assertIn("python3 -m unittest scripts.test_release", checks)
+        self.assertIn("just bst show --deps all oci/bluefin.bst", checks)
 
 
 @unittest.skipUnless(shutil.which("bash"), "bash is required to exercise the workflow step")

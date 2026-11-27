@@ -8,7 +8,8 @@
 | `just` | All build/test commands | Pre-installed on Bluefin |
 | `qemu` | VM boot | `brew install qemu` |
 | `virtiofsd` | `just boot-fast` only | Host package manager / `brew install virtiofsd` |
-| `bcvk` | Ephemeral VM from container | Auto-installed by `just boot-fast` via cargo |
+| `bcvk` | Ephemeral VM from container | `cargo install --locked --git https://github.com/bootc-dev/bcvk bcvk` |
+
 | ~100 GB disk, ~16 GB RAM | BST cache + parallel builds | — |
 
 ### CPU baseline
@@ -58,8 +59,6 @@ just lint                      # bootc container lint — must pass before PR
 
 just boot-test                 # automated smoke test — exits 0 on success
 just boot-fast                 # interactive ephemeral VM via virtiofs (requires virtiofsd)
-
-just show-me-the-future        # full loop: build → export → disk image → QEMU VM
 ```
 
 First run is slow (cold BST cache). Subsequent runs are fast — BST caches by content hash.
