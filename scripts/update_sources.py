@@ -104,6 +104,11 @@ TRACKED = [
     ("bluefin/marisa-trie.bst", "marisa-trie", ""),
     ("bluefin/opencc.bst", "OpenCC", ""),
     ("bluefin/yaml-cpp.bst", "yaml-cpp", ""),
+    ("bluefin/incus-deps/cowsql.bst", "cowsql", ""),
+    ("bluefin/incus-deps/libuv.bst", "libuv", ""),
+    ("bluefin/incus-deps/lxc.bst", "liblxc", ""),
+    ("bluefin/incus-deps/lxcfs.bst", "lxcfs", ""),
+    ("bluefin/incus-deps/raft.bst", "raft", ""),
     ("bluefin/tiptop.bst", "tiptop", "review: unreleased branch head"),
     # anitya sources: release-monitoring.org names the newest stable release.
     ("bluefin/boost.bst", "boost", ""),
@@ -240,6 +245,9 @@ RELEASES = {
         "download/{tag}/ifuse-{version}.tar", tag_pattern=r"[0-9]+\.[0-9]+\.[0-9]+"),
     "bluefin/powertop.bst": Release(
         "fenrus75/powertop", r"tags/(?P<version>v[0-9.]+)\.tar\.gz", "tags/{tag}.tar.gz"),
+    "bluefin/incus.bst": Release(
+        "lxc/incus", r"download/(?P<version>v[0-9.]+)/incus-[0-9.]+\.tar\.gz",
+        "download/{tag}/incus-{version}.tar.gz"),
     "bluefin/pam-u2f.bst": Release(
         "", r"pam_u2f-(?P<version>[0-9.]+)\.tar\.gz", "pam_u2f-{version}.tar.gz",
         tag_pattern=r"[0-9]+\.[0-9]+\.[0-9]+",

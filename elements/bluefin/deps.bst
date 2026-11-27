@@ -119,6 +119,8 @@ depends:
   - bluefin/migrate-var-home-passwd.bst
 
   - gnome-build-meta.bst:gnomeos-deps/snapd.bst
+  # Incus — system container and VM manager.
+  - bluefin/incus.bst
 
   # VM guest agents; each starts only on its own hypervisor.
   - bluefin/qemu-guest-agent.bst

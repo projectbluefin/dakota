@@ -1,0 +1,6 @@
+disable incus.service
+disable incus.socket
+disable incus-startup.service
+disable incus-user.service
+disable incus-user.socket
+disable lxcfs.service
