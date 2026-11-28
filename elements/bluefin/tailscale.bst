@@ -4,8 +4,8 @@ sources:
 - kind: tar
   (?):
   - arch == "x86_64":
-      url: tailscale_pkgs:tailscale_1.104.4_amd64.tgz
-      ref: 624ea093d47d62cf56f17b8332d74b8decda4a1faa610ebc60a1de334b2b3dc9
+      url: tailscale_pkgs:tailscale_1.104.7_amd64.tgz
+      ref: e56693ff74a64f2591b7e819c280635a100aae1ddfb0ef058fcd052b7cd8d16c
   - arch == "aarch64":
       url: tailscale_pkgs:tailscale_1.104.1_arm64.tgz
       ref: f60294374967f3dfd8cf57bbbd474d6cfce32d123e3a8ddeab82a87940daa806
