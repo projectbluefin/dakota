@@ -9,8 +9,8 @@ kind: manual
 
 sources:
 - kind: tar
-  url: github-releases:flightlessmango/MangoHud/releases/download/v0.8.3/MangoHud-0.8.3.r0.g330c42a.tar.gz
-  ref: 620b6a635877dae2fecef2622c963eb3298b5fdccc90f9e1e71987b379a7f9e3
+  url: github-releases:flightlessmango/MangoHud/releases/download/v0.8.4/MangoHud-0.8.4.r0.g992103e.tar.gz
+  ref: aa0b2a009552f5e7c50baabf361267a79ea5e5c0fea440786f3b202d51f57753
 
 build-depends:
 - freedesktop-sdk.bst:bootstrap/bash.bst
