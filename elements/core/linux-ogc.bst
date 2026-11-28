@@ -46,7 +46,7 @@ variables:
   # OGC patchset revision of the pinned tag; keep in sync with the
   # `ref:` under sources (v<kver>-ogcN-...). Not derivable at build
   # time: the tree ships no EXTRAVERSION or localversion files.
-  ogc-localversion: '-ogc1'
+  ogc-localversion: '-ogc3'
   indep-libdir: '%{prefix}/lib'
   # Modules are stripped by kbuild (INSTALL_MOD_STRIP=1) *before* the
   # module signature is appended; a post-build strip pass would tear
@@ -261,7 +261,7 @@ sources:
   url: github:OpenGamingCollective/linux.git
   # rc-based OGC tags are fair game on the next stream.
   track: v7.3.*-ogc*
-  ref: v7.3.3-ogc1-0-ga66e9e735fa99a7844fe18b0af0651737589f61a
+  ref: v7.3.5-ogc3-0-g7522e30f51f9197673eb7f771a6b841673c5af36
 # Dakota fixups for the OGC patchset itself; review at every tag bump and
 # drop each patch once the fix lands upstream.
 - kind: patch_queue

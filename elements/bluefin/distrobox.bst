@@ -52,44 +52,33 @@ sources:
   ref:
     go-version: v1.1.1
     git-ref: v1.1.1-0-g8991bc29aa16c548c550c7ff78260e27b9ab7c73
-    explicit: True
-
 - kind: go_module
   url: github:pmezard/go-difflib.git
   module: github.com/pmezard/go-difflib
   ref:
     go-version: v1.0.0
     git-ref: v1.0.0-0-g792786c7400a136282c1664665ae0a8db921c6c2
-    explicit: True
-
 - kind: go_module
   url: github:stretchr/testify.git
   module: github.com/stretchr/testify
   ref:
     go-version: v1.11.1
     git-ref: v1.11.1-0-g2a57335dc9cd6833daa820bc94d9b40c26a7917d
-    explicit: True
-
 - kind: go_module
   url: github:urfave/cli.git
   module: github.com/urfave/cli/v3
   ref:
     go-version: v3.5.0
     git-ref: v3.5.0-0-g495e1d30c76923fbefbc095c0b01f9398529bb67
-    explicit: True
-
 - kind: go_module
   url: github:go-ini/ini.git
   module: gopkg.in/ini.v1
   ref:
     go-version: v1.67.0
     git-ref: v1.67.0-0-gb2f570e5b5b844226bbefe6fb521d891f529a951
-    explicit: True
-
 - kind: go_module
   url: github:go-yaml/yaml.git
   module: gopkg.in/yaml.v3
   ref:
     go-version: v3.0.1
     git-ref: v3.0.1-0-gf6f7691b1fdeb513f56608cd2c32c51f8194bf51
-    explicit: True
