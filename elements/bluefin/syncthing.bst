@@ -3,8 +3,8 @@ kind: manual
 
 sources:
 - kind: tar
-  url: github:syncthing/syncthing/releases/download/v2.1.5/syncthing-source-v2.1.5.tar.gz
-  ref: 11f129cff64fb4ba7cda33f9dae3a39eab8738a60bbbe8813cadecfdc94bd13d
+  url: github:syncthing/syncthing/releases/download/v2.1.7/syncthing-source-v2.1.7.tar.gz
+  ref: 5b84abd0e8b187f618fb2c38c37fa37ce0b377a275d3e0b981bad94176a24afa
 
 build-depends:
 - core/sandbox-tools.bst
